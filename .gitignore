@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+
+# Node.js
+node_modules/
+.next/
+
+# Testing & Coverage
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+
+# Type Checking
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker
+.dockerignore
+
+# Tooling
+.specify/
+

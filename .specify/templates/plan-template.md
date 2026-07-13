@@ -31,7 +31,15 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Verify compliance with `.specify/memory/constitution.md`:
+
+- [ ] **Test-First**: Tests written before implementation? (Principle I)
+- [ ] **Clean Code**: Type hints, dataclasses, docstrings, no print statements? (Principle II)
+- [ ] **KISS/DRY**: No over-engineering, no unnecessary abstractions? (Principle III)
+- [ ] **Fail Gracefully**: Error handling for all external calls? (Principle IV)
+- [ ] **Architecture**: Linear pipeline, no RAG, env-only config? (Principle V)
+- [ ] **Coverage**: >=80% code coverage target? (Principle VI)
+- [ ] **Stack**: Uses approved tech stack (FastAPI, Supabase, Next.js, etc.)?
 
 ## Project Structure
 
