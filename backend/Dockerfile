@@ -1,20 +1,14 @@
-FROM python:3.13-slim AS builder
+FROM python:3.13-slim
 
 WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
-RUN pip install uv && uv sync --no-dev --no-install-project
+RUN pip install uv && uv sync --no-dev
 
 COPY src/ src/
-
-FROM python:3.13-slim AS runner
-
-WORKDIR /app
-
-COPY --from=builder /app /app
 
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
