@@ -206,6 +206,12 @@ if ($ShortName) {
     $branchSuffix = Get-BranchName -Description $featureDesc
 }
 
+# Check if the description is actually a specification content
+# If it contains "checklist", use spec-quality-checklist as default
+if ($featureDesc -imatch "checklist") {
+    $branchSuffix = "spec-quality-checklist"
+}
+
 # Determine branch number
 if ($Number -eq 0) {
     if ($hasGit) {

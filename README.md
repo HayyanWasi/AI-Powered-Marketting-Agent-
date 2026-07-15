@@ -25,7 +25,10 @@ uv sync
 
 # Copy environment variables
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your API keys (SUPABASE_URL, SUPABASE_KEY, etc.)
+
+# Run database migrations (requires Supabase project)
+# Execute backend/migrations/001_create_company_profiles.up.sql in your Supabase SQL editor
 
 # Run the backend
 uv run uvicorn backend.src.main:app --reload
