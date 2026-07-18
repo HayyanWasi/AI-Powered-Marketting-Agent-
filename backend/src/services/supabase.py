@@ -60,7 +60,7 @@ class SupabaseService:
         if client is not None:
             self.client = client
         else:
-            self.client = create_client(settings.supabase_url, settings.supabase_key)
+            self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
     def _table(self) -> Any:
         return self.client.table("company_profiles")
@@ -69,11 +69,16 @@ class SupabaseService:
         return self.client.storage.from_(STORAGE_BUCKET)
 
     @_retry
-    def create_profile(self, name: str, tone: str) -> dict[str, Any]:
-        existing = self._table().select("id").execute()
+    def create_profile(
+        self, company_name: str, brand_guidelines: str, brand_tone: str | None = None
+    ) -> dict[str, Any]:
+        existing = self._table().select("id").eq("company_name", company_name).execute()
         if existing.data:
-            raise DuplicateCompanyError("Company name already exists")
-        result = self._table().insert({"name": name, "tone": tone}).execute()
+            raise DuplicateCompanyError(f"Company name '{company_name}' already exists")
+        record = {"company_name": company_name, "brand_guidelines": brand_guidelines}
+        if brand_tone:
+            record["brand_tone"] = brand_tone
+        result = self._table().insert(record).execute()
         if not result.data:
             raise SupabaseServiceError("Failed to create profile")
         return dict(result.data[0])
@@ -87,6 +92,16 @@ class SupabaseService:
 
     @_retry
     def update_profile(self, profile_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        if "company_name" in data:
+            dup = (
+                self._table()
+                .select("id")
+                .eq("company_name", data["company_name"])
+                .neq("id", profile_id)
+                .execute()
+            )
+            if dup.data:
+                raise DuplicateCompanyError(f"Company name '{data['company_name']}' already exists")
         result = self._table().update(data).eq("id", profile_id).execute()
         if not result.data:
             raise NotFoundError("Profile not found")
@@ -99,15 +114,33 @@ class SupabaseService:
             raise NotFoundError("Profile not found")
 
     @_retry
-    def upload_image(self, file_path: Path, content_type: str) -> str:
+    def list_profiles(self) -> list[dict[str, Any]]:
+        result = self._table().select("*").order("updated_at", desc=True).execute()
+        return [dict(row) for row in (result.data or [])]
+
+    @_retry
+    def upload_image(
+        self, file_path: Path, content_type: str, company_profile_id: str | None = None
+    ) -> str:
         if content_type not in IMAGE_TYPES:
             raise ValidationError(f"Unsupported format: {content_type}")
         file_size = file_path.stat().st_size
         if file_size > MAX_IMAGE_SIZE:
             raise ValidationError(f"File too large: {file_size} bytes (max {MAX_IMAGE_SIZE})")
+        storage_name = (
+            f"{company_profile_id or 'unknown'}/{file_path.name}"
+            if company_profile_id
+            else file_path.name
+        )
         with open(file_path, "rb") as f:
-            self._storage().upload(file_path.name, f, {"content-type": content_type})
-        return self.get_image_url(file_path.name)
+            self._storage().upload(storage_name, f, {"content-type": content_type})
+        return self.get_image_url(storage_name)
 
     def get_image_url(self, path: str) -> str:
         return str(self._storage().get_public_url(path))
+
+    def remove_storage_file(self, storage_path: str) -> None:
+        try:
+            self._storage().remove([storage_path])
+        except Exception as e:
+            logger.warning("Failed to remove storage file %s: %s", storage_path, e)

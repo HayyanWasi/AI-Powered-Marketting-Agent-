@@ -8,6 +8,12 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from PIL import Image
 
 from src.models.company import CompanyProfileCreate, CompanyProfileUpdate
+from src.services.company.create_company_service import CreateCompanyService
+from src.services.company.update_company_service import UpdateCompanyService
+from src.services.company.get_company_service import GetCompanyService
+from src.services.company.list_company_service import ListCompanyService
+from src.services.company.delete_company_service import DeleteCompanyService
+from src.services.company.campaign_lookup_service import CampaignLookupService
 from src.services.supabase import (
     DuplicateCompanyError,
     NotFoundError,
@@ -21,42 +27,93 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 service = SupabaseService()
+create_service = CreateCompanyService()
+update_service = UpdateCompanyService()
+get_service = GetCompanyService()
+list_service = ListCompanyService()
+delete_service = DeleteCompanyService()
+campaign_lookup_service = CampaignLookupService()
 
 
 @router.post("", status_code=201)
 async def create_profile(body: CompanyProfileCreate) -> dict[str, Any]:
     try:
-        result = service.create_profile(body.name.strip(), body.tone.strip())
-        return result  # type: ignore[no-any-return]
-    except DuplicateCompanyError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        profile = create_service.execute(
+            company_name=body.company_name.strip(),
+            brand_guidelines=body.brand_guidelines.strip(),
+            brand_tone=body.brand_tone.strip() if body.brand_tone else None,
+        )
+        return {
+            "id": profile.id,
+            "company_name": profile.company_name,
+            "brand_guidelines": profile.brand_guidelines,
+            "brand_tone": profile.brand_tone,
+            "reference_image_urls": profile.reference_image_urls,
+            "created_at": profile.created_at,
+            "updated_at": profile.updated_at,
+        }
+    except ValueError as e:
+        detail = str(e)
+        if "already exists" in detail.lower():
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=422, detail=detail)
 
 
 @router.get("/{profile_id}")
 async def get_profile(profile_id: str) -> dict[str, Any]:
     try:
-        return service.get_profile(profile_id)  # type: ignore[no-any-return]
-    except NotFoundError as e:
+        return get_service.execute(profile_id)
+    except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.put("/{profile_id}")
 async def update_profile(profile_id: str, body: CompanyProfileUpdate) -> dict[str, Any]:
     data = body.model_dump(exclude_none=True)
-    if not data:
-        raise HTTPException(status_code=422, detail="No fields to update")
     try:
-        return service.update_profile(profile_id, data)  # type: ignore[no-any-return]
-    except NotFoundError as e:
+        profile = update_service.execute(profile_id, data)
+        return {
+            "id": profile.id,
+            "company_name": profile.company_name,
+            "brand_guidelines": profile.brand_guidelines,
+            "brand_tone": profile.brand_tone,
+            "reference_image_urls": profile.reference_image_urls,
+            "created_at": profile.created_at,
+            "updated_at": profile.updated_at,
+        }
+    except ValueError as e:
+        detail = str(e)
+        if "not found" in detail.lower() or "deleted" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail)
+        if "already exists" in detail.lower() or "already in use" in detail.lower():
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=422, detail=detail)
+
+
+@router.get("/{profile_id}/brand-info")
+async def get_brand_info(profile_id: str) -> dict[str, Any]:
+    try:
+        return campaign_lookup_service.execute(profile_id)
+    except ValueError as e:
+        if "incomplete" in str(e).lower():
+            raise HTTPException(status_code=422, detail=str(e))
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/{profile_id}", status_code=204)
 async def delete_profile(profile_id: str) -> None:
     try:
-        service.delete_profile(profile_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        delete_service.execute(profile_id)
+    except ValueError as e:
+        detail = str(e)
+        if "campaign" in detail.lower() or "active" in detail.lower():
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=404, detail=detail)
+
+
+@router.get("")
+async def list_profiles() -> list[dict[str, Any]]:
+    return list_service.execute()
 
 
 @router.post("/{profile_id}/brand-images")
@@ -64,7 +121,10 @@ async def upload_brand_images(
     profile_id: str, images: list[UploadFile] = File(...)
 ) -> dict[str, Any]:
     if len(images) > MAX_IMAGES:
-        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_IMAGES} images allowed per upload",
+        )
 
     try:
         service.get_profile(profile_id)
@@ -80,7 +140,7 @@ async def upload_brand_images(
             failed.append(
                 {
                     "file": image.filename or "unknown",
-                    "error": f"Unsupported format: {content_type}",
+                    "error": f"Unsupported format: {content_type}. Accepted: JPEG, PNG, WebP",
                 }
             )
             continue
@@ -90,7 +150,7 @@ async def upload_brand_images(
             failed.append(
                 {
                     "file": image.filename or "unknown",
-                    "error": f"File too large (max {MAX_IMAGE_SIZE // (1024*1024)}MB)",
+                    "error": f"File too large (max {MAX_IMAGE_SIZE // (1024 * 1024)}MB)",
                 }
             )
             continue
@@ -99,7 +159,9 @@ async def upload_brand_images(
             img = Image.open(io.BytesIO(contents))
             img.verify()
         except Exception:
-            failed.append({"file": image.filename or "unknown", "error": "Invalid image file"})
+            failed.append(
+                {"file": image.filename or "unknown", "error": "Invalid or corrupt image file"}
+            )
             continue
 
         with NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -107,7 +169,7 @@ async def upload_brand_images(
             tmp_path = tmp.name
 
         try:
-            url = service.upload_image(Path(tmp_path), content_type)
+            url = service.upload_image(Path(tmp_path), content_type, profile_id)
             urls.append(url)
         except Exception as e:
             failed.append({"file": image.filename or "unknown", "error": str(e)})
@@ -119,4 +181,104 @@ async def upload_brand_images(
     all_urls = existing_urls + urls
     service.update_profile(profile_id, {"reference_image_urls": all_urls})
 
-    return {"urls": urls, "failed": failed}
+    return {"urls": urls, "failed": failed, "total": len(existing_urls) + len(urls)}
+
+
+@router.delete("/{profile_id}/brand-images/{image_index}")
+async def remove_brand_image(profile_id: str, image_index: int) -> dict[str, Any]:
+    try:
+        profile = service.get_profile(profile_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+
+    urls = profile.get("reference_image_urls", [])
+    if image_index < 0 or image_index >= len(urls):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Image at index {image_index} not found. Profile has {len(urls)} images.",
+        )
+
+    removed_url = urls[image_index]
+    urls.pop(image_index)
+    service.update_profile(profile_id, {"reference_image_urls": urls})
+
+    return {"removed": True, "remaining": len(urls)}
+
+
+@router.post("/{profile_id}/brand-images/{image_index}/replace")
+async def replace_brand_image(
+    profile_id: str, image_index: int, image: UploadFile = File(...)
+) -> dict[str, Any]:
+    try:
+        profile = service.get_profile(profile_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+
+    urls = profile.get("reference_image_urls", [])
+    if image_index < 0 or image_index >= len(urls):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Image at index {image_index} not found. Profile has {len(urls)} images.",
+        )
+
+    content_type = image.content_type or "application/octet-stream"
+    if content_type not in IMAGE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported format: {content_type}. Accepted: JPEG, PNG, WebP",
+        )
+
+    contents = await image.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"File too large (max {MAX_IMAGE_SIZE // (1024 * 1024)}MB)",
+        )
+
+    try:
+        img = Image.open(io.BytesIO(contents))
+        img.verify()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid or corrupt image file")
+
+    with NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        new_url = service.upload_image(Path(tmp_path), content_type, profile_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    urls[image_index] = new_url
+    service.update_profile(profile_id, {"reference_image_urls": urls})
+
+    return {"url": new_url, "index": image_index, "total": len(urls)}
+
+
+@router.put("/{profile_id}/brand-images/reorder")
+async def reorder_brand_images(profile_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    new_order: list[int] | None = body.get("order")
+    if not new_order:
+        raise HTTPException(
+            status_code=422, detail="'order' field with array of indices is required"
+        )
+
+    try:
+        profile = service.get_profile(profile_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+
+    urls = profile.get("reference_image_urls", [])
+    if sorted(new_order) != list(range(len(urls))):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Order must contain each index 0-{len(urls) - 1} exactly once",
+        )
+
+    reordered = [urls[i] for i in new_order]
+    service.update_profile(profile_id, {"reference_image_urls": reordered})
+
+    return {"reordered": True, "total": len(reordered)}

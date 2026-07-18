@@ -4,12 +4,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes.company import router as company_router
 from src.api.routes.guest import router as guest_router
 from src.api.routes.campaign_images import router as campaign_images_router
+from src.api.routes.campaigns import router as campaigns_router
+from src.api.routes.validation import router as validation_router
+from src.api.routes.workflow import router as workflow_router
 
-app = FastAPI(title="AI Social Campaign Manager", version="0.1.2")
+app = FastAPI(title="AI Social Campaign Manager", version="0.1.5")
 
 app.include_router(company_router)
 app.include_router(guest_router)
 app.include_router(campaign_images_router)
+app.include_router(campaigns_router)
+app.include_router(validation_router)
+app.include_router(workflow_router)
 
 app.add_middleware(
     CORSMiddleware,
