@@ -1,0 +1,139 @@
+openapi: "3.1.0"
+info:
+  title: Guest Information Retrieval API
+  description: Search for publicly available guest/speaker information and generate structured profiles for campaign content.
+  version: "0.1.0"
+
+paths:
+  /api/guest/search:
+    post:
+      summary: Search and generate a guest profile
+      description: >
+        Accepts a guest name (required) and company name (optional). Searches DuckDuckGo for up to 7
+        publicly available search results, analyzes the metadata via LLM, and returns a structured
+        GuestProfile. If insufficient results, retries with guest name only. Returns manual input
+        request if a reliable profile cannot be generated.
+      operationId: searchGuest
+      tags: [guest]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestSearchRequest"
+      responses:
+        "200":
+          description: Successful search — profile generated (may be partial)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestSearchResponse"
+        "400":
+          description: Invalid input — guest_name is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error — search or analysis failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    ConfidenceLevel:
+      type: string
+      enum: [HIGH, MEDIUM, LOW]
+      description: >
+        HIGH = consistent and corroborated across multiple sources.
+        MEDIUM = some corroboration.
+        LOW = single source or conflicting information.
+
+    SearchResult:
+      type: object
+      properties:
+        website_name:
+          type: string
+          description: Name of the website hosting the result
+        page_title:
+          type: string
+          description: Title of the search result page
+        snippet:
+          type: string
+          description: Search description/snippet from the search engine
+        source_url:
+          type: string
+          format: uri
+          description: Full URL of the search result
+      required: [website_name, page_title, snippet, source_url]
+
+    GuestProfile:
+      type: object
+      properties:
+        full_name:
+          type: string
+          description: Guest's full name. Empty if cannot be determined.
+        current_position:
+          type: string
+          description: Current professional role/title. Empty if uncertain.
+        organization:
+          type: string
+          description: Current company/organization. Empty if uncertain.
+        professional_biography:
+          type: string
+          description: Concise summary supported by search metadata. Empty if insufficient info.
+        areas_of_expertise:
+          type: array
+          items:
+            type: string
+          description: List of expertise areas identified from search results.
+        confidence_level:
+          $ref: "#/components/schemas/ConfidenceLevel"
+        sources_used:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+          description: Search results that contributed to this profile.
+      required: [full_name, current_position, organization, professional_biography, areas_of_expertise, confidence_level, sources_used]
+
+    GuestSearchRequest:
+      type: object
+      properties:
+        guest_name:
+          type: string
+          minLength: 1
+          description: Full name of the guest/speaker to search for (required)
+        company_name:
+          type: string
+          description: Company/organization name to narrow search (optional)
+        session_id:
+          type: string
+          format: uuid
+          description: Existing session ID to associate the profile with (optional)
+      required: [guest_name]
+
+    GuestSearchResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/GuestProfile"
+        needs_manual_input:
+          type: boolean
+          description: True when profile could not be reliably generated — user must manually provide biography, position, and organization
+        error:
+          type: string
+          description: Error message if search/analysis failed entirely
+      required: [profile, needs_manual_input]
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+        error_code:
+          type: string
+          description: Machine-readable error code (e.g., SEARCH_FAILED, INVALID_INPUT)
+      required: [detail]

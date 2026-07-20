@@ -1,0 +1,305 @@
+openapi: 3.0.3
+info:
+  title: Campaign Image Generation API
+  version: 1.0.0
+  description: |
+    API for generating brand-styled campaign images using Pollinations AI (kontext model).
+    Integrates with company profiles for brand conditioning.
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /api/campaign-images:
+    post:
+      summary: Generate a brand-styled campaign image
+      description: |
+        Generates a campaign image using Pollinations AI with brand style conditioning from company profile.
+        Returns a direct CDN URL to the generated image.
+      operationId: generateCampaignImage
+      tags:
+        - Campaign Images
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignImageRequest'
+            examples:
+              full_brand_context:
+                summary: Request with complete brand context
+                value:
+                  company_profile_id: "550e8400-e29b-41d4-a716-446655440000"
+                  campaign_prompt: "Summer sale campaign with vibrant colors and modern design"
+                  campaign_context:
+                    platform: "instagram"
+                    campaign_type: "seasonal_sale"
+                    target_audience: "young professionals"
+              minimal_brand_context:
+                summary: Request with minimal brand context
+                value:
+                  company_profile_id: "550e8400-e29b-41d4-a716-446655440001"
+                  campaign_prompt: "Product launch announcement"
+                  campaign_context:
+                    platform: "linkedin"
+                    campaign_type: "product_launch"
+      responses:
+        '200':
+          description: Image generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignImageResponse'
+              examples:
+                success:
+                  summary: Successful generation
+                  value:
+                    image_url: "https://image.pollinations.ai/prompt/Summer%20sale%20campaign%20with%20vibrant%20colors%20and%20modern%20design%2C%20brand%20colors%20%23FF6B35%20%23004E89%2C%20modern%20minimalist%20style?model=kontext"
+                    model: "kontext"
+                    generation_time_ms: 12345
+                    fallback_used: false
+                    brand_applied: true
+                    validation:
+                      width: 1024
+                      height: 1024
+                      passed: true
+                fallback_used:
+                  summary: Fallback image returned
+                  value:
+                    image_url: "https://image.pollinations.ai/prompt/Branded%20placeholder%20with%20colors%20%23FF6B35%20%23004E89%2C%20modern%20minimalist%20style?model=kontext"
+                    model: "kontext"
+                    generation_time_ms: 5678
+                    fallback_used: true
+                    brand_applied: true
+                    validation:
+                      width: 1024
+                      height: 1024
+                      passed: true
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_prompt:
+                  summary: Empty campaign prompt
+                  value:
+                    error: "validation_error"
+                    message: "Campaign prompt must be at least 10 characters"
+                    details:
+                      field: "campaign_prompt"
+                      min_length: 10
+        '404':
+          description: Company profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: Profile not found
+                  value:
+                    error: "profile_not_found"
+                    message: "Company profile not found"
+                    details:
+                      profile_id: "550e8400-e29b-41d4-a716-446655440000"
+        '422':
+          description: Image validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                resolution_too_low:
+                  summary: Generated image below minimum resolution
+                  value:
+                    error: "validation_failed"
+                    message: "Generated image does not meet minimum resolution requirements"
+                    details:
+                      width: 800
+                      height: 600
+                      minimum: "1080x1080"
+                      retry_attempted: true
+        '503':
+          description: Pollinations service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                service_down:
+                  summary: Pollinations API unavailable
+                  value:
+                    error: "service_unavailable"
+                    message: "Image generation service temporarily unavailable"
+                    details:
+                      retry_after_seconds: 30
+                      fallback_available: true
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                internal_error:
+                  summary: Unexpected error
+                  value:
+                    error: "internal_error"
+                    message: "An unexpected error occurred"
+                    details:
+                      request_id: "550e8400-e29b-41d4-a716-446655440000"
+
+components:
+  schemas:
+    CampaignImageRequest:
+      type: object
+      required:
+        - company_profile_id
+        - campaign_prompt
+      properties:
+        company_profile_id:
+          type: string
+          format: uuid
+          description: UUID of the company profile for brand context
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        campaign_prompt:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          description: Description of the campaign image to generate
+          example: "Summer sale campaign with vibrant colors and modern design"
+        campaign_context:
+          type: object
+          description: Optional context for the campaign
+          properties:
+            platform:
+              type: string
+              enum: [instagram, linkedin, facebook, twitter, tiktok, youtube]
+              description: Target platform for the campaign
+            campaign_type:
+              type: string
+              enum: [seasonal_sale, product_launch, brand_awareness, event_promotion, lead_generation]
+              description: Type of campaign
+            target_audience:
+              type: string
+              description: Description of target audience
+          additionalProperties: false
+
+    CampaignImageResponse:
+      type: object
+      required:
+        - image_url
+        - model
+        - generation_time_ms
+        - fallback_used
+        - brand_applied
+        - validation
+      properties:
+        image_url:
+          type: string
+          format: uri
+          description: Direct CDN URL to the generated image (Pollinations)
+          example: "https://image.pollinations.ai/prompt/...?model=kontext"
+        model:
+          type: string
+          enum: [kontext]
+          description: Pollinations model used
+          example: "kontext"
+        generation_time_ms:
+          type: integer
+          minimum: 0
+          description: Total generation time including retries
+          example: 12345
+        fallback_used:
+          type: boolean
+          description: Whether fallback mechanism was activated
+          example: false
+        brand_applied:
+          type: boolean
+          description: Whether brand styling was applied (false if no brand data)
+          example: true
+        validation:
+          type: object
+          required:
+            - width
+            - height
+            - passed
+          properties:
+            width:
+              type: integer
+              minimum: 1
+              example: 1024
+            height:
+              type: integer
+              minimum: 1
+              example: 1024
+            passed:
+              type: boolean
+              example: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum: [validation_error, profile_not_found, validation_failed, service_unavailable, internal_error]
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+
+    BrandStyleContext:
+      type: object
+      description: Extracted brand attributes for prompt conditioning
+      properties:
+        color_palette:
+          type: array
+          items:
+            type: string
+            pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Brand colors as hex codes
+          example: ["#FF6B35", "#004E89"]
+        personality:
+          type: string
+          description: Brand personality descriptors
+          example: "modern, professional, innovative"
+        style_guide:
+          type: string
+          description: Style guide summary
+          example: "Clean lines, ample whitespace, modern typography"
+        logo_reference:
+          type: string
+          description: Logo description or URL for reference
+          example: "Abstract geometric mark in brand orange"
+        typography:
+          type: string
+          description: Typography style preference
+          example: "Modern sans-serif, medium weight"
+        reference_images:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: URLs of brand reference images
+          example: ["https://storage.supabase.co/brand/ref1.jpg"]
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (handled at gateway level)
+
+security:
+  - ApiKeyAuth: []

@@ -1,0 +1,145 @@
+# Research: Pollinations AI Brand Image Generation
+
+## Context
+Feature: Integrate Pollinations AI (kontext model) for campaign image generation with brand style conditioning from company profiles. Returns direct CDN URLs with retry/fallback logic.
+
+---
+
+## Unknowns Resolved
+
+### 1. Pollinations API Exact Response Format
+**Decision**: The API returns a direct image (HTTP 200 with image binary) when accessing `https://image.pollinations.ai/prompt/{prompt}?model=kontext`, not JSON. The URL itself is the "response" - the image is served directly from the CDN.
+
+**Rationale**: Pollinations documentation shows direct image serving. The prompt is URL-encoded in the path. No API key needed for public endpoint.
+
+**Alternatives considered**: 
+- JSON response with URL field - not supported by public endpoint
+- Streaming response - works but not needed; direct URL is simpler
+
+**Implementation**: Construct full URL, return it to frontend. Frontend renders `<img src={url} />`.
+
+---
+
+### 2. Pollinations Rate Limit Headers & Behavior
+**Decision**: Pollinations public API uses IP-based rate limiting. Returns 429 with `Retry-After` header (seconds). No official documented limits, but community reports suggest ~30-60 req/min per IP.
+
+**Rationale**: Must respect `Retry-After` header. Implement exponential backoff as fallback if header missing.
+
+**Alternatives considered**:
+- Fixed delay - less adaptive
+- Token bucket client-side - complex, not needed for single service
+
+---
+
+### 3. Kontext Model Prompt Best Practices
+**Decision**: Kontext model excels at style transfer and brand conditioning when prompts include:
+- Explicit color hex codes (e.g., "brand colors #FF6B35 #004E89")
+- Style descriptors (e.g., "modern minimalist", "vintage aesthetic")
+- Composition guidance (e.g., "professional photography", "clean layout")
+- Negative constraints (e.g., "no watermarks, no text artifacts")
+
+**Rationale**: Based on Pollinations community examples and kontext model card. Brand conditioning works best through descriptive prompts, not reference images (kontext doesn't support image-to-image via URL parameter).
+
+**Alternatives considered**:
+- Reference image URLs - not supported in public API
+- Style weights - not available in public endpoint
+
+---
+
+### 4. Image Validation Requirements
+**Decision**: Minimum 1080x1080 resolution per spec. Use HEAD request first (check Content-Type, Content-Length), then GET + Pillow for dimension validation. Timeout: 10s.
+
+**Rationale**: HEAD avoids downloading full image for basic checks. Pillow validates actual dimensions. 1080x1080 ensures social media readiness.
+
+**Alternatives considered**:
+- Only HEAD check - can't verify resolution
+- External validation service - unnecessary dependency
+
+---
+
+### 5. Fallback Image Strategy
+**Decision**: Generate branded fallback via Pollinations: `https://image.pollinations.ai/prompt/branded%20placeholder%20{colors}%20{style}?model=kontext`. This ensures brand consistency even in fallback.
+
+**Rationale**: Maintains brand colors/style. No static asset management. Same CDN performance.
+
+**Alternatives considered**:
+- Static placeholder images - stale branding, storage needed
+- Solid color blocks - unprofessional appearance
+
+---
+
+### 6. Supabase Company Profile Schema (from Feature 002)
+**Decision**: Table `company_profiles` with columns:
+- `id` (uuid, pk)
+- `brand_colors` (jsonb, array of hex strings)
+- `brand_personality` (text)
+- `style_guide` (text)
+- `logo_url` (text, nullable)
+- `typography_style` (text, nullable)
+- `reference_image_urls` (jsonb, array of strings, nullable)
+- `created_at`, `updated_at`
+
+**Rationale**: Matches feature 002 spec assumptions. JSONB for flexible arrays.
+
+**Alternatives considered**: Separate tables - overkill for V1.
+
+---
+
+### 7. Timeout Configuration
+**Decision**: 
+- Pollinations API call: 30s total (includes retries)
+- Individual request: 20s timeout
+- Image validation: 10s timeout
+- Overall endpoint: 35s timeout (FastAPI default 30s + buffer)
+
+**Rationale**: Pollinations can take 10-25s for generation. 3 retries × ~10s = 30s max. Validation adds 10s.
+
+---
+
+### 8. Error Response Format
+**Decision**: Standardized error envelope:
+```json
+{
+  "error": "error_code",
+  "message": "User-friendly message",
+  "details": { "field": "value" }
+}
+```
+Codes: `VALIDATION_ERROR`, `PROFILE_NOT_FOUND`, `GENERATION_FAILED`, `VALIDATION_FAILED`, `FALLBACK_USED`
+
+**Rationale**: Consistent with REST best practices. Frontend can handle uniformly.
+
+---
+
+## Dependencies Confirmed
+
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| httpx | 0.27+ | Async HTTP client for Pollinations |
+| Pillow | 10+ | Image validation (dimensions, format) |
+| pydantic | 2.8+ | Request/response validation |
+| supabase-py | 2.3+ | Company profile queries |
+| pytest-asyncio | 0.23+ | Async test support |
+| pytest-mock | 3.12+ | Mocking external services |
+
+---
+
+## Architecture Decisions Summary
+
+| Decision | Choice | Key Rationale |
+|----------|--------|---------------|
+| Image delivery | Direct Pollinations CDN URLs | No storage cost, global CDN, simple |
+| Brand conditioning | Prompt engineering with hex colors/style | Works with kontext, no fine-tuning |
+| Retry strategy | Exponential backoff (1s, 2s, 4s) + Retry-After | Respects API, handles transients |
+| Fallback | Branded Pollinations placeholder | Consistent style, no asset management |
+| Validation | HEAD + GET/Pillow | Efficient, accurate |
+| Error format | Standardized envelope | Frontend-friendly |
+| Testing | Mock httpx + Supabase | Fast, isolated, reliable |
+
+---
+
+## Next Steps (Phase 1)
+1. Generate `data-model.md` with Pydantic models
+2. Generate `contracts/openapi.yaml` for POST /api/campaign-images
+3. Generate `quickstart.md` for local development
+4. Run agent context update

@@ -1,0 +1,848 @@
+openapi: 3.1.0
+info:
+  title: Campaign Management API
+  version: 1.0.0
+  description: |
+    API for managing the complete lifecycle of marketing campaigns.
+    Single source of truth for campaign business data.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+
+tags:
+  - name: Campaigns
+    description: Campaign CRUD and lifecycle management
+  - name: Campaign History
+    description: Immutable audit trail
+  - name: Campaign Assets
+    description: Asset association and retrieval
+
+components:
+  schemas:
+    # ==================== Enums ====================
+    CampaignState:
+      type: string
+      enum: [Draft, Ready, Review, Approved, Published, Archived]
+      description: Valid campaign lifecycle states
+
+    EventType:
+      type: string
+      enum: [Created, ConfigurationChanged, StateTransitioned, AssetAssociated, Published, Archived, Restored]
+      description: History event types
+
+    AssetType:
+      type: string
+      enum: [copy, image, hashtag_set, metadata, other]
+      description: Asset type categories
+
+    AssetSource:
+      type: string
+      enum: [ai, manual, imported]
+      description: Origin of the asset
+
+    # ==================== Error Responses ====================
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+        code:
+          type: string
+        invalid_fields:
+          type: array
+          items:
+            type: string
+      required: [detail, code]
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR]
+
+    NotFoundErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            code:
+              type: string
+              enum: [NOT_FOUND]
+
+    ConflictErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            code:
+              type: string
+              enum: [STATE_TRANSITION_INVALID, VERSION_CONFLICT, DUPLICATE_NAME]
+
+    # ==================== Campaign Schemas ====================
+    CampaignBase:
+      type: object
+      required: [name, goals, target_audience, platforms, schedule]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Campaign name (unique per organization)
+        goals:
+          type: object
+          description: Structured campaign goals
+          required: [primary]
+          properties:
+            primary:
+              type: string
+            metrics:
+              type: array
+              items:
+                type: string
+            targets:
+              type: object
+        target_audience:
+          type: object
+          description: Target audience definition
+          required: [segments]
+          properties:
+            segments:
+              type: array
+              items:
+                type: string
+            demographics:
+              type: object
+            interests:
+              type: array
+              items:
+                type: string
+        platforms:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [instagram, facebook, linkedin, twitter, tiktok, youtube, pinterest]
+          description: Target platforms
+        schedule:
+          type: object
+          required: [start_date, end_date, timezone]
+          properties:
+            start_date:
+              type: string
+              format: date-time
+            end_date:
+              type: string
+              format: date-time
+            timezone:
+              type: string
+              description: IANA timezone (e.g., America/New_York)
+            recurrence_rule:
+              type: string
+              description: RFC 5545 RRULE (optional)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Flexible key-value metadata
+        company_profile_id:
+          type: string
+          format: uuid
+          description: Reference to Company Profile (feature 009)
+
+    CreateCampaignRequest:
+      allOf:
+        - $ref: '#/components/schemas/CampaignBase'
+        - type: object
+          description: Create campaign request
+
+    UpdateCampaignRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        goals:
+          $ref: '#/components/schemas/CampaignBase/properties/goals'
+        target_audience:
+          $ref: '#/components/schemas/CampaignBase/properties/target_audience'
+        platforms:
+          $ref: '#/components/schemas/CampaignBase/properties/platforms'
+        schedule:
+          $ref: '#/components/schemas/CampaignBase/properties/schedule'
+        metadata:
+          $ref: '#/components/schemas/CampaignBase/properties/metadata'
+        company_profile_id:
+          $ref: '#/components/schemas/CampaignBase/properties/company_profile_id'
+      description: Update campaign configuration (Draft state only)
+
+    CampaignResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        company_profile_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        goals:
+          type: object
+        target_audience:
+          type: object
+        platforms:
+          type: array
+          items:
+            type: string
+        schedule:
+          type: object
+        metadata:
+          type: object
+        state:
+          $ref: '#/components/schemas/CampaignState'
+        version:
+          type: integer
+          description: Optimistic lock version
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+        updated_by:
+          type: string
+          format: uuid
+      required: [id, organization_id, name, goals, target_audience, platforms, schedule, state, version, created_at, updated_at, created_by, updated_by]
+
+    CampaignSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/CampaignState'
+        platforms:
+          type: array
+          items:
+            type: string
+        schedule:
+          type: object
+        updated_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      required: [id, name, state, platforms, schedule, updated_at, created_at]
+
+    CampaignListResponse:
+      type: object
+      properties:
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignSummary'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ==================== State Transition ====================
+    StateTransitionRequest:
+      type: object
+      required: [to_state]
+      properties:
+        to_state:
+          $ref: '#/components/schemas/CampaignState'
+        reason:
+          type: string
+          maxLength: 500
+          description: Optional reason for transition
+
+    StateTransitionResponse:
+      type: object
+      properties:
+        campaign:
+          $ref: '#/components/schemas/CampaignResponse'
+        history_entry:
+          $ref: '#/components/schemas/HistoryEntryResponse'
+
+    # ==================== History ====================
+    HistoryEntryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        event_type:
+          $ref: '#/components/schemas/EventType'
+        timestamp:
+          type: string
+          format: date-time
+        actor_id:
+          type: string
+          format: uuid
+        from_state:
+          $ref: '#/components/schemas/CampaignState'
+          nullable: true
+        to_state:
+          $ref: '#/components/schemas/CampaignState'
+          nullable: true
+        changed_fields:
+          type: object
+          nullable: true
+        snapshot:
+          type: object
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+
+    HistoryListResponse:
+      type: object
+      properties:
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEntryResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ==================== Assets ====================
+    AssetContent:
+      type: object
+      description: Content varies by asset_type
+      oneOf:
+        - type: object
+          properties:
+            asset_type:
+              type: string
+              enum: [copy]
+            text:
+              type: string
+            format:
+              type: string
+              enum: [markdown, plain]
+          required: [asset_type, text]
+        - type: object
+          properties:
+            asset_type:
+              type: string
+              enum: [image]
+            url:
+              type: string
+              format: uri
+            width:
+              type: integer
+            height:
+              type: integer
+            mime_type:
+              type: string
+          required: [asset_type, url, width, height, mime_type]
+        - type: object
+          properties:
+            asset_type:
+              type: string
+              enum: [hashtag_set]
+            tags:
+              type: array
+              items:
+                type: string
+          required: [asset_type, tags]
+        - type: object
+          properties:
+            asset_type:
+              type: string
+              enum: [metadata]
+            data:
+              type: object
+              additionalProperties: true
+          required: [asset_type, data]
+
+    CreateAssetRequest:
+      type: object
+      required: [asset_type, content, source]
+      properties:
+        asset_type:
+          $ref: '#/components/schemas/AssetType'
+        content:
+          $ref: '#/components/schemas/AssetContent'
+        source:
+          $ref: '#/components/schemas/AssetSource'
+        storage_path:
+          type: string
+          description: Supabase Storage path (for images)
+
+    AssetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        asset_type:
+          $ref: '#/components/schemas/AssetType'
+        content:
+          $ref: '#/components/schemas/AssetContent'
+        storage_path:
+          type: string
+          nullable: true
+        source:
+          $ref: '#/components/schemas/AssetSource'
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+      required: [id, campaign_id, asset_type, content, source, created_at, created_by]
+
+    AssetListResponse:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetResponse'
+        total:
+          type: integer
+
+    # ==================== Query Parameters ====================
+    CampaignListParams:
+      type: object
+      properties:
+        state:
+          $ref: '#/components/schemas/CampaignState'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        owner_id:
+          type: string
+          format: uuid
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    HistoryListParams:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+
+paths:
+  /campaigns:
+    post:
+      tags: [Campaigns]
+      summary: Create a new campaign
+      operationId: createCampaign
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+      responses:
+        '201':
+          description: Campaign created in Draft state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '409':
+          description: Duplicate campaign name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictErrorResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+    get:
+      tags: [Campaigns]
+      summary: List campaigns with filters
+      operationId: listCampaigns
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CampaignListParams'
+      responses:
+        '200':
+          description: Paginated list of campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign by ID
+      operationId: getCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign with configuration, assets, and history summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundErrorResponse'
+        '401':
+          description: Unauthorized
+
+    put:
+      tags: [Campaigns]
+      summary: Update campaign configuration (Draft only)
+      operationId: updateCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Expected version for optimistic locking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCampaignRequest'
+      responses:
+        '200':
+          description: Campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundErrorResponse'
+        '409':
+          description: Invalid state (not Draft) or version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictErrorResponse'
+        '401':
+          description: Unauthorized
+        '412':
+          description: Precondition failed (missing If-Match)
+
+    delete:
+      tags: [Campaigns]
+      summary: Delete campaign (Draft only)
+      operationId: deleteCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Campaign deleted
+        '404':
+          description: Campaign not found
+        '409':
+          description: Cannot delete non-Draft campaign
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}/transition:
+    post:
+      tags: [Campaigns]
+      summary: Transition campaign to a new state
+      operationId: transitionCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StateTransitionRequest'
+      responses:
+        '200':
+          description: State transition successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateTransitionResponse'
+        '400':
+          description: Missing required preconditions (e.g., incomplete config for Ready)
+        '404':
+          description: Campaign not found
+        '409':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictErrorResponse'
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}/archive:
+    post:
+      tags: [Campaigns]
+      summary: Archive a campaign
+      operationId: archiveCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Campaign archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '404':
+          description: Campaign not found
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}/restore:
+    post:
+      tags: [Campaigns]
+      summary: Restore an archived campaign
+      operationId: restoreCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign restored to previous state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '404':
+          description: Campaign not found
+        '409':
+          description: Campaign not in Archived state
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}/history:
+    get:
+      tags: [Campaign History]
+      summary: Get campaign history
+      operationId: getCampaignHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/HistoryListParams'
+      responses:
+        '200':
+          description: Paginated history entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '404':
+          description: Campaign not found
+        '401':
+          description: Unauthorized
+
+  /campaigns/{campaign_id}/assets:
+    post:
+      tags: [Campaign Assets]
+      summary: Associate an asset with a campaign
+      operationId: createAsset
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssetRequest'
+      responses:
+        '201':
+          description: Asset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+        '400':
+          description: Validation error
+        '404':
+          description: Campaign not found
+        '401':
+          description: Unauthorized
+
+    get:
+      tags: [Campaign Assets]
+      summary: List campaign assets
+      operationId: listAssets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetListResponse'
+        '404':
+          description: Campaign not found
+        '401':
+          description: Unauthorized
+
+parameters:
+  CampaignListParams:
+    name: state
+    in: query
+    schema:
+      $ref: '#/components/schemas/CampaignState'
+    description: Filter by state
+  # Note: Full parameter definitions would be inline or referenced
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

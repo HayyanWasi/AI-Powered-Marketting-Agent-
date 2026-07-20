@@ -1,20 +1,30 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: (new) 0.0.0 → 1.0.0
-  Modified principles: N/A (first fill from template)
+  Version change: 1.0.0 → 2.0.0
+
+  Modified principles:
+    - III. KISS & DRY → III. Module-First Architecture
+    - V. Architecture Constraints → V. Workflow-Driven Execution
+
   Added sections:
-    - 6 Core Principles (Test-First, Clean Code & Type Safety, KISS & DRY, Fail Gracefully, Architecture Constraints, Code Quality & Coverage)
-    - Technical Stack & Architecture
-    - Testing, Documentation & Quality Gates
-    - Governance
-  Removed sections: N/A
+    - Module Ownership Rules
+    - Workflow Architecture
+    - Observability Standards
+    - Recovery & Checkpoint Standards
+
+  Removed sections:
+    - Custom Python orchestration
+    - Multi-agent architecture
+    - Agent-specific testing requirements
+
   Templates requiring updates:
-    - .specify/templates/plan-template.md: ⚠ pending (Constitution Check section references generic gates - should align with new principles)
-    - .specify/templates/spec-template.md: ⚠ pending (no constitution-specific references found)
-    - .specify/templates/tasks-template.md: ⚠ pending (no constitution-specific references found)
+    - .specify/templates/plan-template.md: ⚠ Add Module Boundary Check
+    - .specify/templates/spec-template.md: ⚠ Add Module Ownership section
+    - .specify/templates/tasks-template.md: ⚠ Add Observability & Workflow tasks
+
   Follow-up TODOs:
-    - RATIFICATION_DATE: unknown - set when constitution is formally adopted by stakeholders
+    - Ratification date
 -->
 
 # AI Social Campaign Manager Constitution
@@ -23,226 +33,359 @@
 
 ### I. Test-First Development (NON-NEGOTIABLE)
 
-All features MUST have corresponding tests written before implementation.
-Tests MUST be written, reviewed, and confirmed failing before any production
-code is written. This applies to unit, integration, and end-to-end tests.
-Rationale: Ensures every feature is verifiable from the start and prevents
-untested code from entering the codebase.
+Every feature MUST begin with tests.
+
+Production code MUST NOT be implemented until corresponding unit,
+integration, or workflow tests exist.
+
+Every public behavior introduced by a feature MUST be verifiable through
+automated testing.
+
+External APIs MUST always be mocked during testing.
+
+---
 
 ### II. Clean Code & Type Safety
 
-Python 3.10+ with comprehensive type hints for all functions and methods.
-Prioritize readability, maintainability, and self-documenting code. Use
-dataclasses for all data structures. All public functions MUST have Google-style
-docstrings. Complex logic MUST include inline comments explaining "why" not
-"what". No print statements — use logger instead.
+The project MUST use Python 3.13+.
 
-### III. KISS & DRY
+All public functions MUST include:
 
-Keep It Simple, Stupid. Avoid over-engineering; use simple dict-based session
-cache over Redis for V1. Don't Repeat Yourself — reuse company profile logic
-across all campaign types. Start simple, YAGNI principles. No RAG/Vector
-Embeddings — simple key-value lookup by company_id is sufficient.
+- Type hints
+- Google-style docstrings
+- Explicit return types
 
-### IV. Fail Gracefully
+Business logic MUST remain readable and deterministic.
 
-Always provide user-friendly error messages and manual fallbacks when
-third-party services fail. Implement proper error handling for all external API
-calls. Log all third-party service failures with appropriate context. Never
-expose raw error details to end users.
+Functions SHOULD perform one responsibility.
 
-### V. Architecture Constraints
+Logging MUST replace print statements.
 
-Linear Pipeline — LangGraph NOT required for V1; use custom Python orchestration
-logic. Ephemeral Guest Data — never persist guest information to database;
-session cache only (24-hour expiry). Environment Variables Only — no hardcoded
-API keys (LLM, Pollinations, Supabase). All external API calls MUST be mocked in
-tests.
+Comments MUST explain *why*, never *what*.
 
-### VI. Code Quality & Coverage
+---
 
-All tests must pass before merging. Minimum 80% code coverage. Implement proper
-error handling for all external API calls. Log all third-party service failures
-with appropriate context. No print statements — use logger instead. Type hints
-for all function parameters and return values.
+### III. Module-First Architecture
+
+The system is organized into independent business modules.
+
+Each feature MUST belong to exactly one module.
+
+A module owns:
+
+- Business rules
+- Models
+- Validation
+- Services
+- Public interfaces
+
+Modules MUST communicate only through their public interfaces.
+
+Modules MUST NOT import another module's internal implementation.
+
+Future features MUST extend existing modules or introduce new modules without
+breaking existing module boundaries.
+
+---
+
+### IV. Separation of Responsibilities
+
+Every module MUST have a single responsibility.
+
+Current module ownership:
+
+- Campaign Management
+    - Campaign CRUD
+    - Campaign configuration
+    - Campaign lifecycle
+    - Campaign publishing
+
+- AI Generation Engine
+    - Context Builder
+    - Strategy Planner
+    - Copy Generator
+    - Image Prompt Editor
+    - Image Generator
+    - Content Validation
+    - Intent Analyzer
+
+- Workflow Engine
+    - LangGraph orchestration
+    - Retry strategy
+    - Checkpoints
+    - Human approval flow
+    - State transitions
+
+- Operations
+    - Observability
+    - Tracing
+    - History
+    - Metrics
+    - Cost tracking
+    - Monitoring
+
+Responsibilities MUST NOT overlap.
+
+---
+
+### V. Workflow-Driven Execution
+
+Workflow orchestration MUST be implemented using LangGraph.
+
+LangGraph is responsible only for:
+
+- execution order
+- routing
+- retries
+- checkpoints
+- resume
+- state transitions
+
+Business modules MUST remain executable without LangGraph.
+
+The AI Generation module MUST NOT perform orchestration.
+
+Workflow state MUST be recoverable from the latest successful checkpoint.
+
+---
+
+### VI. Reliability & Recovery
+
+Every workflow MUST fail gracefully.
+
+Failures MUST return user-friendly messages.
+
+Failures MUST NOT expose internal implementation details.
+
+Recoverable failures MUST resume from the latest checkpoint rather than restart
+the entire workflow.
+
+Retry logic belongs exclusively to the Workflow module.
+
+Business modules MUST remain stateless whenever possible.
+
+---
 
 ## Technical Stack & Architecture
 
 ### Backend
-- **Language:** Python 3.10+ (project requires >=3.13)
-- **Framework:** FastAPI (async support)
-- **Package Manager:** pip / poetry
-- **Testing:** pytest with coverage plugin
-- **Orchestration:** Custom Python logic (no LangGraph for V1)
+
+- Language: Python 3.13+
+- Framework: FastAPI
+- Testing: pytest
+- Package Manager: uv
+- Workflow Engine: LangGraph
 
 ### Database & Storage
-- **Database:** Supabase (PostgreSQL) — company_profiles table only
-- **Storage:** Supabase Storage (public bucket) — brand reference images
-- **Session Cache:** Python dict with 24-hour TTL (per session)
 
-### AI & APIs
-- **LLM:** OpenAI GPT-4o or Google Gemini (via official SDK)
-- **Image Generation:** Pollinations AI (kontext model) with image parameter
-- **Web Search:** duckduckgo-search (ddgs) with 5-second rate limit + 15-second timeout
-- **Image Validation:** Pillow (PIL) for resolution checks (>=1080x1080)
+- Database: Supabase PostgreSQL
+- Object Storage: Supabase Storage
+- Session Cache: In-memory cache (V1)
+
+### AI
+
+- LLM Provider: Gemini or OpenAI
+- Image Generation: Pollinations AI
+- Search: DuckDuckGo Search
 
 ### Frontend
-- **Framework:** Next.js 14+ (App Router) + React 18+
-- **Language:** TypeScript 5+
-- **UI:** Tailwind CSS 3+ + shadcn/ui components
-- **State:** React Context API + Zustand (chat state)
-- **API Client:** TanStack Query (React Query)
 
-### Deployment
-- **Containerization:** Docker
-- **Hosting:** VPS (DigitalOcean, AWS EC2, or Google Cloud Run)
-- **CI/CD:** GitHub Actions or similar
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
 
-### Project Structure
+---
+
+## Project Architecture
 
 ```
-ai-social-campaign-manager/
-├── backend/
-│   ├── src/
-│   │   ├── api/              # FastAPI route handlers
-│   │   ├── agents/           # 6 campaign type agents
-│   │   ├── orchestrator.py   # Main pipeline orchestration
-│   │   ├── services/         # DDGS, LLM, Pollinations, Supabase, validation
-│   │   ├── models/           # Dataclasses + Pydantic schemas
-│   │   ├── cache/            # In-memory session cache
-│   │   ├── config/           # Environment variables + config
-│   │   └── main.py           # FastAPI entry point
-│   ├── tests/
-│   │   ├── unit/
-│   │   ├── integration/
-│   │   ├── conftest.py
-│   │   └── __init__.py
-│   ├── pyproject.toml
-│   ├── uv.lock
-│   ├── .python-version
-│   └── Dockerfile
-├── frontend/
-│   ├── app/                  # Next.js App Router
-│   ├── package.json
-│   └── Dockerfile
-├── docker-compose.yml
-└── README.md
+Campaign Management
+        │
+        ▼
+Workflow Engine (LangGraph)
+        │
+        ▼
+AI Generation Engine
+        │
+        ▼
+Operations
+```
 
-## Testing, Documentation & Quality Gates
+### Module Boundaries
 
-### Testing Standards
+Campaign Management owns:
 
-**Test Categories:**
-- **Unit Tests** — Test individual components in isolation
-- **Integration Tests** — Test service interactions (DDGS, LLM, Pollinations with mocks)
-- **API Tests** — Test FastAPI endpoints with TestClient
-- **End-to-End Tests** — Test complete workflow (with mocked external services)
+- campaign data
+- campaign lifecycle
+- publishing
 
-**Test Requirements:**
-- All external API calls MUST be mocked in tests
-- Test both success and failure scenarios for all third-party services
-- Test DDGS rate limiter and timeout behavior
-- Test image resolution validation (>=1080x1080)
-- Test character limit validation (LinkedIn <=3000, Instagram <=2200)
-- Test session cache expiry (24-hour TTL)
-- Test all 6 campaign agents with different system prompts
+Workflow Engine owns:
 
-**Coverage Requirements:**
-- Minimum 80% code coverage for backend
-- Focus coverage on critical paths: orchestration, validation, and service wrappers
-- Generate coverage reports with `pytest --cov`
+- orchestration
+- retries
+- checkpoints
+- approvals
 
-### Documentation Standards
+AI Generation Engine owns:
 
-**Required Documentation:**
-- API Documentation — Auto-generated with FastAPI (OpenAPI/Swagger)
-- README.md — Setup, installation, and quick start guide
-- ADR (Architecture Decision Records) — For all significant architectural decisions
-- System Prompts — Document all 6 campaign type prompts in /docs/prompts/
+- reasoning
+- planning
+- copywriting
+- image generation
+- validation
 
-**Code Documentation:**
-- All public functions MUST have Google-style docstrings
-- Complex logic MUST have inline comments explaining "why" not "what"
-- Type hints for all function parameters and return values
+Operations owns:
 
-### Code Review Requirements
+- history
+- tracing
+- observability
+- analytics
+- monitoring
 
-**Before Submission:**
-- [ ] All tests pass locally
-- [ ] Coverage >=80%
-- [ ] No hardcoded API keys or sensitive data
-- [ ] Error handling for all external API calls
-- [ ] Type hints added for all new functions
-- [ ] Documentation updated for new features
-- [ ] No print statements (use logger instead)
+Modules MUST remain independent.
 
-**Review Focus Areas:**
-- Error handling and graceful degradation
-- Security (API keys, data exposure)
-- Performance (API call optimization, caching)
-- Code maintainability and readability
-- Compliance with project principles
+---
 
-### Deployment Standards
+## Testing Standards
 
-**Pre-Deployment Checklist:**
-- [ ] All environment variables configured
-- [ ] Supabase tables and storage buckets created
-- [ ] API rate limits configured (DDGS: 5s, Pollinations: as needed)
-- [ ] Error monitoring configured (e.g., Sentry)
-- [ ] Logging configured for production
-- [ ] Health check endpoint tested
+Required test categories:
 
-**Rollback Plan:**
-- Docker image tagging with version numbers
-- Ability to rollback to previous stable version
-- Database migrations must be reversible
+- Unit Tests
+- Integration Tests
+- Workflow Tests
+- API Tests
 
-### Performance Requirements
+Every module MUST be tested independently.
 
-- End-to-end generation (text + image): <=60 seconds
-- DDGS search timeout: 15 seconds
-- Rate limiter: 5-second minimum between DDGS calls
-- Session cache: 24-hour TTL
+Workflow tests MUST verify:
 
-### Quality Gates
+- checkpoint recovery
+- retry behavior
+- approval flow
+- state transitions
 
-**Must Pass Before Release:**
-1. **Code Quality** — Flake8/Pylint with no errors
-2. **Tests** — All tests passing with >=80% coverage
-3. **Manual QA** — 90% of users rate preview as "professional"
-4. **Validation** — 100% of images pass >=1080x1080 resolution
-5. **Character Limits** — 100% of posts pass platform limits
-6. **Branding** — 95% of posts use brand tone + reference image style
-7. **Approval Required** — 0 posts published without explicit "Approve"
+External APIs MUST always be mocked.
 
-### Success Criteria
+Minimum backend coverage:
 
-1. Generate professional-looking campaign previews (>=90% user rating)
-2. Each generated post includes at least 1 CTA
-3. 100% images pass resolution check (>=1080x1080)
-4. 100% generated posts pass character limit check
-5. 95% posts maintain brand tone + reference image style
-6. Zero posts published without explicit "Approve" click
+- Business Logic ≥80%
+
+---
+
+## Observability Standards
+
+Every workflow execution MUST produce traceable metadata.
+
+Observability MUST capture:
+
+- execution status
+- latency
+- token usage
+- cost
+- errors
+- workflow checkpoints
+
+Business modules MUST NOT implement observability directly.
+
+Observability belongs exclusively to the Operations module.
+
+---
+
+## Documentation Standards
+
+Every module MUST contain:
+
+- Feature specification
+- Technical plan
+- Task breakdown
+
+Every architectural decision affecting multiple modules MUST include an ADR.
+
+Prompt documentation MUST exist for every reasoning component.
+
+---
+
+## Immutable Workflow Context
+
+Every workflow execution MUST begin by creating an immutable GenerationContext that contains all business data required for execution. Workflow nodes MUST consume only this snapshot and MUST NOT re-read business data from persistent storage during the same execution. Updates to campaigns, company profiles, audiences, or other business data affect only future workflow executions.
+---
+## Code Review Requirements
+
+Before merging:
+
+- All tests pass
+- Coverage requirements met
+- Module boundaries respected
+- No hardcoded secrets
+- Public interfaces documented
+- Observability preserved
+- Workflow remains resumable
+
+Code reviews MUST reject:
+
+- Cross-module implementation imports
+- Business logic inside workflow nodes
+- Workflow logic inside AI modules
+- Circular dependencies
+
+---
+
+## Performance Requirements
+
+Target execution:
+
+- Complete campaign generation ≤60 seconds
+- Database operations ≤100ms
+- Workflow recovery ≤5 seconds
+- Validation before publishing is mandatory
+
+---
+
+## Quality Gates
+
+Every release MUST satisfy:
+
+1. Tests pass
+2. Coverage ≥80%
+3. Module boundaries preserved
+4. Workflow checkpoint recovery verified
+5. Human approval required before publishing
+6. Generated content validated before delivery
+7. Production observability enabled
+
+---
 
 ## Governance
 
-This constitution is the authoritative source for project principles, standards,
-and quality requirements. All contributions MUST comply with these standards.
+This constitution is the authoritative engineering standard for the project.
 
-**Amendment Procedure:**
-1. Proposed changes MUST be documented with rationale
-2. Changes MUST be reviewed and approved by project stakeholders
-3. Version MUST be bumped according to semantic versioning rules:
-   - MAJOR: Backward incompatible principle removals or redefinitions
-   - MINOR: New principle/section added or materially expanded guidance
-   - PATCH: Clarifications, wording, typo fixes, non-semantic refinements
-4. All PRs and reviews MUST verify compliance with this constitution
-5. Complexity MUST be justified when it violates KISS/DRY principles
+Every specification, implementation, review, and release MUST comply with this
+constitution.
 
-**Compliance Review:**
-- Every feature plan MUST include a Constitution Check section
-- Code review MUST verify compliance with all applicable principles
-- Quality gates MUST be verified before any release
+### Amendment Procedure
 
-**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE): unknown - set when formally adopted by stakeholders | **Last Amended**: 2026-07-13
+1. Every architectural change MUST document its rationale.
+2. Constitutional changes require stakeholder approval.
+3. Versioning follows semantic versioning:
+   - MAJOR → Architectural principle changes
+   - MINOR → New principles or sections
+   - PATCH → Clarifications and wording improvements
+4. Every feature plan MUST include a Constitution Check.
+5. Violations MUST be resolved before implementation.
+
+### Compliance Review
+
+Every pull request MUST verify:
+
+- Module ownership
+- Workflow compliance
+- Testing compliance
+- Documentation updates
+- Architecture consistency
+
+**Version:** 2.0.0
+
+**Ratified:** TODO(RATIFICATION_DATE)
+
+**Last Amended:** 2026-07-16
