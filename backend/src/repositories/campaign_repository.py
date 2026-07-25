@@ -20,7 +20,7 @@ class CampaignRepository(BaseRepository):
         # Remove None values for insert
         data = {k: v for k, v in data.items() if v is not None}
 
-        result = await self.client.table(self.table_name).insert(data).execute()
+        result = self.client.table(self.table_name).insert(data).execute()
         if result.data:
             return self._to_model(result.data[0], Campaign)
         raise Exception("Failed to create campaign")
@@ -32,7 +32,7 @@ class CampaignRepository(BaseRepository):
         query = self.client.table(self.table_name).select("*").eq("id", str(campaign_id))
         if organization_id:
             query = query.eq("organization_id", str(organization_id))
-        result = await query.execute()
+        result = query.execute()
 
         if result.data:
             return self._to_model(result.data[0], Campaign)
@@ -41,7 +41,7 @@ class CampaignRepository(BaseRepository):
     async def get_by_name(self, name: str, organization_id: UUID) -> Optional[Campaign]:
         """Check if campaign name exists in organization."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("*")
             .eq("name", name)
             .eq("organization_id", str(organization_id))
@@ -63,12 +63,15 @@ class CampaignRepository(BaseRepository):
         return campaign
 
     async def update(self, campaign: Campaign, expected_version: int) -> Campaign:
-        """Update campaign with optimistic locking."""
+        """Update campaign with optimistic locking.
+
+        None values ARE sent to the database so nullable columns
+        (previous_state, archived_at, published_at) can be cleared.
+        """
         data = campaign.to_dict()
-        data = {k: v for k, v in data.items() if v is not None}
 
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .update(data)
             .eq("id", str(campaign.id))
             .eq("version", expected_version)
@@ -82,7 +85,7 @@ class CampaignRepository(BaseRepository):
     async def delete(self, campaign_id: UUID, organization_id: UUID) -> bool:
         """Delete campaign (Draft only)."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .delete()
             .eq("id", str(campaign_id))
             .eq("organization_id", str(organization_id))
@@ -124,7 +127,7 @@ class CampaignRepository(BaseRepository):
         offset = (page - 1) * page_size
         query = query.range(offset, offset + page_size - 1)
 
-        result = await query.execute()
+        result = query.execute()
 
         campaigns = [self._to_model(item, Campaign) for item in result.data]
         total = result.count or 0
@@ -143,7 +146,7 @@ class CampaignRepository(BaseRepository):
         }
 
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .update(data)
             .eq("id", str(campaign_id))
             .eq("organization_id", str(organization_id))
@@ -171,7 +174,7 @@ class CampaignRepository(BaseRepository):
         }
 
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .update(data)
             .eq("id", str(campaign_id))
             .eq("organization_id", str(organization_id))
@@ -205,7 +208,7 @@ class AssetRepository(BaseRepository):
         data = asset.to_dict()
         data = {k: v for k, v in data.items() if v is not None}
 
-        result = await self.client.table(self.table_name).insert(data).execute()
+        result = self.client.table(self.table_name).insert(data).execute()
         if result.data:
             return self._to_model(result.data[0], CampaignAsset)
         raise Exception("Failed to create asset")
@@ -213,7 +216,7 @@ class AssetRepository(BaseRepository):
     async def get_by_campaign(self, campaign_id: UUID) -> List[CampaignAsset]:
         """Get all assets for a campaign."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("*")
             .eq("campaign_id", str(campaign_id))
             .order("created_at")
@@ -224,7 +227,7 @@ class AssetRepository(BaseRepository):
 
     async def delete(self, asset_id: UUID) -> bool:
         """Delete an asset."""
-        result = await self.client.table(self.table_name).delete().eq("id", str(asset_id)).execute()
+        result = self.client.table(self.table_name).delete().eq("id", str(asset_id)).execute()
 
         return len(result.data) > 0
 
@@ -257,7 +260,7 @@ class HistoryRepository(BaseRepository):
         data = entry.to_dict()
         data = {k: v for k, v in data.items() if v is not None}
 
-        result = await self.client.table(self.table_name).insert(data).execute()
+        result = self.client.table(self.table_name).insert(data).execute()
         if result.data:
             return self._to_model(result.data[0])
         raise Exception("Failed to create history entry")
@@ -279,7 +282,7 @@ class HistoryRepository(BaseRepository):
         offset = (page - 1) * page_size
         query = query.range(offset, offset + page_size - 1)
 
-        result = await query.execute()
+        result = query.execute()
 
         entries = [self._to_model(item) for item in result.data]
         total = result.count or 0
@@ -289,7 +292,7 @@ class HistoryRepository(BaseRepository):
     async def count_by_campaign(self, campaign_id: UUID) -> int:
         """Get total history count for a campaign."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("id", count="exact")
             .eq("campaign_id", str(campaign_id))
             .execute()

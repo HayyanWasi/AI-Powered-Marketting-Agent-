@@ -170,10 +170,11 @@ class CampaignService:
             setattr(campaign, field, value)
 
         campaign.updated_by = actor_id
+        expected_version = campaign.version
         campaign.version += 1
 
         # Persist
-        updated = await self.campaign_repository.update(campaign)
+        updated = await self.campaign_repository.update(campaign, expected_version=expected_version)
 
         # Log configuration change
         await self.history_service.log_configuration_change(updated, actor_id, changed_fields)
@@ -213,6 +214,7 @@ class CampaignService:
         # Apply transition
         campaign.state = to_state
         campaign.updated_by = actor_id
+        expected_version = campaign.version
         campaign.version += 1
 
         # Set timestamps
@@ -223,7 +225,7 @@ class CampaignService:
             campaign.previous_state = from_state
 
         # Persist
-        updated = await self.campaign_repository.update(campaign)
+        updated = await self.campaign_repository.update(campaign, expected_version=expected_version)
 
         # Log state transition
         await self.history_service.log_state_transition(
@@ -264,9 +266,10 @@ class CampaignService:
         campaign.archived_at = None
         campaign.previous_state = None
         campaign.updated_by = actor_id
+        expected_version = campaign.version
         campaign.version += 1
 
-        updated = await self.campaign_repository.update(campaign)
+        updated = await self.campaign_repository.update(campaign, expected_version=expected_version)
         await self.history_service.log_restore(updated, actor_id)
 
         return updated
@@ -282,7 +285,7 @@ class CampaignService:
                 valid_states=["Draft"],
             )
 
-        await self.campaign_repository.delete(campaign_id)
+        await self.campaign_repository.delete(campaign_id, campaign.organization_id)
 
     def _is_config_complete(self, campaign: Campaign) -> bool:
         """Check if campaign has all required configuration."""

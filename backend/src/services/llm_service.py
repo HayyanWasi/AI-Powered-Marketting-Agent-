@@ -9,8 +9,9 @@ from src.models.llm import LLMRequest, LLMResponse, StreamChunk, TokenUsage
 
 logger = logging.getLogger(__name__)
 
-OPENAI_MODEL = "gpt-4o"
-GEMINI_MODEL = "models/gemini-1.5-flash"
+GEMINI_MODEL = "models/gemini-2.5-flash"
+GROK_MODEL = "llama-3.3-70b-versatile"
+GROK_BASE_URL = "https://api.groq.com/openai/v1"
 MAX_RETRIES = 3
 RETRY_DELAYS = [1, 2, 4]
 
@@ -56,66 +57,6 @@ def _retry_with_backoff(
                 logger.warning("Retry %d/%d after %.1fs: %s", attempt, MAX_RETRIES, delay, e)
                 time.sleep(delay)
     raise last_exc  # type: ignore[misc]
-
-
-class OpenAIProvider:
-    def __init__(self, client: Any = None) -> None:
-        self._client = client
-        self._initialized = False
-
-    def _ensure_client(self) -> None:
-        if not self._initialized:
-            from openai import OpenAI
-
-            if self._client is None:
-                self._client = OpenAI(api_key=settings.openai_api_key)
-            self._initialized = True
-
-    def generate(self, system_prompt: str, user_prompt: str) -> LLMResponse:
-        self._ensure_client()
-        messages: list[dict[str, str]] = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_prompt})
-
-        completion = self._client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            stream=False,
-        )
-        choice = completion.choices[0]
-        usage = completion.usage
-
-        return LLMResponse(
-            text=choice.message.content or "",
-            token_usage=TokenUsage(
-                prompt_tokens=usage.prompt_tokens if usage else 0,
-                completion_tokens=usage.completion_tokens if usage else 0,
-                total_tokens=usage.total_tokens if usage else 0,
-                provider="openai",
-            ),
-            provider="openai",
-            model=OPENAI_MODEL,
-        )
-
-    def generate_stream(self, system_prompt: str, user_prompt: str) -> Iterator[StreamChunk]:
-        self._ensure_client()
-        messages: list[dict[str, str]] = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_prompt})
-
-        stream = self._client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            content = delta.content if delta and delta.content else ""
-            finished = chunk.choices[0].finish_reason is not None if chunk.choices else False
-            if content or finished:
-                yield StreamChunk(content=content or "", finished=finished)
 
 
 class GeminiProvider:
@@ -170,18 +111,62 @@ class GeminiProvider:
         yield StreamChunk(content="", finished=True)
 
 
+class GrokProvider:
+    def __init__(self, client: Any = None) -> None:
+        self._client = client
+        self._initialized = False
+
+    def _ensure_client(self) -> None:
+        if not self._initialized:
+            from openai import OpenAI
+
+            if self._client is None:
+                self._client = OpenAI(
+                    api_key=settings.grok_api_key,
+                    base_url=GROK_BASE_URL,
+                )
+            self._initialized = True
+
+    def generate(self, system_prompt: str, user_prompt: str) -> LLMResponse:
+        self._ensure_client()
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        completion = self._client.chat.completions.create(
+            model=GROK_MODEL,
+            messages=messages,
+            stream=False,
+        )
+        choice = completion.choices[0]
+        usage = completion.usage
+
+        return LLMResponse(
+            text=choice.message.content or "",
+            token_usage=TokenUsage(
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+                provider="grok",
+            ),
+            provider="grok",
+            model=GROK_MODEL,
+        )
+
+
 class LLMService:
     def __init__(
         self,
-        primary: OpenAIProvider | None = None,
+        primary: GrokProvider | None = None,
         fallback: GeminiProvider | None = None,
     ) -> None:
         self._primary = primary
         self._fallback = fallback
 
-    def _get_primary(self) -> OpenAIProvider:
+    def _get_primary(self) -> GrokProvider:
         if self._primary is None:
-            self._primary = OpenAIProvider()
+            self._primary = GrokProvider()
         return self._primary
 
     def _get_fallback(self) -> GeminiProvider:
@@ -205,17 +190,26 @@ class LLMService:
                 self._get_primary().generate, system_prompt, request.user_prompt
             )
         except Exception as primary_exc:
-            logger.warning("Primary provider failed: %s", primary_exc)
-            if not _is_transient_error(primary_exc):
-                raise LLMProviderError("openai", str(primary_exc)) from primary_exc
+            # Auth errors should not fall back - they indicate invalid credentials
+            if self._is_auth_error(primary_exc):
+                raise LLMProviderError("grok", str(primary_exc)) from primary_exc
+
+            logger.warning("Primary provider (Groq) failed: %s", primary_exc)
 
             logger.info("Falling back to Gemini")
             try:
                 return self._get_fallback().generate(system_prompt, request.user_prompt)
             except Exception as fallback_exc:
                 raise LLMServiceError(
-                    f"Both providers failed. OpenAI: {primary_exc}. " f"Gemini: {fallback_exc}"
+                    f"Both providers failed. Groq: {primary_exc}. Gemini: {fallback_exc}"
                 ) from fallback_exc
+
+    @staticmethod
+    def _is_auth_error(exc: Exception) -> bool:
+        """Check if an error is an authentication/authorization error."""
+        msg = str(exc).lower()
+        auth_keywords = ("invalid api key", "unauthorized", "authentication", "forbidden", "401", "403")
+        return any(kw in msg for kw in auth_keywords)
 
     def generate_stream(self, request: LLMRequest) -> Iterator[StreamChunk]:
         system_prompt = self._resolve_system_prompt(request) or ""

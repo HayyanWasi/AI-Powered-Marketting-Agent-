@@ -9,7 +9,7 @@ client = TestClient(app)
 
 class TestGuestSearchAPI:
     def test_search_guest_happy_path(self, mock_ddgs: MagicMock, mock_llm: MagicMock) -> None:
-        with patch("src.api.routes.guest.search_service") as mock_svc:
+        with patch("src.api.v1.guest.search_service") as mock_svc:
             mock_svc.search.return_value = [
                 {
                     "title": "Jane Doe - Researcher",
@@ -17,7 +17,7 @@ class TestGuestSearchAPI:
                     "body": "Jane is a researcher.",
                 },
             ]
-            with patch("src.api.routes.guest.llm_service") as mock_llm_svc:
+            with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
                 from src.models.guest_profile import (
                     GuestProfileData,
                     ConfidenceLevel,
@@ -51,11 +51,11 @@ class TestGuestSearchAPI:
                 assert len(data["profile"]["sources_used"]) == 1
 
     def test_search_guest_with_company(self, mock_ddgs: MagicMock, mock_llm: MagicMock) -> None:
-        with patch("src.api.routes.guest.search_service") as mock_svc:
+        with patch("src.api.v1.guest.search_service") as mock_svc:
             mock_svc.search.return_value = [
                 {"title": "Jane Doe - CEO", "href": "https://ex.com", "body": "CEO at Acme Corp."},
             ]
-            with patch("src.api.routes.guest.llm_service") as mock_llm_svc:
+            with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
                 from src.models.guest_profile import GuestProfileData, ConfidenceLevel
 
                 mock_llm_svc.analyze_search_results.return_value = GuestProfileData(
@@ -80,7 +80,7 @@ class TestGuestSearchAPI:
     def test_no_results_returns_manual_input(
         self, mock_ddgs: MagicMock, mock_llm: MagicMock
     ) -> None:
-        with patch("src.api.routes.guest.search_service") as mock_svc:
+        with patch("src.api.v1.guest.search_service") as mock_svc:
             mock_svc.search.return_value = []
 
             response = client.post("/api/guest/search", json={"guest_name": "Unknown Person"})
@@ -90,11 +90,11 @@ class TestGuestSearchAPI:
             assert "no search results" in data["error"].lower()
 
     def test_partial_profile_fallback(self, mock_ddgs: MagicMock, mock_llm: MagicMock) -> None:
-        with patch("src.api.routes.guest.search_service") as mock_svc:
+        with patch("src.api.v1.guest.search_service") as mock_svc:
             mock_svc.search.return_value = [
                 {"title": "Result", "href": "https://ex.com", "body": "Body"},
             ]
-            with patch("src.api.routes.guest.llm_service") as mock_llm_svc:
+            with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
                 from src.models.guest_profile import GuestProfileData, ConfidenceLevel
 
                 mock_llm_svc.analyze_search_results.return_value = GuestProfileData(
@@ -113,14 +113,15 @@ class TestGuestSearchAPI:
                 assert data["needs_manual_input"] is True
 
     def test_search_service_error(self, mock_ddgs: MagicMock, mock_llm: MagicMock) -> None:
-        with patch("src.api.routes.guest.search_service") as mock_svc:
+        with patch("src.api.v1.guest.search_service") as mock_svc:
             from src.services.search import SearchError
 
             mock_svc.search.side_effect = SearchError("Service unavailable")
 
             response = client.post("/api/guest/search", json={"guest_name": "Jane Doe"})
             assert response.status_code == 502
-            assert "Search service error" in response.json()["detail"]
+            body = response.json()
+            assert "Search service error" in body.get("message", "") or "Search service error" in body.get("error", "")
 
     def test_invalid_input_empty_name(self) -> None:
         response = client.post("/api/guest/search", json={"guest_name": ""})

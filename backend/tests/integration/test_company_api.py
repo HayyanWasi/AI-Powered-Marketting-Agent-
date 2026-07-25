@@ -1,10 +1,12 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from src.main import app
 
 client = TestClient(app)
+
+VALID_PROFILE_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
 class TestCreateCompanyAPI:
@@ -23,8 +25,10 @@ class TestCreateCompanyAPI:
             },
         )()
 
-        with patch("src.api.routes.company.create_service.execute") as mock_exec:
-            mock_exec.return_value = mock_profile
+        mock_svc = MagicMock()
+        mock_svc.execute.return_value = mock_profile
+
+        with patch("src.api.v1.company.CreateCompanyService", return_value=mock_svc):
             response = client.post(
                 "/api/company",
                 json={
@@ -39,8 +43,10 @@ class TestCreateCompanyAPI:
             assert data["company_name"] == "Acme"
 
     def test_create_company_duplicate(self) -> None:
-        with patch("src.api.routes.company.create_service.execute") as mock_exec:
-            mock_exec.side_effect = ValueError("Company name 'Duplicate' already exists")
+        mock_svc = MagicMock()
+        mock_svc.execute.side_effect = ValueError("Company name 'Duplicate' already exists")
+
+        with patch("src.api.v1.company.CreateCompanyService", return_value=mock_svc):
             response = client.post(
                 "/api/company",
                 json={"company_name": "Duplicate", "brand_guidelines": "guidelines"},
@@ -54,26 +60,34 @@ class TestCreateCompanyAPI:
 
 class TestGetCompanyAPI:
     def test_get_company_success(self) -> None:
-        with patch("src.api.routes.company.get_service.execute") as mock_exec:
-            mock_exec.return_value = {
-                "id": "123",
-                "company_name": "Acme",
-                "brand_guidelines": "guidelines",
-                "brand_tone": "Pro",
-                "reference_image_urls": [],
-                "created_at": "2026-01-01",
-                "updated_at": "2026-01-01",
-                "is_complete": True,
-            }
-            response = client.get("/api/company/123")
+        mock_svc = MagicMock()
+        mock_svc.execute.return_value = {
+            "id": VALID_PROFILE_ID,
+            "company_name": "Acme",
+            "brand_guidelines": "guidelines",
+            "brand_tone": "Pro",
+            "reference_image_urls": [],
+            "created_at": "2026-01-01",
+            "updated_at": "2026-01-01",
+            "is_complete": True,
+        }
+
+        with patch("src.api.v1.company.GetCompanyService", return_value=mock_svc):
+            response = client.get(f"/api/company/{VALID_PROFILE_ID}")
             assert response.status_code == 200
-            assert response.json()["id"] == "123"
+            assert response.json()["id"] == VALID_PROFILE_ID
 
     def test_get_company_not_found(self) -> None:
-        with patch("src.api.routes.company.get_service.execute") as mock_exec:
-            mock_exec.side_effect = ValueError("Company profile not found")
-            response = client.get("/api/company/nonexistent")
+        mock_svc = MagicMock()
+        mock_svc.execute.side_effect = ValueError("Company profile not found")
+
+        with patch("src.api.v1.company.GetCompanyService", return_value=mock_svc):
+            response = client.get(f"/api/company/{VALID_PROFILE_ID}")
             assert response.status_code == 404
+
+    def test_get_company_invalid_id(self) -> None:
+        response = client.get("/api/company/not-a-uuid")
+        assert response.status_code == 422
 
 
 class TestUpdateCompanyAPI:
@@ -82,42 +96,56 @@ class TestUpdateCompanyAPI:
             "Profile",
             (),
             {
-                "id": "123",
+                "id": VALID_PROFILE_ID,
                 "company_name": "Updated",
-                "brand_guidelines": "guidelines",
-                "brand_tone": "Pro",
+                "brand_guidelines": "updated",
+                "brand_tone": "Casual",
                 "reference_image_urls": [],
                 "created_at": "2026-01-01",
-                "updated_at": "2026-01-01",
+                "updated_at": "2026-01-02",
             },
         )()
 
-        with patch("src.api.routes.company.update_service.execute") as mock_exec:
-            mock_exec.return_value = mock_profile
-            response = client.put("/api/company/123", json={"company_name": "Updated"})
+        mock_svc = MagicMock()
+        mock_svc.execute.return_value = mock_profile
+
+        with patch("src.api.v1.company.UpdateCompanyService", return_value=mock_svc):
+            response = client.put(
+                f"/api/company/{VALID_PROFILE_ID}",
+                json={"company_name": "Updated", "brand_tone": "Casual"},
+            )
             assert response.status_code == 200
             assert response.json()["company_name"] == "Updated"
 
     def test_update_company_not_found(self) -> None:
-        with patch("src.api.routes.company.update_service.execute") as mock_exec:
-            mock_exec.side_effect = ValueError("Company profile not found")
-            response = client.put("/api/company/nonexistent", json={"company_name": "X"})
+        mock_svc = MagicMock()
+        mock_svc.execute.side_effect = ValueError("Company profile not found")
+
+        with patch("src.api.v1.company.UpdateCompanyService", return_value=mock_svc):
+            response = client.put(
+                f"/api/company/{VALID_PROFILE_ID}",
+                json={"company_name": "X"},
+            )
             assert response.status_code == 404
 
     def test_update_company_no_fields(self) -> None:
-        response = client.put("/api/company/123", json={})
+        response = client.put(f"/api/company/{VALID_PROFILE_ID}", json={})
         assert response.status_code == 422
 
 
 class TestDeleteCompanyAPI:
     def test_delete_company_success(self) -> None:
-        with patch("src.api.routes.company.delete_service.execute") as mock_exec:
-            mock_exec.return_value = None
-            response = client.delete("/api/company/123")
+        mock_svc = MagicMock()
+        mock_svc.execute.return_value = None
+
+        with patch("src.api.v1.company.DeleteCompanyService", return_value=mock_svc):
+            response = client.delete(f"/api/company/{VALID_PROFILE_ID}")
             assert response.status_code == 204
 
     def test_delete_company_not_found(self) -> None:
-        with patch("src.api.routes.company.delete_service.execute") as mock_exec:
-            mock_exec.side_effect = ValueError("Company profile not found")
-            response = client.delete("/api/company/nonexistent")
+        mock_svc = MagicMock()
+        mock_svc.execute.side_effect = ValueError("Company profile not found")
+
+        with patch("src.api.v1.company.DeleteCompanyService", return_value=mock_svc):
+            response = client.delete(f"/api/company/{VALID_PROFILE_ID}")
             assert response.status_code == 404

@@ -38,7 +38,10 @@ class LLMService:
         if client is not None:
             self._client = client
         else:
-            self._client = OpenAI(api_key=settings.openai_api_key)
+            self._client = OpenAI(
+                api_key=settings.grok_api_key,
+                base_url="https://api.groq.com/openai/v1",
+            )
 
     def analyze_search_results(self, results: list[dict[str, Any]]) -> GuestProfileData:
         context = json.dumps(results, indent=2)
@@ -48,7 +51,7 @@ class LLMService:
 
         try:
             completion = self._client.chat.completions.parse(
-                model="gpt-4o-2024-08-06",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
