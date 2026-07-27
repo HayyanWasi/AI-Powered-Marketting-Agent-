@@ -32,20 +32,24 @@ def service(mock_client: MagicMock) -> SupabaseService:
 
 class TestCreateProfile:
     def test_create_profile_success(self, service: SupabaseService, mock_table: MagicMock) -> None:
-        mock_table.select.return_value.execute.return_value.data = []
-        mock_table.insert.return_value.execute.return_value.data = [{"id": "123", "name": "Acme"}]
+        mock_table.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_table.insert.return_value.execute.return_value.data = [
+            {"id": "123", "company_name": "Acme"}
+        ]
 
-        result = service.create_profile("Acme", "Pro")
+        result = service.create_profile("Acme", "Guidelines", "Pro")
         assert result["id"] == "123"
-        assert result["name"] == "Acme"
+        assert result["company_name"] == "Acme"
 
     def test_create_profile_duplicate(
         self, service: SupabaseService, mock_table: MagicMock
     ) -> None:
-        mock_table.select.return_value.execute.return_value.data = [{"id": "existing"}]
+        mock_table.select.return_value.eq.return_value.execute.return_value.data = [
+            {"id": "existing"}
+        ]
 
         with pytest.raises(DuplicateCompanyError):
-            service.create_profile("Acme", "Pro")
+            service.create_profile("Acme", "Guidelines", "Pro")
 
     def test_create_profile_retry_then_fail(
         self, service: SupabaseService, mock_table: MagicMock
@@ -72,20 +76,26 @@ class TestGetProfile:
 
 class TestUpdateProfile:
     def test_update_profile_success(self, service: SupabaseService, mock_table: MagicMock) -> None:
+        mock_table.select.return_value.eq.return_value.neq.return_value.execute.return_value.data = (
+            []
+        )
         mock_table.update.return_value.eq.return_value.execute.return_value.data = [
-            {"id": "123", "name": "Updated"}
+            {"id": "123", "company_name": "Updated"}
         ]
 
-        result = service.update_profile("123", {"name": "Updated"})
-        assert result["name"] == "Updated"
+        result = service.update_profile("123", {"company_name": "Updated"})
+        assert result["company_name"] == "Updated"
 
     def test_update_profile_not_found(
         self, service: SupabaseService, mock_table: MagicMock
     ) -> None:
+        mock_table.select.return_value.eq.return_value.neq.return_value.execute.return_value.data = (
+            []
+        )
         mock_table.update.return_value.eq.return_value.execute.return_value.data = []
 
         with pytest.raises(NotFoundError):
-            service.update_profile("nonexistent", {"name": "X"})
+            service.update_profile("nonexistent", {"company_name": "X"})
 
 
 class TestDeleteProfile:

@@ -1,112 +1,131 @@
-from pydantic import HttpUrl, ValidationError
+"""Tests for Campaign model and related dataclasses."""
 
-import pytest
+from uuid import uuid4
+from datetime import datetime
 
-from src.models.campaign import Campaign, CampaignCreate, CampaignResponse, CampaignUpdate
-
-
-class TestCampaignDataclass:
-    def test_default_values(self) -> None:
-        campaign = Campaign(type="speaker_promo", caption="Check this out")
-        assert campaign.type == "speaker_promo"
-        assert campaign.caption == "Check this out"
-        assert campaign.image_url == ""
-        assert campaign.status == "draft"
-
-    def test_to_response(self) -> None:
-        campaign = Campaign(type="speaker_promo", caption="Caption")
-        response = campaign.to_response()
-        assert isinstance(response, CampaignResponse)
-        assert response.type == "speaker_promo"
-        assert response.caption == "Caption"
-        assert response.status == "draft"
+from src.models.campaign import (
+    Campaign,
+    CampaignAsset,
+    CampaignState,
+    AssetType,
+    AssetSource,
+    Goals,
+    TargetAudience,
+    Schedule,
+)
 
 
-class TestCampaignCreate:
-    def test_valid_create(self) -> None:
-        data = CampaignCreate(type="speaker_promo", caption="Great event!")
-        assert data.type == "speaker_promo"
-        assert data.caption == "Great event!"
-        assert data.status == "draft"
+class TestCampaignState:
+    def test_valid_states_exist(self) -> None:
+        assert CampaignState.DRAFT.value == "Draft"
+        assert CampaignState.READY.value == "Ready"
+        assert CampaignState.REVIEW.value == "Review"
+        assert CampaignState.APPROVED.value == "Approved"
+        assert CampaignState.PUBLISHED.value == "Published"
+        assert CampaignState.ARCHIVED.value == "Archived"
 
-    def test_empty_type_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CampaignCreate(type="", caption="Caption")
+    def test_all_six_states(self) -> None:
+        assert len(CampaignState) == 6
 
-    def test_empty_caption_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CampaignCreate(type="speaker_promo", caption="")
 
-    def test_whitespace_caption_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CampaignCreate(type="speaker_promo", caption="   ")
+class TestCampaign:
+    def test_create_campaign_with_defaults(self) -> None:
+        campaign = Campaign()
+        assert campaign.id is not None
+        assert campaign.name == ""
+        assert campaign.state == CampaignState.DRAFT
+        assert campaign.version == 1
 
-    def test_status_defaults_to_draft(self) -> None:
-        data = CampaignCreate(type="speaker_promo", caption="Caption")
-        assert data.status == "draft"
-
-    def test_valid_status_accepted(self) -> None:
-        for status in ("draft", "published", "archived"):
-            data = CampaignCreate(type="speaker_promo", caption="Caption", status=status)
-            assert data.status == status
-
-    def test_invalid_status_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CampaignCreate(type="speaker_promo", caption="Caption", status="deleted")
-
-    def test_valid_url_accepted(self) -> None:
-        url = HttpUrl("https://example.com/image.jpg")
-        data = CampaignCreate(
-            type="speaker_promo",
-            caption="Caption",
-            image_url=url,
+    def test_create_campaign_with_fields(self) -> None:
+        org_id = uuid4()
+        campaign = Campaign(
+            organization_id=org_id,
+            name="Test Campaign",
+            goals=Goals(primary="Increase sales"),
+            target_audience=TargetAudience(segments=["customers"]),
+            platforms=["linkedin", "instagram"],
+            schedule=Schedule(
+                start_date=datetime(2026, 1, 1),
+                end_date=datetime(2026, 12, 31),
+                timezone="UTC",
+            ),
         )
-        assert data.image_url is not None
+        assert campaign.organization_id == org_id
+        assert campaign.name == "Test Campaign"
+        assert campaign.state == CampaignState.DRAFT
+        assert campaign.version == 1
+        assert "linkedin" in campaign.platforms
 
-    def test_invalid_url_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CampaignCreate(
-                type="speaker_promo",
-                caption="Caption",
-                image_url="not-a-url",  # type: ignore[arg-type]
-            )
-
-
-class TestCampaignUpdate:
-    def test_all_fields_optional(self) -> None:
-        data = CampaignUpdate()
-        assert data.type is None
-        assert data.caption is None
-        assert data.image_url is None
-        assert data.status is None
+    def test_campaign_to_dict(self) -> None:
+        campaign = Campaign(name="Test", organization_id=uuid4())
+        data = campaign.to_dict()
+        assert data["name"] == "Test"
+        assert data["state"] == "Draft"
 
 
-class TestCampaignResponse:
-    def test_serialization_round_trip(self) -> None:
-        original = CampaignResponse(
-            id="abc-123",
-            type="speaker_promo",
-            caption="Great event!",
-            image_url="https://example.com/img.jpg",
-            status="published",
-            created_at="2024-01-01T00:00:00Z",
-            updated_at="2024-01-01T00:00:00Z",
+class TestCampaignAsset:
+    def test_create_asset(self) -> None:
+        asset = CampaignAsset(
+            campaign_id=uuid4(),
+            asset_type=AssetType.COPY,
+            content={"text": "Hello world"},
+            source=AssetSource.AI,
         )
-        json_str = original.model_dump_json()
-        restored = CampaignResponse.model_validate_json(json_str)
-        assert restored.id == original.id
-        assert restored.type == original.type
-        assert restored.caption == original.caption
-        assert restored.image_url == original.image_url
-        assert restored.status == original.status
+        assert asset.asset_type == AssetType.COPY
+        assert asset.source == AssetSource.AI
+        assert asset.content["text"] == "Hello world"
 
-    def test_optional_image_url_none(self) -> None:
-        response = CampaignResponse(
-            id="abc",
-            type="speaker_promo",
-            caption="Caption",
-            status="draft",
-            created_at="2024-01-01T00:00:00Z",
-            updated_at="2024-01-01T00:00:00Z",
+    def test_asset_types(self) -> None:
+        assert AssetType.COPY.value == "copy"
+        assert AssetType.IMAGE.value == "image"
+        assert AssetType.HASHTAG_SET.value == "hashtag_set"
+        assert AssetType.METADATA.value == "metadata"
+        assert AssetType.OTHER.value == "other"
+
+    def test_asset_sources(self) -> None:
+        assert AssetSource.AI.value == "ai"
+        assert AssetSource.MANUAL.value == "manual"
+        assert AssetSource.IMPORTED.value == "imported"
+
+
+class TestGoals:
+    def test_goals_with_primary(self) -> None:
+        goals = Goals(primary="Increase brand awareness")
+        assert goals.primary == "Increase brand awareness"
+        assert goals.metrics == []
+        assert goals.targets == {}
+
+    def test_goals_with_values(self) -> None:
+        goals = Goals(
+            primary="Increase brand awareness",
+            metrics=["impressions", "clicks"],
+            targets={"impressions": 10000},
         )
-        assert response.image_url is None
+        assert goals.primary == "Increase brand awareness"
+        assert len(goals.metrics) == 2
+
+
+class TestTargetAudience:
+    def test_audience_with_segments(self) -> None:
+        audience = TargetAudience(segments=["tech professionals"])
+        assert "tech professionals" in audience.segments
+
+    def test_audience_with_values(self) -> None:
+        audience = TargetAudience(
+            segments=["tech professionals"],
+            demographics={"age": "25-45"},
+            interests=["AI", "marketing"],
+        )
+        assert "tech professionals" in audience.segments
+        assert audience.demographics["age"] == "25-45"
+
+
+class TestSchedule:
+    def test_schedule_with_dates(self) -> None:
+        schedule = Schedule(
+            start_date=datetime(2026, 1, 1),
+            end_date=datetime(2026, 12, 31),
+            timezone="America/New_York",
+        )
+        assert schedule.start_date.year == 2026
+        assert schedule.timezone == "America/New_York"

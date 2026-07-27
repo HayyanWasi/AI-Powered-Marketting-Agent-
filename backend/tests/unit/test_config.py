@@ -12,7 +12,7 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.openai_api_key == "test_key"
-    assert settings.supabase_url == "test_url"
+    assert settings.SUPABASE_URL == "test_url"
     assert settings.log_level == "INFO"
 
 

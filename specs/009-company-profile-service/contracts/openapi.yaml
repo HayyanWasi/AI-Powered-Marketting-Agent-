@@ -1,0 +1,376 @@
+openapi: 3.1.0
+info:
+  title: Company Profile Service
+  version: 1.0.0
+  description: |
+    API for managing company profiles with brand guidelines and reference images.
+    Used by the Campaign Generation Service to retrieve brand information.
+
+paths:
+  /api/v1/company-profiles:
+    post:
+      summary: Create a new company profile
+      operationId: createCompanyProfile
+      tags: [Company Profiles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyProfileRequest'
+      responses:
+        '201':
+          description: Company profile created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyProfileResponse'
+        '409':
+          description: Company name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Missing or invalid required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all company profiles
+      operationId: listCompanyProfiles
+      tags: [Company Profiles]
+      responses:
+        '200':
+          description: List of company profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompanyProfileSummary'
+
+  /api/v1/company-profiles/{profile_id}:
+    get:
+      summary: Retrieve a company profile by ID
+      operationId: getCompanyProfile
+      tags: [Company Profiles]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Company profile details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyProfileResponse'
+        '404':
+          description: Company profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update a company profile
+      operationId: updateCompanyProfile
+      tags: [Company Profiles]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyProfileRequest'
+      responses:
+        '200':
+          description: Company profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyProfileResponse'
+        '404':
+          description: Company profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Company name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid update data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/company-profiles/{profile_id}/images:
+    post:
+      summary: Upload a brand reference image
+      operationId: uploadBrandImage
+      tags: [Brand Images]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, or WebP)
+      responses:
+        '201':
+          description: Image uploaded and associated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandImageResponse'
+        '404':
+          description: Company profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Maximum image limit (6) reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid image file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all brand images for a profile
+      operationId: listBrandImages
+      tags: [Brand Images]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of brand images
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BrandImageResponse'
+        '404':
+          description: Company profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/company-profiles/{profile_id}/images/{image_id}:
+    delete:
+      summary: Remove a brand reference image
+      operationId: removeBrandImage
+      tags: [Brand Images]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Image removed successfully
+        '404':
+          description: Company profile or image not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/company-profiles/{profile_id}/images/{image_id}/reorder:
+    put:
+      summary: Reorder a brand reference image
+      operationId: reorderBrandImage
+      tags: [Brand Images]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sort_order:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+                  description: New position in the ordered list
+              required: [sort_order]
+      responses:
+        '200':
+          description: Image reordered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandImageResponse'
+        '404':
+          description: Company profile or image not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid sort order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    CreateCompanyProfileRequest:
+      type: object
+      required: [company_name, brand_guidelines]
+      properties:
+        company_name:
+          type: string
+          description: Unique company name
+        brand_guidelines:
+          type: string
+          description: Brand communication rules and style guide
+        brand_tone:
+          type: string
+          description: Optional tone descriptor
+
+    UpdateCompanyProfileRequest:
+      type: object
+      properties:
+        company_name:
+          type: string
+          description: Updated company name
+        brand_guidelines:
+          type: string
+          description: Updated brand guidelines
+        brand_tone:
+          type: string
+          description: Updated brand tone
+
+    CompanyProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        brand_guidelines:
+          type: string
+        brand_tone:
+          type: string
+          nullable: true
+        reference_images:
+          type: array
+          items:
+            $ref: '#/components/schemas/BrandImageResponse'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CompanyProfileSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        is_complete:
+          type: boolean
+          description: Whether profile has required fields for campaign generation
+        image_count:
+          type: integer
+          description: Number of associated reference images
+        updated_at:
+          type: string
+          format: date-time
+
+    BrandImageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+          description: Access URL for the image
+        filename:
+          type: string
+        sort_order:
+          type: integer
+        uploaded_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
