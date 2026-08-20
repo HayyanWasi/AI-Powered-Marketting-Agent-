@@ -1,6 +1,6 @@
 """Image generator interface for AI Generation Engine."""
 
-from typing import Dict, Any
+from typing import Any
 
 from ..models.image_artifact import ImageArtifact
 from ..models.validation_artifact import ValidationArtifact
@@ -11,7 +11,7 @@ class ImageGeneratorInterface:
 
     def generate_image(
         self,
-        image_prompt_artifact: Dict[str, Any],
+        image_prompt_artifact: dict[str, Any],
     ) -> ImageArtifact:
         """
         Generate campaign image from image prompt artifact.
@@ -29,8 +29,8 @@ class ImageGeneratorInterface:
 
     def regenerate_image(
         self,
-        existing_image: Dict[str, Any],
-        new_prompt: Dict[str, Any],
+        existing_image: dict[str, Any],
+        new_prompt: dict[str, Any],
     ) -> ImageArtifact:
         """
         Regenerate image based on updated prompt while preserving other attributes.
@@ -49,9 +49,9 @@ class ImageGeneratorInterface:
 
     def validate_image(
         self,
-        image: Dict[str, Any],
-        prompt: Dict[str, Any],
-        brand_guidelines: Dict[str, Any],
+        image: dict[str, Any],
+        prompt: dict[str, Any],
+        brand_guidelines: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate generated image against brand guidelines and prompt.

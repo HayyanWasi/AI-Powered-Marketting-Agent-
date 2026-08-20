@@ -1,6 +1,6 @@
 import logging
 
-from src.repositories.company_repository import CompanyRepository, CompanyNotFoundError
+from src.repositories.company_repository import CompanyRepository
 from src.services.supabase import SupabaseService
 
 logger = logging.getLogger(__name__)

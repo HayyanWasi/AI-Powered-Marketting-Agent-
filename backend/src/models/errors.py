@@ -1,10 +1,10 @@
 """Custom exception classes for the Campaign Management module."""
 
 from enum import Enum
-from typing import Any, Optional, List
+from typing import Any
 
 from fastapi import HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ErrorCode(str, Enum):
@@ -69,7 +69,7 @@ class NotFoundError(CampaignError):
 class ValidationError(CampaignError):
     """Validation error with field details."""
 
-    def __init__(self, detail: str, invalid_fields: Optional[List[str]] = None):
+    def __init__(self, detail: str, invalid_fields: list[str] | None = None):
         super().__init__(
             detail=detail, code="VALIDATION_ERROR", status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
         )
@@ -79,7 +79,7 @@ class ValidationError(CampaignError):
 class StateTransitionError(CampaignError):
     """Invalid state transition attempted."""
 
-    def __init__(self, current_state: str, attempted_state: str, valid_states: List[str]):
+    def __init__(self, current_state: str, attempted_state: str, valid_states: list[str]):
         detail = (
             f"Cannot transition from '{current_state}' to '{attempted_state}'. "
             f"Valid next states: {', '.join(valid_states)}"

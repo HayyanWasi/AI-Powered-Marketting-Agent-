@@ -1,11 +1,16 @@
 """Campaign repository - data access for campaigns."""
 
-from typing import List, Optional, Tuple
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
+from src.models.campaign import (
+    AssetSource,
+    AssetType,
+    Campaign,
+    CampaignAsset,
+    CampaignState,
+)
 from src.repositories.base import BaseRepository
-from src.models.campaign import Campaign, CampaignState, Goals, TargetAudience, Schedule
-from src.models.campaign import CampaignAsset, AssetType, AssetSource
 
 
 class CampaignRepository(BaseRepository):
@@ -27,7 +32,7 @@ class CampaignRepository(BaseRepository):
 
     async def get_by_id(
         self, campaign_id: UUID, organization_id: UUID | None = None
-    ) -> Optional[Campaign]:
+    ) -> Campaign | None:
         """Get campaign by ID, optionally filtered by organization."""
         query = self.client.table(self.table_name).select("*").eq("id", str(campaign_id))
         if organization_id:
@@ -38,7 +43,7 @@ class CampaignRepository(BaseRepository):
             return self._to_model(result.data[0], Campaign)
         return None
 
-    async def get_by_name(self, name: str, organization_id: UUID) -> Optional[Campaign]:
+    async def get_by_name(self, name: str, organization_id: UUID) -> Campaign | None:
         """Check if campaign name exists in organization."""
         result = (
             self.client.table(self.table_name)
@@ -54,7 +59,7 @@ class CampaignRepository(BaseRepository):
 
     async def get_with_assets(
         self, campaign_id: UUID, organization_id: UUID | None = None
-    ) -> Optional[Campaign]:
+    ) -> Campaign | None:
         """Get campaign with associated assets."""
         campaign = await self.get_by_id(campaign_id, organization_id)
         if campaign:
@@ -97,13 +102,13 @@ class CampaignRepository(BaseRepository):
     async def list(
         self,
         organization_id: UUID,
-        state: Optional[CampaignState] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        owner_id: Optional[UUID] = None,
+        state: CampaignState | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        owner_id: UUID | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Tuple[List[Campaign], int]:
+    ) -> tuple[list[Campaign], int]:
         """List campaigns with filters and pagination."""
         query = (
             self.client.table(self.table_name)
@@ -136,7 +141,7 @@ class CampaignRepository(BaseRepository):
 
     async def archive(
         self, campaign_id: UUID, organization_id: UUID, previous_state: CampaignState
-    ) -> Optional[Campaign]:
+    ) -> Campaign | None:
         """Archive a campaign, storing previous state."""
         data = {
             "state": "Archived",
@@ -157,7 +162,7 @@ class CampaignRepository(BaseRepository):
             return self._to_model(result.data[0], Campaign)
         return None
 
-    async def restore(self, campaign_id: UUID, organization_id: UUID) -> Optional[Campaign]:
+    async def restore(self, campaign_id: UUID, organization_id: UUID) -> Campaign | None:
         """Restore archived campaign to previous state."""
         # First get the campaign to find previous_state
         campaign = await self.get_by_id(campaign_id, organization_id)
@@ -213,7 +218,7 @@ class AssetRepository(BaseRepository):
             return self._to_model(result.data[0], CampaignAsset)
         raise Exception("Failed to create asset")
 
-    async def get_by_campaign(self, campaign_id: UUID) -> List[CampaignAsset]:
+    async def get_by_campaign(self, campaign_id: UUID) -> list[CampaignAsset]:
         """Get all assets for a campaign."""
         result = (
             self.client.table(self.table_name)
@@ -270,7 +275,7 @@ class HistoryRepository(BaseRepository):
         campaign_id: UUID,
         page: int = 1,
         page_size: int = 50,
-    ) -> Tuple[List[any], int]:
+    ) -> tuple[list[any], int]:
         """Get paginated history for a campaign."""
         query = (
             self.client.table(self.table_name)

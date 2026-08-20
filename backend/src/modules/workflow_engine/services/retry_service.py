@@ -2,9 +2,10 @@
 
 import asyncio
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from ..models import RetryPolicy, ExecutionState, ExecutionError
+from ..models import RetryPolicy
 
 logger = logging.getLogger(__name__)
 

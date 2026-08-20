@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from ..models import WorkflowContext, ExecutionState, WorkflowNode
+from ..models import ExecutionState, WorkflowContext
 
 logger = logging.getLogger(__name__)
 

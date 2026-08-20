@@ -17,13 +17,12 @@ import io
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import BaseModel
 
 from src.main import app
-from src.models.campaign_image import CampaignImageResponse, ValidationResult
+from src.models.campaign_image import CampaignImageResponse
 from src.services.pollinations_service import (
     PollinationsRateLimitError,
     PollinationsServerError,

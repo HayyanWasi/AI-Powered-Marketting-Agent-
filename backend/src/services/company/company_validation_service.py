@@ -1,6 +1,6 @@
 import logging
 
-from src.validators.company_validator import CompanyValidationError, CompanyValidator
+from src.validators.company_validator import CompanyValidator
 
 logger = logging.getLogger(__name__)
 

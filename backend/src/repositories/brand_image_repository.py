@@ -4,7 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from src.models.brand_reference_image import BrandReferenceImage
-from src.services.supabase import NotFoundError, SupabaseService, SupabaseServiceError
+from src.services.supabase import SupabaseService, SupabaseServiceError
 
 logger = logging.getLogger(__name__)
 

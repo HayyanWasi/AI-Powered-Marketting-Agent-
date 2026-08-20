@@ -1,6 +1,6 @@
 """Tests for the validation service."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 

@@ -10,7 +10,6 @@ module.  Every hard-node wrapper includes built-in retry with exponential
 backoff so callers never implement retry outside the pipeline.
 """
 
-import asyncio
 import logging
 import time
 from dataclasses import replace
@@ -19,17 +18,17 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END
 
+from src.agents.asset_generator import AssetGenerationAgent
 from src.agents.base import AgentResult
+from src.agents.campaign_planner import CampaignPlannerAgent
+from src.agents.content_generator import ContentGenerationAgent
 from src.agents.context import GenerationContext
 from src.agents.reference_matcher import ReferenceMatcherAgent
 from src.agents.strategy import StrategyAgent
-from src.agents.campaign_planner import CampaignPlannerAgent
-from src.agents.content_generator import ContentGenerationAgent
-from src.agents.asset_generator import AssetGenerationAgent
-from src.agents.validator import ValidationAgent
 from src.agents.subagents.hashtag_research import HashtagResearchAgent
 from src.agents.subagents.hook_analyzer import HookAnalyzerAgent
 from src.agents.subagents.readability_scorer import ReadabilityScorerAgent
+from src.agents.validator import ValidationAgent
 from src.modules.workflow_engine.langgraph.adapter import LangGraphAdapter
 from src.modules.workflow_engine.langgraph.executor import LangGraphExecutor
 
@@ -83,7 +82,10 @@ def _make_hard_node(
                 # Treat exceptions as a failed agent result
                 logger.warning(
                     "Node %s attempt %d/%d raised: %s",
-                    name, attempt + 1, attempts, exc,
+                    name,
+                    attempt + 1,
+                    attempts,
+                    exc,
                 )
                 result = AgentResult(
                     success=False,
@@ -98,16 +100,22 @@ def _make_hard_node(
 
             # Retry on failure (except last attempt)
             if attempt < max_retries:
-                delay = retry_delay_s * (backoff_multiplier ** attempt)
+                delay = retry_delay_s * (backoff_multiplier**attempt)
                 logger.warning(
                     "Node %s failed (attempt %d/%d), retrying in %.1fs: %s",
-                    name, attempt + 1, attempts, delay, result.message,
+                    name,
+                    attempt + 1,
+                    attempts,
+                    delay,
+                    result.message,
                 )
                 time.sleep(delay)
             else:
                 logger.error(
                     "Node %s failed after %d attempts: %s",
-                    name, attempts, result.message,
+                    name,
+                    attempts,
+                    result.message,
                 )
 
         result = last_result
@@ -159,7 +167,10 @@ def _make_soft_node(
             except Exception as exc:
                 logger.warning(
                     "Soft node %s attempt %d/%d raised: %s",
-                    name, attempt + 1, attempts, exc,
+                    name,
+                    attempt + 1,
+                    attempts,
+                    exc,
                 )
                 result = AgentResult(
                     success=False,
@@ -173,10 +184,14 @@ def _make_soft_node(
                 break
 
             if attempt < max_retries:
-                delay = retry_delay_s * (backoff_multiplier ** attempt)
+                delay = retry_delay_s * (backoff_multiplier**attempt)
                 logger.warning(
                     "Soft node %s failed (attempt %d/%d), retrying in %.1fs: %s",
-                    name, attempt + 1, attempts, delay, result.message,
+                    name,
+                    attempt + 1,
+                    attempts,
+                    delay,
+                    result.message,
                 )
                 time.sleep(delay)
 
@@ -190,20 +205,45 @@ def _make_soft_node(
         }
         context = result.context if result.success else state["context"]
         if not result.success:
-            logger.warning("Sub-agent %s failed after %d attempts (non-fatal): %s", name, attempts, result.message)
+            logger.warning(
+                "Sub-agent %s failed after %d attempts (non-fatal): %s",
+                name,
+                attempts,
+                result.message,
+            )
         return {**state, "context": context, "log": (*state["log"], log_entry)}
 
     return node
 
 
 def _approve_strategy_node(state: dict) -> dict:
-    """Auto-approve the strategy brief (human checkpoint in production).
+    """Gate content generation on an approved CampaignPlan.
 
-    StateGraph(dict) has no per-key reducers, so a node's return value
-    REPLACES the entire state rather than merging into it — every node must
-    return the full state dict, not just the keys it changed.
+    Three cases:
+    - Plan present and approved → derive strategy from it, mark approved, continue.
+    - Plan present but NOT approved → block with failed=True so generation aborts.
+    - No plan → legacy path: stamp the brief's own strategy as approved and continue.
+
+    StateGraph(dict) has no per-key reducers so every node must return the full
+    state dict, not just the keys it changed.
     """
     context: GenerationContext = state["context"]
+
+    if context.plan is not None:
+        if not context.plan.approved:
+            return {
+                **state,
+                "failed": True,
+                "message": (
+                    "Campaign plan has not been approved. "
+                    "Approve the plan at /campaigns/{id}/plan/approve before generating."
+                ),
+            }
+        # Plan is approved — strategy was already derived in StrategyAgent; nothing to change.
+        return {**state, "failed": False}
+
+    # Legacy path: no plan attached — auto-approve the brief strategy so the
+    # pipeline can continue without requiring a plan.
     approved_strategy = replace(context.strategy, approved=True)
     return {**state, "context": replace(context, strategy=approved_strategy)}
 
@@ -242,7 +282,10 @@ def compile_graph(agents: dict) -> Any:
     Returns:
         A compiled, checkpointed LangGraph app ready for ainvoke().
     """
-    nodes: dict[str, Any] = {"approve_strategy": _approve_strategy_node, "mark_complete": _mark_complete_node}
+    nodes: dict[str, Any] = {
+        "approve_strategy": _approve_strategy_node,
+        "mark_complete": _mark_complete_node,
+    }
     for name in _HARD_NODES:
         nodes[name] = _make_hard_node(agents[name], name)
     for name in _SOFT_NODES:

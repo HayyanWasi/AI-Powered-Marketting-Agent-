@@ -1,6 +1,8 @@
 import logging
 from urllib.parse import unquote, urlparse
 
+from supabase import create_client
+
 from src.config.settings import settings
 from src.models.company import CompanyProfile
 from src.repositories.company_repository import (
@@ -8,8 +10,7 @@ from src.repositories.company_repository import (
     CompanyRepository,
     CompanyRepositoryError,
 )
-from src.services.supabase import SupabaseService, STORAGE_BUCKET
-from supabase import create_client
+from src.services.supabase import STORAGE_BUCKET, SupabaseService
 
 logger = logging.getLogger(__name__)
 

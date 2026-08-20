@@ -7,8 +7,8 @@ AgentResult always surfaces as an exception here.
 """
 
 import logging
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 
 from src.agents.context_builder import ContextBuilder
 from src.agents.orchestrator import Orchestrator
@@ -46,15 +46,20 @@ async def run_campaign_generation(initial_state: dict) -> dict:
     prompt = initial_state.get("prompt", "Marketing campaign")
     company_profile_id = initial_state.get("company_profile_id")
     platforms = initial_state.get("platforms") or _DEFAULT_PLATFORMS
+    user_goal = initial_state.get("user_goal") or prompt
+    campaign_id_raw = initial_state.get("campaign_id")
+    campaign_id: UUID | None = UUID(str(campaign_id_raw)) if campaign_id_raw else None
 
     context = ContextBuilder().build(
         company_profile_id=str(company_profile_id) if company_profile_id else None,
         guest_names=initial_state.get("guest_names"),
-        event_name=initial_state.get("event_name") or prompt,
+        event_name=initial_state.get("event_name") or user_goal,
         event_date=initial_state.get("event_date", ""),
         venue=initial_state.get("venue", ""),
         platforms=platforms,
         registration_link=initial_state.get("registration_link", ""),
+        user_goal=user_goal,
+        campaign_id=campaign_id,
     )
 
     result = await Orchestrator().execute(context)
@@ -66,9 +71,18 @@ async def run_campaign_generation(initial_state: dict) -> dict:
 
     campaign_service = CampaignService()
     campaign = await campaign_service.create_campaign(
-        name=prompt[:100],
-        goals={"primary": "brand awareness", "metrics": ["engagement", "reach"]},
-        target_audience={"segments": ["general"], "demographics": {}, "interests": []},
+        name=user_goal[:100],
+        goals={
+            "primary": user_goal,
+            "metrics": ["engagement", "reach", "registrations"],
+        },
+        target_audience={
+            "segments": [
+                p.name for p in (final_context.plan.core_strategy.personas if final_context.plan else [])
+            ] or ["general"],
+            "demographics": {},
+            "interests": [],
+        },
         platforms=list(platforms),
         schedule={
             "start_date": datetime.now().isoformat(),
@@ -111,7 +125,11 @@ async def run_campaign_generation(initial_state: dict) -> dict:
             )
             await asset_repo.create(image_asset)
 
-    logger.info("Campaign %s generated with %d content drafts", campaign.id, len(final_context.content_drafts))
+    logger.info(
+        "Campaign %s generated with %d content drafts",
+        campaign.id,
+        len(final_context.content_drafts),
+    )
 
     return {
         "campaign_id": str(campaign.id),

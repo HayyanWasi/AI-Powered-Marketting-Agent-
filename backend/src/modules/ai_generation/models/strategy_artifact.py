@@ -1,8 +1,8 @@
 """Strategy artifact model for AI Generation Engine."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,14 +14,14 @@ class StrategyArtifact:
 
     id: str
     generated_at: datetime
-    audience_strategy: Dict[str, Any]
-    messaging_strategy: Dict[str, Any]
-    platform_strategy: Dict[str, Any]
-    seo_strategy: Dict[str, Any]
-    campaign_strategy: Dict[str, Any]
-    validation_results: Optional[Dict[str, Any]] = None
+    audience_strategy: dict[str, Any]
+    messaging_strategy: dict[str, Any]
+    platform_strategy: dict[str, Any]
+    seo_strategy: dict[str, Any]
+    campaign_strategy: dict[str, Any]
+    validation_results: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize strategy to dictionary for storage/transmission."""
         return {
             "id": self.id,
@@ -35,7 +35,7 @@ class StrategyArtifact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StrategyArtifact":
+    def from_dict(cls, data: dict[str, Any]) -> "StrategyArtifact":
         """Deserialize strategy from dictionary."""
         return cls(
             id=data["id"],

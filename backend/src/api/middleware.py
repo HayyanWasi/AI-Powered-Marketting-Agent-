@@ -3,7 +3,7 @@
 import time
 import uuid
 from collections import defaultdict
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -24,7 +24,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.window_seconds = window_seconds
         self._clients: dict[str, list[float]] = defaultdict(list)
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
         cutoff = now - self.window_seconds
@@ -32,7 +34,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._clients[client_ip] = [t for t in self._clients[client_ip] if t > cutoff]
 
         if len(self._clients[client_ip]) >= self.max_requests:
-            response = Response(status_code=429, content='{"status":"error","error":"rate_limited","message":"Rate limit exceeded"}', media_type="application/json")
+            response = Response(
+                status_code=429,
+                content='{"status":"error","error":"rate_limited","message":"Rate limit exceeded"}',
+                media_type="application/json",
+            )
             response.headers["Retry-After"] = str(self.window_seconds)
             return response
 
@@ -47,7 +53,9 @@ class RequestBodySizeMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.max_body_size = max_body_size
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > self.max_body_size:
             return Response(
@@ -61,13 +69,18 @@ class RequestBodySizeMiddleware(BaseHTTPMiddleware):
 class ContentTypeValidationMiddleware(BaseHTTPMiddleware):
     """Validate Content-Type for methods with a request body."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         if request.method in ("POST", "PUT", "PATCH"):
             content_type = request.headers.get("content-type", "")
-            if not content_type:
+            has_body = request.headers.get("content-length", "0") != "0" or (
+                request.headers.get("transfer-encoding") is not None
+            )
+            if has_body and not content_type:
                 return Response(
                     status_code=415,
-                    content='{"status":"error","error":"unsupported_media_type","message":"Content-Type header is required for POST/PUT/PATCH requests"}',
+                    content='{"status":"error","error":"unsupported_media_type","message":"Content-Type header is required for requests with a body"}',
                     media_type="application/json",
                 )
         return await call_next(request)
@@ -76,7 +89,9 @@ class ContentTypeValidationMiddleware(BaseHTTPMiddleware):
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Generate or propagate X-Request-ID and X-Trace-ID headers."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         trace_id = request.headers.get("X-Trace-ID", str(uuid.uuid4()))
 
@@ -90,7 +105,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -101,16 +118,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log method, path, status, and duration for each request."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         start = time.time()
         response = await call_next(request)
         duration_ms = int((time.time() - start) * 1000)
 
-        print(f"[API] {request.method} {request.url.path} -> {response.status_code} ({duration_ms}ms)")
+        print(
+            f"[API] {request.method} {request.url.path} -> {response.status_code} ({duration_ms}ms)"
+        )
         return response
 
 
-def register_middleware(app: FastAPI, enable_rate_limit: bool = True, max_body_size: int = 10 * 1024 * 1024) -> None:
+def register_middleware(
+    app: FastAPI, enable_rate_limit: bool = True, max_body_size: int = 10 * 1024 * 1024
+) -> None:
     """Register all middleware on the FastAPI application.
 
     Middleware executes in reverse registration order (last registered = first executed).

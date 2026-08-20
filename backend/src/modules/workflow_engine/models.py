@@ -4,10 +4,10 @@ This module defines the core data structures used by the workflow engine
 for task execution, state management, and workflow orchestration.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 class ExecutionState(str, Enum):
@@ -155,10 +155,10 @@ class WorkflowContext:
     workflow_id: str
     thread_id: str
     state: ExecutionState
-    node_outputs: Dict[str, Any]
-    errors: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
-    current_node: Optional[str]
+    node_outputs: dict[str, Any]
+    errors: list[dict[str, Any]]
+    metadata: dict[str, Any]
+    current_node: str | None
 
     def __post_init__(self):
         if not self.workflow_id:
@@ -172,10 +172,10 @@ class WorkflowContext:
         workflow_id: str,
         thread_id: str,
         state: ExecutionState = ExecutionState.PENDING,
-        node_outputs: Optional[Dict[str, Any]] = None,
-        errors: Optional[List[Dict[str, Any]]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        current_node: Optional[str] = None,
+        node_outputs: dict[str, Any] | None = None,
+        errors: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        current_node: str | None = None,
     ) -> "WorkflowContext":
         """Create a new WorkflowContext.
 
@@ -203,13 +203,13 @@ class WorkflowContext:
 
     def with_updates(
         self,
-        workflow_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        state: Optional[ExecutionState] = None,
-        node_outputs: Optional[Dict[str, Any]] = None,
-        errors: Optional[List[Dict[str, Any]]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        current_node: Optional[str] = None,
+        workflow_id: str | None = None,
+        thread_id: str | None = None,
+        state: ExecutionState | None = None,
+        node_outputs: dict[str, Any] | None = None,
+        errors: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        current_node: str | None = None,
     ) -> "WorkflowContext":
         """Create a new WorkflowContext with updated fields.
 
@@ -247,8 +247,8 @@ class WorkflowNode:
     name: str
     description: str
     handler: callable
-    retry_policy: Dict[str, Any]
-    timeout_seconds: Optional[float]
+    retry_policy: dict[str, Any]
+    timeout_seconds: float | None
     requires_approval: bool
 
     def __post_init__(self):
@@ -270,11 +270,11 @@ class WorkflowGraph:
     """
 
     graph_id: str
-    nodes: Dict[str, WorkflowNode]
+    nodes: dict[str, WorkflowNode]
     entry_point: str
-    edges: List[Dict[str, Any]]
-    conditional_edges: List[Dict[str, Any]]
-    terminal_nodes: List[str]
+    edges: list[dict[str, Any]]
+    conditional_edges: list[dict[str, Any]]
+    terminal_nodes: list[str]
 
     def __post_init__(self):
         if not self.graph_id:
@@ -336,7 +336,7 @@ class WorkflowGraph:
         dfs(graph.entry_point)
 
     @classmethod
-    def detect_cycles(cls, graph: "WorkflowGraph") -> List[List[str]]:
+    def detect_cycles(cls, graph: "WorkflowGraph") -> list[list[str]]:
         """Detect circular dependencies in workflow graph.
 
         Args:
@@ -396,7 +396,7 @@ class RetryPolicy:
     max_retries: int
     delay_seconds: float
     backoff_multiplier: float = 1.0
-    max_delay_seconds: Optional[float] = None
+    max_delay_seconds: float | None = None
 
     def __post_init__(self):
         if self.max_retries < 0:
@@ -459,11 +459,11 @@ class ApprovalRequest:
 
     thread_id: str
     node_name: str
-    request_data: Dict[str, Any]
+    request_data: dict[str, Any]
     status: ApprovalStatus
-    rejection_reason: Optional[str]
+    rejection_reason: str | None
     created_at: datetime
-    resolved_at: Optional[datetime]
+    resolved_at: datetime | None
 
     def __post_init__(self):
         if not self.thread_id:
@@ -578,12 +578,12 @@ class WorkflowStatus:
 
     thread_id: str
     state: ExecutionState
-    current_node: Optional[str]
-    completed_nodes: List[str]
-    pending_nodes: List[str]
-    failed_nodes: List[str]
-    errors: List[ExecutionError]
-    checkpoint_id: Optional[str]
+    current_node: str | None
+    completed_nodes: list[str]
+    pending_nodes: list[str]
+    failed_nodes: list[str]
+    errors: list[ExecutionError]
+    checkpoint_id: str | None
 
     def __post_init__(self):
         if not self.thread_id:

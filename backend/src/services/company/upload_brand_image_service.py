@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from src.repositories.company_repository import CompanyRepository, CompanyNotFoundError
+from src.repositories.company_repository import CompanyRepository
 from src.services.company.image_validation_service import ImageValidationService
 from src.services.supabase import SupabaseService
 

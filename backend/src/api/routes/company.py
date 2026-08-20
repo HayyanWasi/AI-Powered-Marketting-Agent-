@@ -3,24 +3,24 @@ import logging
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image
 
 from src.models.company import CompanyProfileCreate, CompanyProfileUpdate
+from src.services.company.campaign_lookup_service import CampaignLookupService
 from src.services.company.create_company_service import CreateCompanyService
-from src.services.company.update_company_service import UpdateCompanyService
+from src.services.company.delete_company_service import DeleteCompanyService
 from src.services.company.get_company_service import GetCompanyService
 from src.services.company.list_company_service import ListCompanyService
-from src.services.company.delete_company_service import DeleteCompanyService
-from src.services.company.campaign_lookup_service import CampaignLookupService
+from src.services.company.update_company_service import UpdateCompanyService
 from src.services.supabase import (
-    DuplicateCompanyError,
-    NotFoundError,
-    SupabaseService,
     IMAGE_TYPES,
     MAX_IMAGE_SIZE,
     MAX_IMAGES,
+    NotFoundError,
+    SupabaseService,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,10 @@ async def create_profile(body: CompanyProfileCreate) -> dict[str, Any]:
 
 @router.get("/{profile_id}")
 async def get_profile(profile_id: str) -> dict[str, Any]:
+    try:
+        UUID(profile_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid profile ID format: {profile_id}")
     try:
         return get_service.execute(profile_id)
     except ValueError as e:
@@ -198,7 +202,6 @@ async def remove_brand_image(profile_id: str, image_index: int) -> dict[str, Any
             detail=f"Image at index {image_index} not found. Profile has {len(urls)} images.",
         )
 
-    removed_url = urls[image_index]
     urls.pop(image_index)
     service.update_profile(profile_id, {"reference_image_urls": urls})
 

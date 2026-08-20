@@ -1,6 +1,6 @@
 """Image prompt editor interface for AI Generation Engine."""
 
-from typing import Dict, Any
+from typing import Any
 
 from ..models.image_prompt_artifact import ImagePromptArtifact
 from ..models.validation_artifact import ValidationArtifact
@@ -11,8 +11,8 @@ class ImagePromptEditorInterface:
 
     def generate_image_prompt(
         self,
-        strategy_artifact: Dict[str, Any],
-        copy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
         platform: str,
     ) -> ImagePromptArtifact:
         """
@@ -33,9 +33,9 @@ class ImagePromptEditorInterface:
 
     def validate_image_prompt(
         self,
-        prompt: Dict[str, Any],
-        strategy: Dict[str, Any],
-        copy: Dict[str, Any],
+        prompt: dict[str, Any],
+        strategy: dict[str, Any],
+        copy: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate image prompt against strategy and copy.

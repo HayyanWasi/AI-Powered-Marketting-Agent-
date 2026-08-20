@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.models.guest_profile import (
@@ -11,7 +11,7 @@ from src.models.guest_profile import (
     GuestSearchResponse,
     SearchResult,
 )
-from src.services.llm import LLMService, LLMError
+from src.services.llm import LLMError, LLMService
 from src.services.search import GuestSearchService, SearchError
 from src.services.supabase import SupabaseService, SupabaseServiceError
 
@@ -33,12 +33,14 @@ def _save_guest_profile(profile: GuestProfile) -> None:
 
         sources_json = []
         for source in profile.sources_used:
-            sources_json.append({
-                "website_name": source.website_name,
-                "page_title": source.page_title,
-                "snippet": source.snippet,
-                "source_url": source.source_url,
-            })
+            sources_json.append(
+                {
+                    "website_name": source.website_name,
+                    "page_title": source.page_title,
+                    "snippet": source.snippet,
+                    "source_url": source.source_url,
+                }
+            )
 
         row = {
             "full_name": profile.full_name,
@@ -46,7 +48,11 @@ def _save_guest_profile(profile: GuestProfile) -> None:
             "organization": profile.organization,
             "professional_biography": profile.professional_biography,
             "areas_of_expertise": profile.areas_of_expertise,
-            "confidence_level": profile.confidence_level.value if hasattr(profile.confidence_level, 'value') else str(profile.confidence_level),
+            "confidence_level": (
+                profile.confidence_level.value
+                if hasattr(profile.confidence_level, "value")
+                else str(profile.confidence_level)
+            ),
             "sources": sources_json,
         }
 
@@ -100,11 +106,18 @@ async def search_guest(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> GuestSearchResponse:
     """Search for a guest/speaker and build an LLM-analyzed profile."""
+    logger.info("🔍 GUEST SEARCH TRIGGERED for: '%s' (company: '%s')", body.guest_name, body.company_name)
+    print(f"\n🔍 [GUEST SEARCH] Searching for guest: '{body.guest_name}' (Company: '{body.company_name}')\n", flush=True)
+
     try:
         raw_results = search_service.search(body.guest_name, company_name=body.company_name)
+        print(f"✅ [GUEST SEARCH] Found {len(raw_results)} raw web results for '{body.guest_name}'", flush=True)
     except SearchError as e:
-        logger.error("Search failed for '%s': %s", body.guest_name, e)
-        raise HTTPException(status_code=502, detail=f"Search service error: {e}")
+        logger.warning("Search failed for '%s': %s; requesting manual input", body.guest_name, e)
+        return GuestSearchResponse(
+            needs_manual_input=True,
+            error=f"Web search unavailable: {e}. Please enter the guest's details manually.",
+        )
 
     if not raw_results:
         logger.info("No search results for '%s'; requesting manual input", body.guest_name)
@@ -118,8 +131,11 @@ async def search_guest(
     try:
         profile_data = llm_service.analyze_search_results(raw_results[:5])
     except LLMError as e:
-        logger.error("LLM analysis failed for '%s': %s", body.guest_name, e)
-        raise HTTPException(status_code=502, detail=f"Analysis service error: {e}")
+        logger.warning("LLM analysis failed for '%s': %s; requesting manual input", body.guest_name, e)
+        return GuestSearchResponse(
+            needs_manual_input=True,
+            error=f"LLM analysis failed: {e}. Please enter the guest's details manually.",
+        )
 
     profile = GuestProfile(
         full_name=profile_data.full_name,

@@ -1,9 +1,9 @@
 """Asset repository - data access for campaign assets."""
 
-from typing import List
 from uuid import UUID
+
 from src.config.supabase import get_supabase_client
-from src.models.campaign import CampaignAsset, AssetType, AssetSource
+from src.models.campaign import AssetSource, AssetType, CampaignAsset
 
 
 class AssetRepository:
@@ -24,15 +24,15 @@ class AssetRepository:
         data = asset.to_dict()
         data = {k: v for k, v in data.items() if v is not None}
 
-        result = await self.client.table(self.table_name).insert(data).execute()
+        result = self.client.table(self.table_name).insert(data).execute()
         if result.data:
             return self._to_model(result.data[0])
         raise Exception("Failed to create asset")
 
-    async def get_by_campaign(self, campaign_id: UUID) -> List[CampaignAsset]:
+    async def get_by_campaign(self, campaign_id: UUID) -> list[CampaignAsset]:
         """Get all assets for a campaign."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("*")
             .eq("campaign_id", str(campaign_id))
             .order("created_at")
@@ -43,7 +43,7 @@ class AssetRepository:
 
     async def delete(self, asset_id: UUID) -> bool:
         """Delete an asset by ID."""
-        result = await self.client.table(self.table_name).delete().eq("id", str(asset_id)).execute()
+        result = self.client.table(self.table_name).delete().eq("id", str(asset_id)).execute()
 
         return len(result.data) > 0
 

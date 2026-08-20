@@ -7,7 +7,6 @@ import pytest
 from src.gateways.validation_gateway import ValidationGateway
 from src.models.platform import Platform
 from src.models.validation import (
-    TextValidationResultInternal,
     ValidationResponse,
     ValidationResultInternal,
     ValidationStatus,

@@ -1,31 +1,14 @@
 """Unit test for AI Generation Engine ContextBuilder service."""
 
+
 import pytest
-from unittest.mock import Mock, MagicMock
-from backend.src.modules.ai_generation.services.context_builder_service import ContextBuilderService
-from backend.src.modules.ai_generation.models.validation_artifact import ValidationArtifact
 
-
-class ValidationError:
-    """Test validation error class."""
-
-    def __init__(
-        self, code: str, message: str, severity: str, field: str = None, suggested_fix: str = None
-    ):
-        self.code = code
-        self.message = message
-        self.severity = severity
-        self.field = field
-        self.suggested_fix = suggested_fix
-
-
-class ValidationWarning:
-    """Test validation warning class."""
-
-    def __init__(self, code: str, message: str, field: str = None):
-        self.code = code
-        self.message = message
-        self.field = field
+from src.modules.ai_generation.models.validation_artifact import (
+    ValidationArtifact,
+    ValidationError,
+    ValidationWarning,
+)
+from src.modules.ai_generation.services.context_builder_service import ContextBuilderService
 
 
 @pytest.fixture
@@ -120,7 +103,7 @@ class TestContextBuilderService:
             "audience": {"segments": ["segment1"]},
             "platforms": ["linkedin"],
             "brand_guidelines": {"voice_tone": "professional"},
-            "reference_materials": [],
+            "reference_materials": [{"type": "benchmark"}],
         }
 
         result = context_builder_service.build_generation_context(**context_without_intent)

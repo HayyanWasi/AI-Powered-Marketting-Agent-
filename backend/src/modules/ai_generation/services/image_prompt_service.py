@@ -1,7 +1,7 @@
 """Prompt service for AI Generation Engine."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..constants import SeverityLevel
 
@@ -14,8 +14,8 @@ class ValidationError:
         code: str,
         message: str,
         severity: str,
-        field: Optional[str] = None,
-        suggested_fix: Optional[str] = None,
+        field: str | None = None,
+        suggested_fix: str | None = None,
     ):
         self.code = code
         self.message = message
@@ -23,7 +23,7 @@ class ValidationError:
         self.field = field
         self.suggested_fix = suggested_fix
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -36,12 +36,12 @@ class ValidationError:
 class ValidationWarning:
     """Individual validation warning."""
 
-    def __init__(self, code: str, message: str, field: Optional[str] = None):
+    def __init__(self, code: str, message: str, field: str | None = None):
         self.code = code
         self.message = message
         self.field = field
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -52,12 +52,15 @@ class ValidationWarning:
 class ImagePromptService:
     """Service for generating image prompts from strategy and copy artifacts."""
 
+    from langsmith import traceable
+
+    @traceable(name="generate_image_prompt")
     def generate_image_prompt(
         self,
-        strategy_artifact: Dict[str, Any],
-        copy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
         platform: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate image prompt from strategy and copy artifacts.
 
@@ -74,8 +77,8 @@ class ImagePromptService:
         """
         # Validate input artifacts
         validation = self.validate_inputs(strategy_artifact, copy_artifact, platform)
-        if not validation.is_valid:
-            raise ValueError(f"Invalid inputs: {validation.errors}")
+        if not validation["is_valid"]:
+            raise ValueError(f"Invalid inputs for image prompt generation: {validation['errors']}")
 
         # Extract relevant information from artifacts
         strategy_id = strategy_artifact.get("id", "unknown_strategy")
@@ -115,7 +118,7 @@ class ImagePromptService:
         )
 
         image_prompt = {
-            "id": f"image_prompt_{hash(str(strategy_artifact + str(copy_artifact))) % 10000}",
+            "id": f"image_prompt_{hash(str(strategy_artifact) + str(copy_artifact)) % 10000}",
             "generated_at": datetime.now().isoformat(),
             "strategy_id": strategy_id,
             "copy_id": copy_id,
@@ -130,12 +133,32 @@ class ImagePromptService:
 
         return image_prompt
 
+    @traceable(name="regenerate_image_prompt")
+    def regenerate_image_prompt(
+        self,
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
+        platform: str,
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Regenerate image prompt with user instructions."""
+        # For simplicity, we just generate a new prompt and append user instructions if any
+        prompt = self.generate_image_prompt(strategy_artifact, copy_artifact, platform)
+        if user_instructions and user_instructions.get("changes"):
+            changes = user_instructions["changes"].get("image_prompt", "")
+            if changes:
+                prompt["prompt_text"] += f". Additional instructions: {changes}"
+                prompt["id"] = (
+                    f"image_prompt_{hash(str(strategy_artifact) + str(copy_artifact) + str(user_instructions)) % 10000}"
+                )
+        return prompt
+
     def validate_image_prompt(
         self,
-        prompt: Dict[str, Any],
-        strategy: Dict[str, Any],
-        copy: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        prompt: dict[str, Any],
+        strategy: dict[str, Any],
+        copy: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate image prompt against strategy and copy.
 
@@ -166,7 +189,7 @@ class ImagePromptService:
         ]
 
         for field in required_fields:
-            if not prompt.get(field):
+            if prompt.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_PROMPT_FIELD",
@@ -245,10 +268,10 @@ class ImagePromptService:
 
     def validate_inputs(
         self,
-        strategy_artifact: Dict[str, Any],
-        copy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
         platform: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Validate input artifacts for image prompt generation.
 
@@ -374,8 +397,8 @@ class ImagePromptService:
 
     def _determine_artistic_style(
         self,
-        audience_segments: List[str],
-        campaign_goals: List[str],
+        audience_segments: list[str],
+        campaign_goals: list[str],
     ) -> str:
         """Determine artistic style based on audience and goals."""
         if "professional" in str(audience_segments).lower():
@@ -389,9 +412,9 @@ class ImagePromptService:
 
     def _derive_color_scheme(
         self,
-        strategy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
         platform: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """Derive color scheme from strategy and platform."""
         brand_guidelines = strategy_artifact.get("brand_guidelines", {})
         color_palette = brand_guidelines.get("color_palette", [])
@@ -408,7 +431,7 @@ class ImagePromptService:
     def _derive_visual_mood(
         self,
         brand_voice: str,
-        campaign_goals: List[str],
+        campaign_goals: list[str],
     ) -> str:
         """Derive visual mood from brand voice and goals."""
         if "professional" in brand_voice.lower():
@@ -442,7 +465,7 @@ class ImagePromptService:
         else:
             return "rule_of_thirds"
 
-    def _derive_lighting(self, campaign_goals: List[str]) -> str:
+    def _derive_lighting(self, campaign_goals: list[str]) -> str:
         """Derive lighting style from campaign goals."""
         if any("awareness" in str(goal).lower() for goal in campaign_goals):
             return "bright_purposeful"
@@ -455,8 +478,8 @@ class ImagePromptService:
 
     def _create_brand_elements(
         self,
-        brand_guidelines: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        brand_guidelines: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Create brand elements from guidelines."""
         brand_elements = []
 
@@ -499,13 +522,33 @@ class ImagePromptService:
                 }
             )
 
+        # Fallback: Support string-based schema if no detailed structure exists
+        tone = (
+            brand_guidelines.get("voice_tone")
+            or brand_guidelines.get("brand_tone")
+            or brand_guidelines.get("tone")
+        )
+        guidelines = (
+            brand_guidelines.get("brand_guidelines") or brand_guidelines.get("guidelines") or ""
+        )
+        if not brand_elements and (tone or guidelines):
+            brand_elements.append(
+                {
+                    "element_type": "general_guidelines",
+                    "description": f"Follow brand tone: {tone or 'professional'}. {str(guidelines)[:100]}",
+                    "location": "overall",
+                    "opacity": 1.0,
+                    "size_spec": {"type": "thematic_influence"},
+                }
+            )
+
         return brand_elements
 
     def _create_visual_elements(
         self,
-        strategy_artifact: Dict[str, Any],
-        copy_artifact: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Create visual elements based on strategy and copy."""
         visual_elements = []
 
@@ -542,8 +585,8 @@ class ImagePromptService:
     def _create_composition_guidelines(
         self,
         platform: str,
-        audience_segments: List[str],
-    ) -> Dict[str, Any]:
+        audience_segments: list[str],
+    ) -> dict[str, Any]:
         """Create composition guidelines for platform and audience."""
         return {
             "layout_type": "rule_of_thirds" if platform != "linkedin" else "centered_header_footer",
@@ -555,10 +598,10 @@ class ImagePromptService:
 
     def _generate_prompt_text(
         self,
-        strategy_artifact: Dict[str, Any],
-        copy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
+        copy_artifact: dict[str, Any],
         platform: str,
-        style_guidelines: Dict[str, Any],
+        style_guidelines: dict[str, Any],
     ) -> str:
         """Generate complete image prompt text."""
         campaign_context = strategy_artifact.get("campaign_context", {})

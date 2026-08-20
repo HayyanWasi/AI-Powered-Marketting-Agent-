@@ -1,15 +1,13 @@
 """AI Generation Engine Service - Public Interface."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
-from .constants import SeverityLevel
-from .models.generation_context import GenerationContext
-from .services.context_builder_service import ContextBuilderService
-from .services.image_generator_service import ImageGeneratorService
-from .services.image_prompt_service import ImagePromptService
-from .services.strategy_planner_service import StrategyPlannerService
-from .services.validation_service import ValidationService
+from .context_builder_service import ContextBuilderService
+from .image_generator_service import ImageGeneratorService
+from .image_prompt_service import ImagePromptService
+from .strategy_planner_service import StrategyPlannerService
+from .validation_service import ValidationService
 
 
 class AIGenerationService:
@@ -23,10 +21,13 @@ class AIGenerationService:
         self.image_generator = ImageGeneratorService()
         self.validator = ValidationService()
 
+    from langsmith import traceable
+
+    @traceable(name="generate_campaign")
     async def generate(
         self,
-        generation_context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Generate complete marketing campaign artifacts.
 
@@ -40,47 +41,37 @@ class AIGenerationService:
         Raises:
             ValueError: If generation context is invalid
         """
-        _ = self._execute_generation_pipeline(generation_context)
+        _ = await self._execute_generation_pipeline(generation_context)
         return _
 
+    @traceable(name="regenerate_text")
     async def regenerate_text(
         self,
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Regenerate text content while preserving strategy and images.
-
-        Args:
-            generation_context: Complete generation context with existing artifacts
-            user_instructions: Optional instructions for content regeneration
-
-        Returns:
-            Dict containing updated copy artifacts and validation results
         """
-        return self._execute_text_regeneration_pipeline(generation_context, user_instructions)
+        return await self._execute_text_regeneration_pipeline(generation_context, user_instructions)
 
+    @traceable(name="regenerate_image")
     async def regenerate_image(
         self,
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Regenerate images while preserving strategy and copy.
-
-        Args:
-            generation_context: Complete generation context with existing artifacts
-            user_instructions: Optional instructions for image regeneration
-
-        Returns:
-            Dict containing updated image artifacts and validation results
         """
-        return self._execute_image_regeneration_pipeline(generation_context, user_instructions)
+        return await self._execute_image_regeneration_pipeline(
+            generation_context, user_instructions
+        )
 
     async def validate_all_artifacts(
         self,
-        artifacts: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        artifacts: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate all campaign artifacts against business rules.
 
@@ -90,19 +81,28 @@ class AIGenerationService:
         Returns:
             Dict containing comprehensive validation results and recommendations
         """
-        return self.validator.validate_artifacts(artifacts)
+        return self.validator.validate_all_artifacts(artifacts)
 
-    def _execute_generation_pipeline(self, generation_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute complete generation pipeline: Context → Strategy → Copy → Image Prompt → Image → Validate."""
+    async def _execute_generation_pipeline(
+        self, generation_context: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute complete generation pipeline: Context -> Strategy -> Copy -> Image Prompt -> Image -> Validate."""
         try:
-            strategy = self.strategy_planner.generate_strategy(generation_context)
-            copy = self._generate_copy(strategy, generation_context)
-            image_prompt = self.image_prompt_generator.generate_prompt(
-                strategy, copy, generation_context
+            strategy = await self.strategy_planner.generate_strategy(generation_context)
+            copy = await self._generate_copy(strategy, generation_context)
+            platforms = generation_context.get("platforms", ["web"])
+            primary_platform = platforms[0] if platforms else "web"
+            image_prompt = self.image_prompt_generator.generate_image_prompt(
+                strategy, copy, primary_platform
             )
-            image = self.image_generator.generate_image(image_prompt)
-            validation = self.validator.validate_artifacts(
-                {"strategy": strategy, "copy": copy, "image_prompt": image_prompt, "image": image}
+            image = await self.image_generator.generate_image(image_prompt)
+            validation = self.validator.validate_all_artifacts(
+                {
+                    "strategy": strategy,
+                    "copy": [copy],
+                    "image_prompts": [image_prompt],
+                    "images": [image],
+                }
             )
 
             return {
@@ -119,18 +119,25 @@ class AIGenerationService:
         except Exception as e:
             raise ValueError(f"Generation pipeline execution failed: {str(e)}")
 
-    def _execute_text_regeneration_pipeline(
+    async def _execute_text_regeneration_pipeline(
         self,
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Execute text regeneration pipeline preserving strategy and images."""
         try:
-            strategy = generation_context["strategy"]
-            existing_image = generation_context["image"]
-            new_copy = self._regenerate_copy(strategy, generation_context, user_instructions)
-            validation = self.validator.validate_artifacts(
-                {"strategy": strategy, "copy": new_copy, "image": existing_image}
+            strategy = generation_context.get("strategy")
+            if not strategy:
+                strategy = await self.strategy_planner.generate_strategy(generation_context)
+
+            existing_image = generation_context.get("image")
+            new_copy = await self._regenerate_copy(strategy, generation_context, user_instructions)
+            validation = self.validator.validate_all_artifacts(
+                {
+                    "strategy": strategy,
+                    "copy": [new_copy],
+                    "images": [existing_image] if existing_image else [],
+                }
             )
 
             return {
@@ -146,23 +153,30 @@ class AIGenerationService:
         except Exception as e:
             raise ValueError(f"Text regeneration pipeline execution failed: {str(e)}")
 
-    def _execute_image_regeneration_pipeline(
+    async def _execute_image_regeneration_pipeline(
         self,
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Execute image regeneration pipeline preserving strategy and copy."""
         try:
             strategy = generation_context["strategy"]
             existing_copy = generation_context["copy"]
-            new_image_prompt = self.image_prompt_generator.regenerate_prompt(
-                strategy, existing_copy, user_instructions
+            platforms = generation_context.get("platforms", ["web"])
+            primary_platform = platforms[0] if platforms else "web"
+            new_image_prompt = self.image_prompt_generator.regenerate_image_prompt(
+                strategy, existing_copy, primary_platform, user_instructions
             )
-            new_image = self.image_generator.regenerate_image(
+            new_image = await self.image_generator.regenerate_image(
                 generation_context["image"], new_image_prompt, user_instructions
             )
-            validation = self.validator.validate_artifacts(
-                {"strategy": strategy, "copy": existing_copy, "image": new_image}
+            validation = self.validator.validate_all_artifacts(
+                {
+                    "strategy": strategy,
+                    "copy": [existing_copy],
+                    "image_prompts": [new_image_prompt],
+                    "images": [new_image],
+                }
             )
 
             return {
@@ -179,50 +193,89 @@ class AIGenerationService:
         except Exception as e:
             raise ValueError(f"Image regeneration pipeline execution failed: {str(e)}")
 
-    def _generate_copy(self, strategy: Dict[str, Any], generation_context: Dict[str, Any]) -> Any:
-        """Generate copy content from strategy and context (placeholder for llm_service)."""
+    async def _generate_copy(
+        self, strategy: dict[str, Any], generation_context: dict[str, Any]
+    ) -> Any:
+        """Generate copy content from strategy and context using LLM."""
+        goals = strategy.get("campaign_strategy", {}).get("goals", [])
+        primary_goal = goals[0] if goals else "Campaign"
+        platforms = generation_context.get("platforms", ["web"])
+        primary_platform = platforms[0] if platforms else "web"
+
+        import json
+
+        from src.modules.ai_generation.services.llm_service import LLMService
+
+        system_prompt = "You are an expert copywriter. Based on the strategy and context provided, generate high-converting marketing copy. Your output MUST be a JSON object containing EXACTLY these keys: 'headlines' (list of strings), 'captions' (list of strings), 'ctas' (list of strings), 'hashtags' (list of strings), 'platform_variations' (dict mapping each platform to {'headline', 'body', 'cta', 'hashtags'})."
+
+        user_prompt = json.dumps(
+            {"strategy": strategy, "platforms": platforms, "primary_goal": primary_goal}
+        )
+
+        llm = LLMService()
+        trace_id = generation_context.get("trace_id")
+        workflow_id = generation_context.get("workflow_id")
+
+        generated_data = await llm.generate_json(
+            system_prompt,
+            user_prompt,
+            trace_id=trace_id,
+            workflow_id=workflow_id,
+            prompt_name="generate_copy",
+        )
+
+        if not generated_data:
+            # Fallback to deterministic mock copy
+            generated_data = {
+                "headlines": [
+                    f"Introducing {primary_goal}",
+                    "Your target audience solution",
+                    "Transform user experience",
+                ],
+                "captions": ["Professional marketing content aligned with brand voice"],
+                "ctas": ["Learn More", "Get Started", "Contact Us"],
+                "hashtags": ["#Marketing", "#Campaign", "#Brand"],
+                "platform_variations": {
+                    platform: {
+                        "headline": f"Headline for {platform}",
+                        "body": "Platform-specific body copy",
+                        "cta": "Platform CTA",
+                        "hashtags": "Platform hashtags",
+                    }
+                    for platform in platforms
+                },
+            }
+
         return {
             "id": f"copy_{hash(str(strategy)) % 10000}",
             "generated_at": datetime.now().isoformat(),
-            "headlines": [
-                f"Introducing {strategy.get('campaign_strategy', {}).get('goals', ['Campaign'])[0]}",
-                f"Your target audience solution",
-                f"Transform user experience",
-            ],
-            "body_copy": "Professional marketing content aligned with brand voice",
-            "call_to_actions": ["Learn More", "Get Started", "Contact Us"],
-            "hashtags": ["#Marketing", "#Campaign", "#Brand"],
-            "platform_variations": {
-                platform: {
-                    "headline": f"Headline for {platform}",
-                    "body": "Platform-specific body copy",
-                    "cta": "Platform CTA",
-                    "hashtags": "Platform hashtags",
-                }
-                for platform in generation_context.get("platforms", [])
-            },
+            "platform": primary_platform,
+            **generated_data,
         }
 
-    def _regenerate_copy(
+    async def _regenerate_copy(
         self,
-        strategy: Dict[str, Any],
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
+        strategy: dict[str, Any],
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
     ) -> Any:
         """Regenerate copy content preserving strategy."""
         if user_instructions and user_instructions.get("changes"):
             return {
-                "id": f"copy_{hash(str(strategy + str(user_instructions))) % 10000}",
+                "id": f"copy_{hash(str(strategy) + str(user_instructions)) % 10000}",
                 "generated_at": datetime.now().isoformat(),
+                "platform": generation_context.get("copy", {}).get("platform", "web"),
                 "headlines": [
                     f"Updated: {user_instructions['changes'].get('headline', 'New headline')}"
                 ],
-                "body_copy": "Updated body copy based on user instructions",
-                "call_to_actions": ["Updated CTA"],
+                "captions": ["Updated body copy based on user instructions"],
+                "ctas": ["Updated CTA"],
                 "hashtags": ["#Updated", "#Campaign"],
                 "platform_variations": generation_context.get("copy", {}).get(
                     "platform_variations", {}
                 ),
             }
         else:
-            return generation_context.get("copy", self._generate_copy(strategy, generation_context))
+            return generation_context.get("copy") or (
+                await self._generate_copy(strategy, generation_context)
+            )

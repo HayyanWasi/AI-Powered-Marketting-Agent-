@@ -5,7 +5,6 @@ with proper status codes and sanitized messages.
 """
 
 import traceback
-from typing import Any, Dict, Optional, Union
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -16,7 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from src.api.response import APIErrorResponse, ValidationErrorDetail
 
 
-async def _error_response(request: Request, status_code: int, error: str, message: str) -> JSONResponse:
+async def _error_response(
+    request: Request, status_code: int, error: str, message: str
+) -> JSONResponse:
     """Build a standardized JSON error response.
 
     Includes request IDs from middleware for correlation when available.
@@ -49,7 +50,9 @@ async def _error_response_with_details(
     return JSONResponse(status_code=status_code, content=body)
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Handle FastAPI request validation errors (422)."""
     details: list[ValidationErrorDetail] = []
     for err in exc.errors():
@@ -57,10 +60,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         msg = err.get("msg", "Invalid value")
         code = err.get("type", "validation_error")
         details.append(ValidationErrorDetail(field=field, message=msg, code=code))
-    return await _error_response_with_details(request, 422, "validation_error", "Request validation failed", details)
+    return await _error_response_with_details(
+        request, 422, "validation_error", "Request validation failed", details
+    )
 
 
-async def pydantic_validation_handler(request: Request, exc: PydanticValidationError) -> JSONResponse:
+async def pydantic_validation_handler(
+    request: Request, exc: PydanticValidationError
+) -> JSONResponse:
     """Handle Pydantic validation errors (422)."""
     details: list[ValidationErrorDetail] = []
     for err in exc.errors():
@@ -68,13 +75,15 @@ async def pydantic_validation_handler(request: Request, exc: PydanticValidationE
         msg = err.get("msg", "Invalid value")
         code = err.get("type", "validation_error")
         details.append(ValidationErrorDetail(field=field, message=msg, code=code))
-    return await _error_response_with_details(request, 422, "validation_error", "Request validation failed", details)
+    return await _error_response_with_details(
+        request, 422, "validation_error", "Request validation failed", details
+    )
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Translate Starlette/FastAPI HTTPException to standardized response."""
     status_code = exc.status_code
-    error_map: Dict[int, str] = {
+    error_map: dict[int, str] = {
         400: "bad_request",
         401: "unauthorized",
         403: "forbidden",

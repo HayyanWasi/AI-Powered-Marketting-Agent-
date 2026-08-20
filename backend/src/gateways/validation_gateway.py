@@ -1,7 +1,6 @@
 """Validation gateway that orchestrates the full validation pipeline."""
 
 import logging
-import uuid
 
 from src.models.validation import (
     ValidationRequest,

@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from src.models.company import CompanyProfile
 from src.repositories.company_repository import (
     CompanyNotFoundError,
     CompanyRepository,

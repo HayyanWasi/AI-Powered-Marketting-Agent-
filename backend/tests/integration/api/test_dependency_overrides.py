@@ -1,9 +1,9 @@
 """Integration tests for FastAPI dependency override support."""
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.dependencies import get_authenticated_user, AuthenticatedUser
+from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.api.response import success_response
 
 

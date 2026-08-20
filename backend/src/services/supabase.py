@@ -139,6 +139,37 @@ class SupabaseService:
     def get_image_url(self, path: str) -> str:
         return str(self._storage().get_public_url(path))
 
+    @_retry
+    def upload_image_bytes(
+        self,
+        data: bytes,
+        filename: str,
+        content_type: str = "image/png",
+        prefix: str = "campaigns",
+    ) -> str:
+        """Upload in-memory image bytes to storage and return the public URL.
+
+        Args:
+            data: Raw image bytes.
+            filename: Object name (e.g. "abc123.png").
+            content_type: MIME type of the image.
+            prefix: Folder prefix inside the bucket.
+
+        Returns:
+            Public URL to the uploaded object.
+        """
+        if content_type not in IMAGE_TYPES:
+            raise ValidationError(f"Unsupported format: {content_type}")
+        if len(data) > MAX_IMAGE_SIZE:
+            raise ValidationError(f"Image too large: {len(data)} bytes (max {MAX_IMAGE_SIZE})")
+        storage_name = f"{prefix}/{filename}" if prefix else filename
+        self._storage().upload(
+            storage_name,
+            data,
+            {"content-type": content_type, "upsert": "true"},
+        )
+        return self.get_image_url(storage_name)
+
     def remove_storage_file(self, storage_path: str) -> None:
         try:
             self._storage().remove([storage_path])

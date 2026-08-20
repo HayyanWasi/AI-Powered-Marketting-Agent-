@@ -41,10 +41,8 @@ class TestGuestSearchService:
         results = service.search("Jane Doe", company_name="Acme")
         assert len(results) == 3
         assert mock.text.call_count == 2
-        first_call_args = mock.text.call_args_list[0][1]
-        assert (
-            "Acme" in first_call_args["keywords"] or "Jane Doe Acme" in first_call_args["keywords"]
-        )
+        first_call_args = mock.text.call_args_list[0][0]
+        assert "Acme" in first_call_args[0] or "Jane Doe Acme" in first_call_args[0]
         assert mock.text.call_args_list[0][1]["max_results"] == 7
 
     def test_empty_company_skips_retry(self, mock_ddgs: MagicMock) -> None:

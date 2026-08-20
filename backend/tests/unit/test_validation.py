@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from src.models.company import CompanyProfileCreate, CompanyProfileUpdate, CompanyProfile
+
+from src.models.company import CompanyProfile, CompanyProfileCreate, CompanyProfileUpdate
 
 
 class TestCompanyProfileCreate:

@@ -8,9 +8,10 @@ This agent:
 No LLM needed — pure date math and slot assignment.
 """
 
-from src.agents.base import BaseAgent, AgentResult
-from src.agents.context import GenerationContext, ContentSlot
 from dataclasses import replace
+
+from src.agents.base import AgentResult, BaseAgent
+from src.agents.context import ContentSlot, GenerationContext
 
 
 class CampaignPlannerAgent(BaseAgent):
@@ -53,12 +54,35 @@ class CampaignPlannerAgent(BaseAgent):
         )
 
     def _generate_slots(self, context: GenerationContext) -> list[ContentSlot]:
-        """Generate content slots for each platform."""
+        """Generate content slots.
+
+        When an approved CampaignPlan is attached, slots are built from the
+        plan's dated content calendar — real dates, themes, and phases decided
+        by the Channel Planner specialist.  Otherwise falls back to the legacy
+        fixed-phases loop so campaigns without a plan still work.
+        """
+        # ── Plan-aware path ──────────────────────────────────────────────
+        if context.plan is not None and context.plan.approved:
+            slots = []
+            for cal_slot in context.plan.channel_plan.calendar_slots:
+                slots.append(
+                    ContentSlot(
+                        slot_id=cal_slot.slot_id,
+                        date=cal_slot.date,
+                        platform=cal_slot.platform,
+                        phase=cal_slot.phase.value,
+                        theme=cal_slot.theme,
+                        format_type=cal_slot.format_type,
+                    )
+                )
+            self.logger.info(
+                "Built %d slots from approved plan calendar", len(slots)
+            )
+            return slots
+
+        # ── Legacy path ──────────────────────────────────────────────────
         slots = []
         slot_id = 0
-
-        # Simple slot generation: 1 post per platform for the event period
-        # In production, this would use date math for multi-day campaigns
         for platform in context.event.platforms:
             for phase in ["Awareness", "Authority", "Urgency"]:
                 slot_id += 1

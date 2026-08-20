@@ -25,7 +25,7 @@ from src.models.validation import (
 @pytest.fixture
 def client() -> TestClient:
     """Create a test client with mocked gateway."""
-    with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+    with patch("src.api.v1.validation.validation_gateway") as mock_gw:
         mock_gw.validate_campaign = AsyncMock()
         mock_gw.can_preview = lambda r: r.can_preview
         from src.main import app
@@ -62,7 +62,7 @@ class TestValidateCampaignEndpoint:
     """Tests for POST /api/campaigns/{campaign_id}/validate."""
 
     def test_validate_campaign_success(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_pass_response())
             mock_gw.can_preview = lambda r: r.can_preview
 
@@ -81,7 +81,7 @@ class TestValidateCampaignEndpoint:
             assert data["can_preview"] is True
 
     def test_validate_campaign_with_image(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_pass_response())
             mock_gw.can_preview = lambda r: r.can_preview
 
@@ -99,7 +99,7 @@ class TestValidateCampaignEndpoint:
             assert data["can_preview"] is True
 
     def test_validate_campaign_failure(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_fail_response())
             mock_gw.can_preview = lambda r: r.can_preview
 
@@ -138,7 +138,7 @@ class TestValidateCampaignEndpoint:
         assert response.status_code == 422
 
     def test_validate_campaign_exception(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(side_effect=Exception("Unexpected"))
 
             response = client.post(
@@ -156,7 +156,7 @@ class TestPreviewCheckEndpoint:
     """Tests for GET /api/campaigns/{campaign_id}/preview/check."""
 
     def test_preview_check_passes(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_pass_response())
             mock_gw.can_preview = lambda r: r.can_preview
 
@@ -175,7 +175,7 @@ class TestPreviewCheckEndpoint:
             assert "passed" in data["message"].lower()
 
     def test_preview_check_fails(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_fail_response())
             mock_gw.can_preview = lambda r: r.can_preview
 
@@ -194,7 +194,7 @@ class TestPreviewCheckEndpoint:
             assert "failed" in data["message"].lower()
 
     def test_preview_check_with_image(self, client: TestClient) -> None:
-        with patch("src.api.routes.validation.validation_gateway") as mock_gw:
+        with patch("src.api.v1.validation.validation_gateway") as mock_gw:
             mock_gw.validate_campaign = AsyncMock(return_value=_make_pass_response())
             mock_gw.can_preview = lambda r: r.can_preview
 

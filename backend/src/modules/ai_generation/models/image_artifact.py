@@ -1,8 +1,8 @@
 """Image artifact model for AI Generation Engine."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,10 +14,10 @@ class ImageMetadata:
     format: str
     size_bytes: int
     aspects_ratio: float
-    file_path: Optional[str] = None
-    cloud_storage_path: Optional[str] = None
+    file_path: str | None = None
+    cloud_storage_path: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize metadata to dictionary."""
         return {
             "width": self.width,
@@ -30,7 +30,7 @@ class ImageMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ImageMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> "ImageMetadata":
         """Deserialize metadata from dictionary."""
         return cls(
             width=data["width"],
@@ -48,11 +48,11 @@ class BrandAlignmentScore:
     """Brand compliance measurement for generated images."""
 
     overall_score: float
-    elements_checked: List[str]
-    scores: Dict[str, float]
-    issues: List[str]
+    elements_checked: list[str]
+    scores: dict[str, float]
+    issues: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize score to dictionary."""
         return {
             "overall_score": self.overall_score,
@@ -62,7 +62,7 @@ class BrandAlignmentScore:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BrandAlignmentScore":
+    def from_dict(cls, data: dict[str, Any]) -> "BrandAlignmentScore":
         """Deserialize score from dictionary."""
         return cls(
             overall_score=data["overall_score"],
@@ -77,12 +77,12 @@ class PlatformSuitabilityScore:
     """Platform compatibility measurement for generated images."""
 
     overall_score: float
-    criteria: List[str]
-    scores: Dict[str, float]
-    requirements_met: List[str]
-    requirements_failed: List[str]
+    criteria: list[str]
+    scores: dict[str, float]
+    requirements_met: list[str]
+    requirements_failed: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize score to dictionary."""
         return {
             "overall_score": self.overall_score,
@@ -93,7 +93,7 @@ class PlatformSuitabilityScore:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PlatformSuitabilityScore":
+    def from_dict(cls, data: dict[str, Any]) -> "PlatformSuitabilityScore":
         """Deserialize score from dictionary."""
         return cls(
             overall_score=data["overall_score"],
@@ -109,14 +109,14 @@ class StyleGuidelines:
     """Artistic style requirements for image generation."""
 
     artistic_style: str
-    color_scheme: List[str]
+    color_scheme: list[str]
     visual_mood: str
     typography: str
     composition: str
     lighting: str
-    filters: List[str]
+    filters: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize guidelines to dictionary."""
         return {
             "artistic_style": self.artistic_style,
@@ -129,7 +129,7 @@ class StyleGuidelines:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StyleGuidelines":
+    def from_dict(cls, data: dict[str, Any]) -> "StyleGuidelines":
         """Deserialize guidelines from dictionary."""
         return cls(
             artistic_style=data["artistic_style"],
@@ -149,9 +149,9 @@ class BrandElement:
     element_type: str
     location: str
     opacity: float
-    size_spec: Dict[str, int]
+    size_spec: dict[str, int]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize element to dictionary."""
         return {
             "element_type": self.element_type,
@@ -161,7 +161,7 @@ class BrandElement:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BrandElement":
+    def from_dict(cls, data: dict[str, Any]) -> "BrandElement":
         """Deserialize element from dictionary."""
         return cls(
             element_type=data["element_type"],
@@ -180,7 +180,7 @@ class VisualElement:
     priority: int
     inclusion_requirement: bool
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize element to dictionary."""
         return {
             "concept": self.concept,
@@ -190,7 +190,7 @@ class VisualElement:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "VisualElement":
+    def from_dict(cls, data: dict[str, Any]) -> "VisualElement":
         """Deserialize element from dictionary."""
         return cls(
             concept=data["concept"],
@@ -205,12 +205,12 @@ class CompositionGuidelines:
     """Layout and composition rules for image generation."""
 
     layout_type: str
-    focal_points: List[str]
+    focal_points: list[str]
     depth_of_field: str
     perspective: str
     negative_space: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize guidelines to dictionary."""
         return {
             "layout_type": self.layout_type,
@@ -221,7 +221,7 @@ class CompositionGuidelines:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CompositionGuidelines":
+    def from_dict(cls, data: dict[str, Any]) -> "CompositionGuidelines":
         """Deserialize guidelines from dictionary."""
         return cls(
             layout_type=data["layout_type"],
@@ -239,10 +239,10 @@ class ValidationError:
     code: str
     message: str
     severity: str
-    field: Optional[str] = None
-    suggested_fix: Optional[str] = None
+    field: str | None = None
+    suggested_fix: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize error to dictionary."""
         return {
             "code": self.code,
@@ -253,7 +253,7 @@ class ValidationError:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationError":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationError":
         """Deserialize error from dictionary."""
         return cls(
             code=data["code"],
@@ -270,9 +270,9 @@ class ValidationWarning:
 
     code: str
     message: str
-    field: Optional[str] = None
+    field: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize warning to dictionary."""
         return {
             "code": self.code,
@@ -281,7 +281,7 @@ class ValidationWarning:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationWarning":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationWarning":
         """Deserialize warning from dictionary."""
         return cls(
             code=data["code"],
@@ -296,9 +296,9 @@ class ContentBlock:
 
     type: str
     content: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize block to dictionary."""
         return {
             "type": self.type,
@@ -307,7 +307,7 @@ class ContentBlock:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ContentBlock":
+    def from_dict(cls, data: dict[str, Any]) -> "ContentBlock":
         """Deserialize block from dictionary."""
         return cls(
             type=data["type"],
@@ -321,12 +321,12 @@ class ValidationResults:
     """Validation outcome tracking."""
 
     is_valid: bool
-    errors: List[ValidationError]
-    warnings: List[ValidationWarning]
-    compliance_scores: Dict[str, float]
-    recommendations: List[str]
+    errors: list[ValidationError]
+    warnings: list[ValidationWarning]
+    compliance_scores: dict[str, float]
+    recommendations: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize results to dictionary."""
         return {
             "is_valid": self.is_valid,
@@ -337,7 +337,7 @@ class ValidationResults:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationResults":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationResults":
         """Deserialize results from dictionary."""
         return cls(
             is_valid=data["is_valid"],
@@ -364,9 +364,9 @@ class ImageArtifact:
     metadata: ImageMetadata
     brand_alignment: BrandAlignmentScore
     platform_suitability: PlatformSuitabilityScore
-    validation_results: Optional[ValidationResults] = None
+    validation_results: ValidationResults | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize image to dictionary for storage/transmission."""
         return {
             "id": self.id,
@@ -384,7 +384,7 @@ class ImageArtifact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ImageArtifact":
+    def from_dict(cls, data: dict[str, Any]) -> "ImageArtifact":
         """Deserialize image from dictionary."""
         return cls(
             id=data["id"],

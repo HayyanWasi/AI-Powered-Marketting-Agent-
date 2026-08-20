@@ -1,40 +1,36 @@
 """Campaign API routes."""
 
-from typing import List, Optional
-from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, status
-from pydantic import BaseModel
+from uuid import UUID
 
-from src.models.campaign import Campaign, CampaignState, Goals, TargetAudience, Schedule
-from src.models.history import CampaignHistoryEntry, EventType
+from fastapi import APIRouter, Header, HTTPException, Query, status
+
+from src.models.campaign import CampaignState
 from src.models.errors import (
-    NotFoundError,
-    ValidationError,
-    StateTransitionError,
-    VersionConflictError,
     DuplicateNameError,
+    NotFoundError,
     PreconditionFailedError,
+    StateTransitionError,
+    ValidationError,
+    VersionConflictError,
 )
 from src.schemas import (
-    CreateCampaignRequest,
-    UpdateCampaignRequest,
+    AssetListResponse,
+    AssetResponse,
+    CampaignListResponse,
     CampaignResponse,
     CampaignSummary,
-    CampaignListResponse,
-    StateTransitionRequest,
-    StateTransitionResponse,
+    CreateAssetRequest,
+    CreateCampaignRequest,
+    ErrorResponse,
     HistoryEntryResponse,
     HistoryListResponse,
-    CreateAssetRequest,
-    AssetResponse,
-    AssetListResponse,
-    CampaignListParams,
-    HistoryListParams,
-    ErrorResponse,
+    StateTransitionRequest,
+    StateTransitionResponse,
+    UpdateCampaignRequest,
 )
-from src.services.campaign_service import CampaignService
 from src.services.asset_service import AssetService
+from src.services.campaign_service import CampaignService
 from src.services.history_service import HistoryService
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
@@ -99,21 +95,18 @@ async def create_campaign(request: CreateCampaignRequest):
         org_id = get_organization_id()
         actor_id = get_actor_id()
 
-        campaign = Campaign(
-            organization_id=org_id,
-            company_profile_id=request.company_profile_id,
+        created = await _get_campaign_service().create_campaign(
             name=request.name,
-            goals=Goals(**request.goals.model_dump()),
-            target_audience=TargetAudience(**request.target_audience.model_dump()),
+            goals=request.goals.model_dump(mode="json"),
+            target_audience=request.target_audience.model_dump(mode="json"),
             platforms=request.platforms,
-            schedule=Schedule(**request.schedule.model_dump()),
-            metadata=request.metadata or {},
-            created_by=actor_id,
-            updated_by=actor_id,
+            schedule=request.schedule.model_dump(mode="json"),
+            metadata=request.metadata,
+            company_profile_id=request.company_profile_id,
+            organization_id=org_id,
+            actor_id=actor_id,
         )
-
-        created = await _get_campaign_service().create_campaign(campaign, actor_id)
-        return CampaignResponse.model_validate(created)
+        return CampaignResponse(**created.to_dict())
 
     except DuplicateNameError as e:
         raise HTTPException(status_code=409, detail={"detail": str(e), "code": "DUPLICATE_NAME"})
@@ -126,6 +119,11 @@ async def create_campaign(request: CreateCampaignRequest):
                 "invalid_fields": e.invalid_fields,
             },
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"detail": f"Failed to create campaign: {e}", "code": "INTERNAL_ERROR"},
+        )
 
 
 @router.get(
@@ -134,10 +132,10 @@ async def create_campaign(request: CreateCampaignRequest):
     responses={400: {"model": ErrorResponse}},
 )
 async def list_campaigns(
-    state: Optional[CampaignState] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
-    owner_id: Optional[UUID] = Query(None),
+    state: CampaignState | None = Query(None),
+    start_date: datetime | None = Query(None),
+    end_date: datetime | None = Query(None),
+    owner_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -155,7 +153,7 @@ async def list_campaigns(
     )
 
     return CampaignListResponse(
-        campaigns=[CampaignSummary.model_validate(c) for c in campaigns],
+        campaigns=[CampaignSummary.model_validate(c.to_dict()) for c in campaigns],
         total=total,
         page=page,
         page_size=page_size,
@@ -175,7 +173,7 @@ async def get_campaign(campaign_id: UUID):
     if not campaign:
         raise NotFoundError("Campaign", str(campaign_id))
 
-    return CampaignResponse.model_validate(campaign)
+    return CampaignResponse.model_validate(campaign.to_dict())
 
 
 @router.put(
@@ -208,7 +206,7 @@ async def update_campaign(
             expected_version=expected_version,
         )
 
-        return CampaignResponse.model_validate(updated)
+        return CampaignResponse.model_validate(updated.to_dict())
 
     except ValueError:
         raise HTTPException(
@@ -284,9 +282,11 @@ async def transition_campaign(campaign_id: UUID, request: StateTransitionRequest
         history_entry = history[0] if history else None
 
         return StateTransitionResponse(
-            campaign=CampaignResponse.model_validate(campaign),
+            campaign=CampaignResponse.model_validate(campaign.to_dict()),
             history_entry=(
-                HistoryEntryResponse.model_validate(history_entry) if history_entry else None
+                HistoryEntryResponse.model_validate(history_entry.to_dict())
+                if history_entry
+                else None
             ),
         )
 
@@ -307,7 +307,7 @@ async def transition_campaign(campaign_id: UUID, request: StateTransitionRequest
     response_model=CampaignResponse,
     responses={404: {"model": ErrorResponse}},
 )
-async def archive_campaign(campaign_id: UUID, reason: Optional[str] = None):
+async def archive_campaign(campaign_id: UUID, reason: str | None = None):
     """Archive a campaign from any state."""
     try:
         org_id = get_organization_id()
@@ -320,7 +320,7 @@ async def archive_campaign(campaign_id: UUID, reason: Optional[str] = None):
             reason=reason,
         )
 
-        return CampaignResponse.model_validate(campaign)
+        return CampaignResponse.model_validate(campaign.to_dict())
 
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail={"detail": str(e), "code": "NOT_FOUND"})
@@ -343,7 +343,7 @@ async def restore_campaign(campaign_id: UUID):
             actor_id=actor_id,
         )
 
-        return CampaignResponse.model_validate(campaign)
+        return CampaignResponse.model_validate(campaign.to_dict())
 
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail={"detail": str(e), "code": "NOT_FOUND"})
@@ -377,7 +377,7 @@ async def get_campaign_history(
     entries, total = await _get_history_service().get_history(campaign_id, page, page_size)
 
     return HistoryListResponse(
-        history=[HistoryEntryResponse.model_validate(e) for e in entries],
+        history=[HistoryEntryResponse.model_validate(e.to_dict()) for e in entries],
         total=total,
         page=page,
         page_size=page_size,
@@ -413,7 +413,7 @@ async def create_asset(campaign_id: UUID, request: CreateAssetRequest):
             storage_path=request.storage_path,
         )
 
-        return AssetResponse.model_validate(asset)
+        return AssetResponse.model_validate(asset.to_dict())
 
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail={"detail": str(e), "code": "NOT_FOUND"})

@@ -60,3 +60,4 @@ class LLMRequest(BaseModel):
     user_prompt: str
     template_name: str | None = None
     template_variables: dict[str, str] = Field(default_factory=dict)
+    prompt_name: str | None = None

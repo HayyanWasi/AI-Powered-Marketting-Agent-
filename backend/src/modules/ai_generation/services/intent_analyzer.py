@@ -1,7 +1,7 @@
 """Intent analyzer service for AI Generation Engine."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..constants import SeverityLevel
 
@@ -14,8 +14,8 @@ class ValidationError:
         code: str,
         message: str,
         severity: str,
-        field: Optional[str] = None,
-        suggested_fix: Optional[str] = None,
+        field: str | None = None,
+        suggested_fix: str | None = None,
     ):
         self.code = code
         self.message = message
@@ -23,7 +23,7 @@ class ValidationError:
         self.field = field
         self.suggested_fix = suggested_fix
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -36,12 +36,12 @@ class ValidationError:
 class ValidationWarning:
     """Individual validation warning."""
 
-    def __init__(self, code: str, message: str, field: Optional[str] = None):
+    def __init__(self, code: str, message: str, field: str | None = None):
         self.code = code
         self.message = message
         self.field = field
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -54,9 +54,9 @@ class IntentAnalyzerService:
 
     def analyze_regeneration_intent(
         self,
-        generation_context: Dict[str, Any],
-        user_instructions: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        generation_context: dict[str, Any],
+        user_instructions: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Analyze user intent from generation context and instructions.
 
@@ -148,7 +148,7 @@ class IntentAnalyzerService:
             "preserve_artifacts": False,
         }
 
-    def _extract_text_instructions(self, user_intent: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_text_instructions(self, user_intent: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract text regeneration instructions from user intent.
 
@@ -187,7 +187,7 @@ class IntentAnalyzerService:
 
         return None
 
-    def _extract_image_instructions(self, user_intent: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_image_instructions(self, user_intent: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract image regeneration instructions from user intent.
 
@@ -226,8 +226,8 @@ class IntentAnalyzerService:
         return None
 
     def _extract_strategy_instructions(
-        self, user_intent: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, user_intent: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """
         Extract strategy revision instructions from user intent.
 
@@ -260,8 +260,8 @@ class IntentAnalyzerService:
         return None
 
     def validate_intent_analysis(
-        self, intent_result: Dict[str, Any], generation_context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, intent_result: dict[str, Any], generation_context: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Validate intent analysis results.
 

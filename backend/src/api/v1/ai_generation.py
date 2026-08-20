@@ -1,7 +1,6 @@
 """AI Generation Engine API routes — delegates to AIGenerationService."""
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -36,7 +35,7 @@ class GenerationContext(BaseModel):
     reference_materials: list[dict] = Field(
         ..., description="Relevant assets, benchmarks, competitor examples, previous campaigns"
     )
-    user_intent: Optional[dict] = Field(
+    user_intent: dict | None = Field(
         None, description="Additional instructions for specific content variations or emphasis"
     )
 
@@ -47,7 +46,7 @@ class ValidationRequest(BaseModel):
 
 class RegenerationRequest(BaseModel):
     existing_context: dict
-    user_instructions: Optional[dict] = Field(
+    user_instructions: dict | None = Field(
         None, description="Instructions for what aspects to regenerate"
     )
 

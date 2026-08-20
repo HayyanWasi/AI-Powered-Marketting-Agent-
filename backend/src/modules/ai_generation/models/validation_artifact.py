@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..constants import SeverityLevel
 
@@ -14,10 +14,10 @@ class ValidationError:
     code: str
     message: str
     severity: SeverityLevel
-    field: Optional[str] = None
-    suggested_fix: Optional[str] = None
+    field: str | None = None
+    suggested_fix: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize error to dictionary."""
         return {
             "code": self.code,
@@ -28,7 +28,7 @@ class ValidationError:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationError":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationError":
         """Deserialize error from dictionary."""
         return cls(
             code=data["code"],
@@ -45,9 +45,9 @@ class ValidationWarning:
 
     code: str
     message: str
-    field: Optional[str] = None
+    field: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize warning to dictionary."""
         return {
             "code": self.code,
@@ -56,7 +56,7 @@ class ValidationWarning:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationWarning":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationWarning":
         """Deserialize warning from dictionary."""
         return cls(
             code=data["code"],
@@ -70,12 +70,12 @@ class ValidationResults:
     """Validation outcome tracking."""
 
     is_valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[ValidationWarning] = field(default_factory=list)
-    compliance_scores: Dict[str, float] = field(default_factory=dict)
-    recommendations: List[str] = field(default_factory=list)
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[ValidationWarning] = field(default_factory=list)
+    compliance_scores: dict[str, float] = field(default_factory=dict)
+    recommendations: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize results to dictionary."""
         return {
             "is_valid": self.is_valid,
@@ -86,7 +86,7 @@ class ValidationResults:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationResults":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationResults":
         """Deserialize results from dictionary."""
         return cls(
             is_valid=data["is_valid"],
@@ -106,13 +106,13 @@ class ValidationArtifact:
     artifact_type: str
     artifact_id: str
     is_valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[ValidationWarning] = field(default_factory=list)
-    compliance_scores: Dict[str, float] = field(default_factory=dict)
-    recommendations: List[str] = field(default_factory=list)
-    validated_by: Optional[str] = None
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[ValidationWarning] = field(default_factory=list)
+    compliance_scores: dict[str, float] = field(default_factory=dict)
+    recommendations: list[str] = field(default_factory=list)
+    validated_by: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize artifact to dictionary."""
         return {
             "id": self.id,
@@ -128,7 +128,7 @@ class ValidationArtifact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationArtifact":
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationArtifact":
         """Deserialize artifact from dictionary."""
         return cls(
             id=data["id"],
@@ -155,11 +155,11 @@ class ValidationArtifact:
         """Get total number of warnings."""
         return len(self.warnings)
 
-    def get_error_codes(self) -> List[str]:
+    def get_error_codes(self) -> list[str]:
         """Get list of unique error codes."""
         return list(set(e.code for e in self.errors))
 
-    def get_field_errors(self, field: str) -> List[ValidationError]:
+    def get_field_errors(self, field: str) -> list[ValidationError]:
         """Get all errors for a specific field."""
         return [e for e in self.errors if e.field == field]
 

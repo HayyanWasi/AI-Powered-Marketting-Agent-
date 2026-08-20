@@ -1,7 +1,7 @@
 """Campaign history service."""
 
-from typing import List, Optional
 from uuid import UUID
+
 from src.models.campaign import Campaign, CampaignState
 from src.models.history import CampaignHistoryEntry, EventType
 from src.repositories.history_repository import HistoryRepository
@@ -47,7 +47,7 @@ class HistoryService:
         actor_id: UUID,
         from_state: CampaignState,
         to_state: CampaignState,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> CampaignHistoryEntry:
         """Log state transition."""
         metadata = {"reason": reason} if reason else None
@@ -82,7 +82,7 @@ class HistoryService:
         self,
         campaign: Campaign,
         actor_id: UUID,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> CampaignHistoryEntry:
         """Log archive event."""
         metadata = {"reason": reason} if reason else None
@@ -134,7 +134,7 @@ class HistoryService:
         campaign_id: UUID,
         page: int = 1,
         page_size: int = 50,
-    ) -> List[CampaignHistoryEntry]:
+    ) -> list[CampaignHistoryEntry]:
         """Get paginated history for a campaign."""
         return await self.history_repository.get_by_campaign(campaign_id, page, page_size)
 

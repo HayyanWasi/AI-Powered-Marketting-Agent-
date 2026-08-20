@@ -1,7 +1,7 @@
 """Brand guidelines model for AI Generation Engine."""
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -14,7 +14,7 @@ class LogoSpecs:
     background: str
     clear_space: bool
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "width": self.width,
@@ -25,7 +25,7 @@ class LogoSpecs:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LogoSpecs":
+    def from_dict(cls, data: dict[str, Any]) -> "LogoSpecs":
         """Deserialize from dictionary."""
         return cls(
             width=data["width"],
@@ -41,14 +41,14 @@ class BrandGuidelines:
     """Brand voice and style guidelines."""
 
     voice_tone: str
-    color_palette: List[str]
-    fonts: List[str]
+    color_palette: list[str]
+    fonts: list[str]
     logo_specs: LogoSpecs
-    brand_values: List[str]
-    do_not_do: List[str]
-    emoticons: List[str]
+    brand_values: list[str]
+    do_not_do: list[str]
+    emoticons: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "voice_tone": self.voice_tone,
@@ -61,7 +61,7 @@ class BrandGuidelines:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BrandGuidelines":
+    def from_dict(cls, data: dict[str, Any]) -> "BrandGuidelines":
         """Deserialize from dictionary."""
         return cls(
             voice_tone=data["voice_tone"],

@@ -1,7 +1,6 @@
 """Campaign Management API routes — delegates to CampaignService/AssetService/HistoryService."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -64,17 +63,19 @@ async def create_campaign(
     except ValueError as e:
         detail = str(e)
         if "already exists" in detail.lower():
-            raise HTTPException(status_code=409, detail={"detail": detail, "code": "DUPLICATE_NAME"})
+            raise HTTPException(
+                status_code=409, detail={"detail": detail, "code": "DUPLICATE_NAME"}
+            )
         raise HTTPException(status_code=422, detail=detail)
     return CampaignResponse.model_validate(created.to_dict())
 
 
 @router.get("", response_model=CampaignListResponse)
 async def list_campaigns(
-    state: Optional[CampaignState] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
-    owner_id: Optional[UUID] = Query(None),
+    state: CampaignState | None = Query(None),
+    start_date: datetime | None = Query(None),
+    end_date: datetime | None = Query(None),
+    owner_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     svc: CampaignService = Depends(_get_campaign_service),
@@ -175,7 +176,7 @@ async def transition_campaign(
 @router.post("/{campaign_id}/archive", response_model=CampaignResponse)
 async def archive_campaign(
     campaign_id: UUID,
-    reason: Optional[str] = None,
+    reason: str | None = None,
     svc: CampaignService = Depends(_get_campaign_service),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):

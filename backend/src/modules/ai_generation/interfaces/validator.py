@@ -1,6 +1,6 @@
 """Validator interface for AI Generation Engine."""
 
-from typing import Dict, Any, List
+from typing import Any
 
 from ..models.validation_artifact import ValidationArtifact
 
@@ -10,7 +10,7 @@ class ValidatorInterface:
 
     def validate_all_artifacts(
         self,
-        artifacts: Dict[str, Any],
+        artifacts: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate all generated artifacts against business rules and platform requirements.
@@ -29,7 +29,7 @@ class ValidatorInterface:
 
     def validate_artifact(
         self,
-        artifact: Dict[str, Any],
+        artifact: dict[str, Any],
         artifact_type: str,
     ) -> ValidationArtifact:
         """
@@ -47,7 +47,7 @@ class ValidatorInterface:
     def get_business_rules(
         self,
         artifact_type: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get business rules for validating a specific artifact type.
 
@@ -62,7 +62,7 @@ class ValidatorInterface:
     def get_platform_requirements(
         self,
         platform: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get platform-specific validation requirements.
 

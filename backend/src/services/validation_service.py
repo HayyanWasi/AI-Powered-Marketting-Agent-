@@ -8,6 +8,7 @@ from src.models.validation import (
     ImageValidationResultInternal,
     RuleSeverity,
     RuleViolation,
+    TextValidationResultInternal,
     ValidationRequest,
     ValidationResultInternal,
     ValidationStatus,

@@ -3,8 +3,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID, uuid4
+
 from src.models.campaign import CampaignState
 
 
@@ -29,13 +30,13 @@ class CampaignHistoryEntry:
     event_type: EventType = EventType.CREATED
     timestamp: datetime = field(default_factory=datetime.utcnow)
     actor_id: UUID = field(default_factory=uuid4)
-    from_state: Optional[CampaignState] = None
-    to_state: Optional[CampaignState] = None
-    changed_fields: Optional[Dict[str, Any]] = None
-    snapshot: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    from_state: CampaignState | None = None
+    to_state: CampaignState | None = None
+    changed_fields: dict[str, Any] | None = None
+    snapshot: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for storage."""
         return {
             "id": str(self.id),
@@ -51,7 +52,7 @@ class CampaignHistoryEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CampaignHistoryEntry":
+    def from_dict(cls, data: dict[str, Any]) -> "CampaignHistoryEntry":
         """Deserialize from dictionary."""
         entry = cls(
             id=UUID(data["id"]),

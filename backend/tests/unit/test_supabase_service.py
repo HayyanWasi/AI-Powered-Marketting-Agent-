@@ -4,12 +4,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.services.supabase import (
+    MAX_IMAGE_SIZE,
     DuplicateCompanyError,
     NotFoundError,
     RetryExhaustedError,
     SupabaseService,
     ValidationError,
-    MAX_IMAGE_SIZE,
 )
 
 

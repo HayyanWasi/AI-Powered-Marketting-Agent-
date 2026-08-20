@@ -1,7 +1,7 @@
 import logging
 import time
-from collections.abc import Callable
-from typing import Any, Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from src.config.prompts import render_template
 from src.config.settings import settings
@@ -9,7 +9,7 @@ from src.models.llm import LLMRequest, LLMResponse, StreamChunk, TokenUsage
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "models/gemini-2.5-flash"
+GEMINI_MODEL = "models/gemini-3.5-flash"
 GROK_MODEL = "llama-3.3-70b-versatile"
 GROK_BASE_URL = "https://api.groq.com/openai/v1"
 MAX_RETRIES = 3
@@ -184,31 +184,104 @@ class LLMService:
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         system_prompt = self._resolve_system_prompt(request) or ""
+        start = time.perf_counter()
 
         try:
-            return _retry_with_backoff(
+            response = _retry_with_backoff(
                 self._get_primary().generate, system_prompt, request.user_prompt
             )
         except Exception as primary_exc:
             # Auth errors should not fall back - they indicate invalid credentials
             if self._is_auth_error(primary_exc):
+                self._record_telemetry(
+                    request, system_prompt, None, start, "grok", GROK_MODEL, str(primary_exc)
+                )
                 raise LLMProviderError("grok", str(primary_exc)) from primary_exc
 
             logger.warning("Primary provider (Groq) failed: %s", primary_exc)
 
             logger.info("Falling back to Gemini")
+            fallback_start = time.perf_counter()
             try:
-                return self._get_fallback().generate(system_prompt, request.user_prompt)
+                response = self._get_fallback().generate(system_prompt, request.user_prompt)
             except Exception as fallback_exc:
+                self._record_telemetry(
+                    request,
+                    system_prompt,
+                    None,
+                    fallback_start,
+                    "gemini",
+                    GEMINI_MODEL,
+                    str(fallback_exc),
+                )
                 raise LLMServiceError(
                     f"Both providers failed. Groq: {primary_exc}. Gemini: {fallback_exc}"
                 ) from fallback_exc
+            self._record_telemetry(
+                request, system_prompt, response, fallback_start, "gemini", GEMINI_MODEL, None
+            )
+            return response
+
+        self._record_telemetry(request, system_prompt, response, start, "grok", GROK_MODEL, None)
+        return response
+
+    @staticmethod
+    def _record_telemetry(
+        request: LLMRequest,
+        system_prompt: str,
+        response: LLMResponse | None,
+        start: float,
+        model_name: str,
+        model_version: str,
+        error: str | None,
+    ) -> None:
+        """Attach this call to the active workflow trace, if any.
+
+        Never raises — telemetry must not affect generation (FR-011).
+        """
+        try:
+            from src.modules.operations.context import get_execution_context
+
+            ctx = get_execution_context()
+            if ctx is None:
+                return
+
+            trace_id, workflow_id = ctx
+            from src.api.dependencies import get_operations_service
+
+            operations = get_operations_service()
+            usage = response.token_usage if response else None
+            operations.record_ai_request_sync(
+                trace_id=trace_id,
+                workflow_id=workflow_id,
+                prompt_version_id=operations.register_or_get_prompt_version(
+                    name=request.prompt_name or request.template_name or "adhoc",
+                    template=system_prompt,
+                ),
+                prompt_name=request.prompt_name or request.template_name or "adhoc",
+                model_name=model_name,
+                model_version=model_version,
+                input_tokens=usage.prompt_tokens if usage else 0,
+                output_tokens=usage.completion_tokens if usage else 0,
+                latency_ms=int((time.perf_counter() - start) * 1000),
+                status="error" if error else "success",
+                error_message=error,
+            )
+        except Exception as e:
+            logger.warning("LLM telemetry recording failed: %s", e)
 
     @staticmethod
     def _is_auth_error(exc: Exception) -> bool:
         """Check if an error is an authentication/authorization error."""
         msg = str(exc).lower()
-        auth_keywords = ("invalid api key", "unauthorized", "authentication", "forbidden", "401", "403")
+        auth_keywords = (
+            "invalid api key",
+            "unauthorized",
+            "authentication",
+            "forbidden",
+            "401",
+            "403",
+        )
         return any(kw in msg for kw in auth_keywords)
 
     def generate_stream(self, request: LLMRequest) -> Iterator[StreamChunk]:

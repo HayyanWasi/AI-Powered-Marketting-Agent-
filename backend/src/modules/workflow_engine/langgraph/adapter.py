@@ -1,7 +1,7 @@
 """LangGraph Adapter — translates internal models to LangGraph StateGraph."""
 
 import logging
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class LangGraphAdapter:
 
     def build_state_graph(self, nodes: dict, edges: list, conditional_edges: list) -> Any:
         try:
-            from langgraph.graph import StateGraph, END
+            from langgraph.graph import StateGraph
         except ImportError:
             raise ImportError("langgraph is required. Install with: pip install langgraph")
 

@@ -1,9 +1,9 @@
 """History repository - data access for campaign history."""
 
-from typing import List, Optional, Tuple
 from uuid import UUID
+
+from src.models.history import CampaignHistoryEntry
 from src.repositories.base import BaseRepository
-from src.models.history import CampaignHistoryEntry, EventType
 
 
 class HistoryRepository(BaseRepository):
@@ -17,7 +17,7 @@ class HistoryRepository(BaseRepository):
         data = entry.to_dict()
         data = {k: v for k, v in data.items() if v is not None}
 
-        result = await self.client.table(self.table_name).insert(data).execute()
+        result = self.client.table(self.table_name).insert(data).execute()
         if result.data:
             return self._to_model(result.data[0], CampaignHistoryEntry)
         raise Exception("Failed to create history entry")
@@ -27,11 +27,11 @@ class HistoryRepository(BaseRepository):
         campaign_id: UUID,
         page: int = 1,
         page_size: int = 50,
-    ) -> Tuple[List[CampaignHistoryEntry], int]:
+    ) -> tuple[list[CampaignHistoryEntry], int]:
         """Get paginated history for a campaign."""
         # Get total count
         count_result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("id", count="exact")
             .eq("campaign_id", str(campaign_id))
             .execute()
@@ -40,7 +40,7 @@ class HistoryRepository(BaseRepository):
 
         # Get paginated entries
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("*")
             .eq("campaign_id", str(campaign_id))
             .order("timestamp", desc=True)
@@ -54,7 +54,7 @@ class HistoryRepository(BaseRepository):
     async def count_by_campaign(self, campaign_id: UUID) -> int:
         """Get total history count for a campaign."""
         result = (
-            await self.client.table(self.table_name)
+            self.client.table(self.table_name)
             .select("id", count="exact")
             .eq("campaign_id", str(campaign_id))
             .execute()

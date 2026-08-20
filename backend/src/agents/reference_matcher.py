@@ -8,8 +8,8 @@ This agent handles:
 No LLM needed — pure data loading.
 """
 
-from src.agents.base import BaseAgent, AgentResult
-from src.agents.context import GenerationContext, BrandData
+from src.agents.base import AgentResult, BaseAgent
+from src.agents.context import GenerationContext
 
 
 class ReferenceMatcherAgent(BaseAgent):

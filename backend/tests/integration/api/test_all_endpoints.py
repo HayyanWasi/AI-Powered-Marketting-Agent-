@@ -22,34 +22,32 @@ from __future__ import annotations
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from fastapi import Depends
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.main import app
-from src.schemas import (
-    CampaignResponse,
-    CampaignListResponse,
-    CampaignSummary,
-    StateTransitionResponse,
-    HistoryListResponse,
-    AssetResponse,
-    AssetListResponse,
-)
 from src.models.validation import (
+    ImageValidationResult,
+    TextValidationResult,
     ValidationResponse,
     ValidationStatus,
-    TextValidationResult,
-    ImageValidationResult,
 )
-from src.models.campaign import CampaignState
+from src.schemas import (
+    AssetListResponse,
+    AssetResponse,
+    CampaignListResponse,
+    CampaignResponse,
+    HistoryListResponse,
+    StateTransitionResponse,
+)
 
 client = TestClient(app)
 
 # Mock authenticated user for all v1 routes (id must be valid UUID for services that call UUID(user.id))
-_mock_user = AuthenticatedUser(id="00000000-0000-0000-0000-000000000001", roles=["admin"], permissions=["all"])
+_mock_user = AuthenticatedUser(
+    id="00000000-0000-0000-0000-000000000001", roles=["admin"], permissions=["all"]
+)
 app.dependency_overrides[get_authenticated_user] = lambda: _mock_user
 
 # ---------------------------------------------------------------------------
@@ -187,7 +185,10 @@ class TestRootAndHealth:
 class TestCompanyCRUD:
     """POST/GET/PUT/DELETE /api/company — full lifecycle."""
 
-    @patch("src.api.v1.company.ListCompanyService", return_value=MagicMock(execute=MagicMock(return_value=[])))
+    @patch(
+        "src.api.v1.company.ListCompanyService",
+        return_value=MagicMock(execute=MagicMock(return_value=[])),
+    )
     def test_list_profiles_returns_list(self, mock_cls):
         response = client.get("/api/company")
         assert response.status_code == 200
@@ -229,7 +230,9 @@ class TestCompanyCRUD:
 
     def test_create_profile_duplicate_returns_409(self):
         with patch("src.api.v1.company.CreateCompanyService") as mock_cls:
-            mock_cls.return_value.execute.side_effect = ValueError("Company name 'DupCo' already exists")
+            mock_cls.return_value.execute.side_effect = ValueError(
+                "Company name 'DupCo' already exists"
+            )
             response = client.post(
                 "/api/company",
                 json={"company_name": "DupCo", "brand_guidelines": "guidelines"},
@@ -475,7 +478,9 @@ class TestCampaignCRUD:
     def test_create_campaign_duplicate_name_returns_409(self, mock_svc_cls):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.create_campaign = AsyncMock(side_effect=ValueError("Campaign name 'Test Campaign' already exists"))
+        mock_svc.create_campaign = AsyncMock(
+            side_effect=ValueError("Campaign name 'Test Campaign' already exists")
+        )
         response = client.post("/api/campaigns", json=_make_campaign_request())
         assert response.status_code == 409
         data = response.json()
@@ -623,7 +628,11 @@ class TestCampaignStateTransitions:
             return_value=_make_mock_campaign(state="Archived", version=3)
         )
 
-        response = client.post(f"/api/campaigns/{VALID_CAMPAIGN_ID}/archive", params={"reason": "No longer needed"}, json={})
+        response = client.post(
+            f"/api/campaigns/{VALID_CAMPAIGN_ID}/archive",
+            params={"reason": "No longer needed"},
+            json={},
+        )
         assert response.status_code == 200
         data = response.json()
         _assert_schema(data, CampaignResponse)
@@ -809,9 +818,7 @@ class TestValidation:
 
     @patch("src.api.v1.validation.validation_gateway")
     def test_validate_success(self, mock_gw):
-        mock_gw.validate_campaign = AsyncMock(
-            return_value=_mock_validation_response(status="pass")
-        )
+        mock_gw.validate_campaign = AsyncMock(return_value=_mock_validation_response(status="pass"))
 
         response = client.post(
             f"/api/campaigns/{VALID_CAMPAIGN_ID}/validate",
@@ -825,9 +832,7 @@ class TestValidation:
 
     @patch("src.api.v1.validation.validation_gateway")
     def test_validate_with_image(self, mock_gw):
-        mock_gw.validate_campaign = AsyncMock(
-            return_value=_mock_validation_response(status="pass")
-        )
+        mock_gw.validate_campaign = AsyncMock(return_value=_mock_validation_response(status="pass"))
 
         response = client.post(
             f"/api/campaigns/{VALID_CAMPAIGN_ID}/validate",
@@ -960,7 +965,10 @@ class TestPerformance:
         assert response.status_code == 200
         assert elapsed_ms < 1000, f"Health took {elapsed_ms:.0f}ms, budget 1000ms"
 
-    @patch("src.api.v1.company.ListCompanyService", return_value=MagicMock(execute=MagicMock(return_value=[])))
+    @patch(
+        "src.api.v1.company.ListCompanyService",
+        return_value=MagicMock(execute=MagicMock(return_value=[])),
+    )
     def test_list_profiles_responds_within_budget(self, mock_cls):
         start = time.monotonic()
         response = client.get("/api/company")

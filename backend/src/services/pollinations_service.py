@@ -54,17 +54,33 @@ class PollinationsService:
         model: str | None = None,
         timeout_seconds: int | None = None,
         max_retries: int | None = None,
+        api_token: str | None = None,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ):
         self._base_url = base_url or settings.pollinations_base_url
         self._model = model or settings.pollinations_model
         self._timeout = timeout_seconds or settings.pollinations_timeout_seconds
         self._max_retries = max_retries or settings.pollinations_max_retries
+        self._api_token = api_token or settings.pollinations_api_token
+        self._image_width = image_width or settings.pollinations_image_width
+        self._image_height = image_height or settings.pollinations_image_height
+
+        headers = {}
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
 
         self._client = client or httpx.AsyncClient(
             timeout=self._timeout,
             follow_redirects=True,
+            headers=headers,
         )
         self._own_client = client is None
+
+    @property
+    def model(self) -> str:
+        """The image model in use (empty string means Pollinations default)."""
+        return self._model or "flux"
 
     async def __aenter__(self) -> "PollinationsService":
         return self
@@ -76,7 +92,10 @@ class PollinationsService:
     def _build_image_url(self, prompt: str) -> str:
         """Build the full Pollinations image URL."""
         encoded_prompt = quote(prompt, safe="")
-        return f"{self._base_url}/{encoded_prompt}?model={self._model}"
+        params = [f"width={self._image_width}", f"height={self._image_height}"]
+        if self._model:
+            params.append(f"model={self._model}")
+        return f"{self._base_url}/{encoded_prompt}?{'&'.join(params)}"
 
     def _build_fallback_prompt(self, brand_context: BrandStyleContextInternal | None) -> str:
         """Build a branded fallback prompt."""

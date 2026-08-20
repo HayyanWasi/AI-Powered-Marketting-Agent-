@@ -1,10 +1,8 @@
 """Asset service - manage campaign assets."""
 
-from typing import List
 from uuid import UUID
-from datetime import datetime
-from src.models.campaign import CampaignAsset, AssetType, AssetSource
-from src.models.history import EventType
+
+from src.models.campaign import AssetSource, AssetType, CampaignAsset
 from src.repositories.asset_repository import AssetRepository
 from src.services.history_service import HistoryService
 
@@ -47,7 +45,7 @@ class AssetService:
 
         return created
 
-    async def list_assets(self, campaign_id: UUID) -> List[CampaignAsset]:
+    async def list_assets(self, campaign_id: UUID) -> list[CampaignAsset]:
         """List all assets for a campaign."""
         return await self.repository.get_by_campaign(campaign_id)
 

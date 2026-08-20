@@ -185,7 +185,7 @@ Business modules MUST remain stateless whenever possible.
 ### AI
 
 - LLM Provider: Gemini or OpenAI
-- Image Generation: Pollinations AI
+- Image Generation: Cloudflare Workers AI (primary — img2img with reference / FLUX text2img) with Pollinations AI fallback
 - Search: DuckDuckGo Search
 
 ### Frontend

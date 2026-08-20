@@ -1,12 +1,15 @@
 """Context builder service for AI Generation Engine."""
 
-import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..models.brand_guidelines import BrandGuidelines
 from ..models.generation_context import GenerationContext
-from ..models.validation_artifact import ValidationArtifact
+from ..models.validation_artifact import (
+    SeverityLevel,
+    ValidationArtifact,
+    ValidationError,
+    ValidationWarning,
+)
 
 
 class ContextBuilderService:
@@ -14,13 +17,13 @@ class ContextBuilderService:
 
     def build_generation_context(
         self,
-        campaign_context: Dict[str, Any],
-        company_profile: Dict[str, Any],
-        audience: Dict[str, Any],
-        platforms: List[str],
-        brand_guidelines: Dict[str, Any],
-        reference_materials: List[Dict[str, Any]],
-        user_intent: Optional[Dict[str, Any]] = None,
+        campaign_context: dict[str, Any],
+        company_profile: dict[str, Any],
+        audience: dict[str, Any],
+        platforms: list[str],
+        brand_guidelines: dict[str, Any],
+        reference_materials: list[dict[str, Any]],
+        user_intent: dict[str, Any] | None = None,
     ) -> GenerationContext:
         """
         Build a complete generation context from input artifacts.
@@ -69,7 +72,7 @@ class ContextBuilderService:
 
     def validate_context_completeness(
         self,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate that a generation context contains all required fields.

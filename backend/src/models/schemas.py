@@ -1,10 +1,12 @@
 """Pydantic schemas for API request/response validation."""
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Dict, Any, List
 from datetime import datetime
-from uuid import UUID
 from enum import Enum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.models.campaign import CampaignState
 from src.models.history import EventType
 
@@ -47,7 +49,7 @@ class ErrorResponse(BaseModel):
 
     detail: str
     code: str
-    invalid_fields: Optional[List[str]] = None
+    invalid_fields: list[str] | None = None
 
 
 # ==================== Campaign Schemas ====================
@@ -57,16 +59,16 @@ class GoalsBase(BaseModel):
     """Campaign goals structure."""
 
     primary: str = Field(..., min_length=1)
-    metrics: List[str] = Field(default_factory=list)
-    targets: Dict[str, Any] = Field(default_factory=dict)
+    metrics: list[str] = Field(default_factory=list)
+    targets: dict[str, Any] = Field(default_factory=dict)
 
 
 class TargetAudienceBase(BaseModel):
     """Target audience definition."""
 
-    segments: List[str] = Field(default_factory=list)
-    demographics: Dict[str, Any] = Field(default_factory=dict)
-    interests: List[str] = Field(default_factory=list)
+    segments: list[str] = Field(default_factory=list)
+    demographics: dict[str, Any] = Field(default_factory=dict)
+    interests: list[str] = Field(default_factory=list)
 
 
 class ScheduleBase(BaseModel):
@@ -75,7 +77,7 @@ class ScheduleBase(BaseModel):
     start_date: datetime
     end_date: datetime
     timezone: str = Field(..., min_length=1)
-    recurrence_rule: Optional[str] = None
+    recurrence_rule: str | None = None
 
 
 class CampaignBase(BaseModel):
@@ -84,10 +86,10 @@ class CampaignBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     goals: GoalsBase
     target_audience: TargetAudienceBase
-    platforms: List[str] = Field(..., min_length=1)
+    platforms: list[str] = Field(..., min_length=1)
     schedule: ScheduleBase
-    metadata: Optional[Dict[str, Any]] = None
-    company_profile_id: Optional[UUID] = None
+    metadata: dict[str, Any] | None = None
+    company_profile_id: UUID | None = None
 
 
 class CreateCampaignRequest(CampaignBase):
@@ -122,13 +124,13 @@ class CreateCampaignRequest(CampaignBase):
 class UpdateCampaignRequest(BaseModel):
     """Request to update campaign configuration (Draft only)."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    goals: Optional[GoalsBase] = None
-    target_audience: Optional[TargetAudienceBase] = None
-    platforms: Optional[List[str]] = None
-    schedule: Optional[ScheduleBase] = None
-    metadata: Optional[Dict[str, Any]] = None
-    company_profile_id: Optional[UUID] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    goals: GoalsBase | None = None
+    target_audience: TargetAudienceBase | None = None
+    platforms: list[str] | None = None
+    schedule: ScheduleBase | None = None
+    metadata: dict[str, Any] | None = None
+    company_profile_id: UUID | None = None
 
 
 class CampaignResponse(BaseModel):
@@ -136,19 +138,19 @@ class CampaignResponse(BaseModel):
 
     id: UUID
     organization_id: UUID
-    company_profile_id: Optional[UUID]
+    company_profile_id: UUID | None
     name: str
-    goals: Dict[str, Any]
-    target_audience: Dict[str, Any]
-    platforms: List[str]
-    schedule: Dict[str, Any]
-    metadata: Dict[str, Any]
+    goals: dict[str, Any]
+    target_audience: dict[str, Any]
+    platforms: list[str]
+    schedule: dict[str, Any]
+    metadata: dict[str, Any]
     state: CampaignState
     version: int
     created_at: datetime
     updated_at: datetime
-    published_at: Optional[datetime] = None
-    archived_at: Optional[datetime] = None
+    published_at: datetime | None = None
+    archived_at: datetime | None = None
     created_by: UUID
     updated_by: UUID
 
@@ -161,8 +163,8 @@ class CampaignSummary(BaseModel):
     id: UUID
     name: str
     state: CampaignState
-    platforms: List[str]
-    schedule: Dict[str, Any]
+    platforms: list[str]
+    schedule: dict[str, Any]
     updated_at: datetime
     created_at: datetime
 
@@ -172,7 +174,7 @@ class CampaignSummary(BaseModel):
 class CampaignListResponse(BaseModel):
     """Paginated campaign list response."""
 
-    campaigns: List[CampaignSummary]
+    campaigns: list[CampaignSummary]
     total: int
     page: int
     page_size: int
@@ -185,7 +187,7 @@ class StateTransitionRequest(BaseModel):
     """Request to transition campaign state."""
 
     to_state: CampaignState
-    reason: Optional[str] = Field(None, max_length=500)
+    reason: str | None = Field(None, max_length=500)
 
 
 class StateTransitionResponse(BaseModel):
@@ -206,11 +208,11 @@ class HistoryEntryResponse(BaseModel):
     event_type: EventType
     timestamp: datetime
     actor_id: UUID
-    from_state: Optional[CampaignState] = None
-    to_state: Optional[CampaignState] = None
-    changed_fields: Optional[Dict[str, Any]] = None
-    snapshot: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    from_state: CampaignState | None = None
+    to_state: CampaignState | None = None
+    changed_fields: dict[str, Any] | None = None
+    snapshot: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -218,7 +220,7 @@ class HistoryEntryResponse(BaseModel):
 class HistoryListResponse(BaseModel):
     """Paginated history response."""
 
-    history: List[HistoryEntryResponse]
+    history: list[HistoryEntryResponse]
     total: int
     page: int
     page_size: int
@@ -249,14 +251,14 @@ class HashtagSetContent(BaseModel):
     """Hashtag set asset content."""
 
     asset_type: str = "hashtag_set"
-    tags: List[str]
+    tags: list[str]
 
 
 class MetadataContent(BaseModel):
     """Metadata asset content."""
 
     asset_type: str = "metadata"
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
 
 AssetContent = CopyContent | ImageContent | HashtagSetContent | MetadataContent
@@ -268,7 +270,7 @@ class CreateAssetRequest(BaseModel):
     asset_type: str = Field(..., pattern="^(copy|image|hashtag_set|metadata|other)$")
     content: AssetContent
     source: str = Field(..., pattern="^(ai|manual|imported)$")
-    storage_path: Optional[str] = None
+    storage_path: str | None = None
 
 
 class AssetResponse(BaseModel):
@@ -278,7 +280,7 @@ class AssetResponse(BaseModel):
     campaign_id: UUID
     asset_type: str
     content: AssetContent
-    storage_path: Optional[str] = None
+    storage_path: str | None = None
     source: str
     created_at: datetime
     created_by: UUID
@@ -289,7 +291,7 @@ class AssetResponse(BaseModel):
 class AssetListResponse(BaseModel):
     """Asset list response."""
 
-    assets: List[AssetResponse]
+    assets: list[AssetResponse]
     total: int
 
 
@@ -299,10 +301,10 @@ class AssetListResponse(BaseModel):
 class CampaignListParams(BaseModel):
     """Query parameters for campaign listing."""
 
-    state: Optional[CampaignState] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    owner_id: Optional[UUID] = None
+    state: CampaignState | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    owner_id: UUID | None = None
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)
 

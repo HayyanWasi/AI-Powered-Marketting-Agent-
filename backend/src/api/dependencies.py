@@ -9,7 +9,7 @@ All dependencies are wired via FastAPI's dependency injection system
 so that route handlers never instantiate services directly.
 """
 
-from uuid import UUID
+import logging
 
 
 class AuthenticatedUser:
@@ -18,7 +18,9 @@ class AuthenticatedUser:
     Attached to the request scope via the auth dependency.
     """
 
-    def __init__(self, id: str, roles: list[str] | None = None, permissions: list[str] | None = None) -> None:
+    def __init__(
+        self, id: str, roles: list[str] | None = None, permissions: list[str] | None = None
+    ) -> None:
         self.id = id
         self.roles = roles or []
         self.permissions = permissions or []
@@ -63,3 +65,35 @@ async def require_permission(resource: str, action: str) -> None:
         pass
 
     return _check
+
+
+from src.modules.operations.services.platform_operations import PlatformOperationsService
+
+logger = logging.getLogger(__name__)
+
+# Global singleton for operations service
+_OPERATIONS_SERVICE: PlatformOperationsService | None = None
+
+
+def get_operations_service() -> PlatformOperationsService:
+    """Get the singleton PlatformOperationsService instance."""
+    global _OPERATIONS_SERVICE
+    if _OPERATIONS_SERVICE is None:
+        from src.config.settings import settings
+        from src.config.supabase import get_supabase_client
+
+        try:
+            supabase_client = get_supabase_client()
+        except Exception as e:
+            # Telemetry must never block startup — history persistence degrades
+            # to a no-op while logs and metrics keep working.
+            logger.warning("Operations history persistence disabled: %s", e)
+            supabase_client = None
+
+        _OPERATIONS_SERVICE = PlatformOperationsService(
+            project_name=settings.langsmith_project,
+            service_name=settings.otel_service_name,
+            otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+            supabase_client=supabase_client,
+        )
+    return _OPERATIONS_SERVICE

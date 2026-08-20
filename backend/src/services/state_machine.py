@@ -1,6 +1,6 @@
 """Deterministic state machine for campaign lifecycle."""
 
-from typing import List, Tuple, Optional
+
 from src.models.campaign import CampaignState
 
 
@@ -35,7 +35,7 @@ class StateMachine:
     @classmethod
     def validate_transition(
         cls, from_state: CampaignState, to_state: CampaignState
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Validate if a state transition is allowed.
 
         Returns:
@@ -53,12 +53,12 @@ class StateMachine:
         return True, ""
 
     @classmethod
-    def get_valid_next_states(cls, from_state: CampaignState) -> List[CampaignState]:
+    def get_valid_next_states(cls, from_state: CampaignState) -> list[CampaignState]:
         """Get list of valid next states from current state."""
         return cls.VALID_TRANSITIONS.get(from_state, [])
 
     @classmethod
-    def get_precondition(cls, from_state: CampaignState, to_state: CampaignState) -> Optional[str]:
+    def get_precondition(cls, from_state: CampaignState, to_state: CampaignState) -> str | None:
         """Get precondition required for transition."""
         return cls.TRANSITION_PRECONDITIONS.get((from_state, to_state))
 

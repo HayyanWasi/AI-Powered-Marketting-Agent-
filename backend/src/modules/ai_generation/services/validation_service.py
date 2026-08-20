@@ -1,6 +1,7 @@
 """Validation service for AI Generation Engine."""
 
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any
 
 from ..constants import SeverityLevel
 
@@ -17,7 +18,7 @@ class ValidationError:
         self.field = field
         self.suggested_fix = suggested_fix
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -35,7 +36,7 @@ class ValidationWarning:
         self.message = message
         self.field = field
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -48,8 +49,8 @@ class ValidationService:
 
     def validate_all_artifacts(
         self,
-        artifacts: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        artifacts: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate all generated artifacts against business rules and platform requirements.
 
@@ -126,9 +127,9 @@ class ValidationService:
 
     def validate_artifact(
         self,
-        artifact: Dict[str, Any],
+        artifact: dict[str, Any],
         artifact_type: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Validate a specific artifact type against appropriate rules.
 
@@ -152,8 +153,8 @@ class ValidationService:
 
     def validate_strategy(
         self,
-        strategy: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        strategy: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate strategy artifact against business rules.
 
@@ -177,7 +178,7 @@ class ValidationService:
         ]
 
         for field in required_fields:
-            if not strategy.get(field):
+            if strategy.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_STRATEGY_FIELD",
@@ -231,7 +232,6 @@ class ValidationService:
         # Check internal consistency
         if campaign_strategy.get("goals") and audience_strategy.get("target_segments"):
             goals = campaign_strategy["goals"]
-            segments = audience_strategy["target_segments"]
             if isinstance(goals, list) and len(goals) > 3:
                 warnings.append(
                     ValidationWarning(
@@ -269,8 +269,8 @@ class ValidationService:
 
     def validate_copies(
         self,
-        copy_artifacts: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        copy_artifacts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         Validate copy artifacts against platform requirements.
 
@@ -345,8 +345,8 @@ class ValidationService:
 
     def validate_copy(
         self,
-        copy: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        copy: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate single copy artifact.
 
@@ -371,7 +371,7 @@ class ValidationService:
         ]
 
         for field in required_fields:
-            if not copy.get(field):
+            if copy.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_COPY_FIELD",
@@ -424,7 +424,7 @@ class ValidationService:
                     warnings.append(
                         ValidationWarning(
                             code="TWITTER_CHAR_LIMIT",
-                            message=f"Total content may exceed Twitter's 280-character limit",
+                            message="Total content may exceed Twitter's 280-character limit",
                             field="content_length",
                         )
                     )
@@ -477,8 +477,8 @@ class ValidationService:
 
     def validate_image_prompts(
         self,
-        image_prompts: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        image_prompts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         Validate image prompt artifacts.
 
@@ -490,7 +490,6 @@ class ValidationService:
         """
         all_errors = []
         all_warnings = []
-        compliance_scores = {}
 
         if len(image_prompts) == 0:
             return {
@@ -540,8 +539,8 @@ class ValidationService:
 
     def validate_image_prompt(
         self,
-        prompt: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        prompt: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate single image prompt artifact.
 
@@ -569,7 +568,7 @@ class ValidationService:
         ]
 
         for field in required_fields:
-            if not prompt.get(field):
+            if prompt.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_PROMPT_FIELD",
@@ -670,9 +669,9 @@ class ValidationService:
 
     def validate_images(
         self,
-        images: List[Dict[str, Any]],
-        image_prompts: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        images: list[dict[str, Any]],
+        image_prompts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         Validate generated images against prompts and guidelines.
 
@@ -779,9 +778,9 @@ class ValidationService:
 
     def validate_image(
         self,
-        image: Dict[str, Any],
-        prompt: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
+        image: dict[str, Any],
+        prompt: dict[str, Any] = None,
+    ) -> dict[str, Any]:
         """
         Validate single image artifact.
 
@@ -809,7 +808,7 @@ class ValidationService:
         ]
 
         for field in required_fields:
-            if not image.get(field):
+            if image.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_IMAGE_FIELD",
@@ -948,9 +947,9 @@ class ValidationService:
 
     def _generate_recommendations(
         self,
-        errors: List[Dict[str, Any]],
-        warnings: List[Dict[str, Any]],
-    ) -> List[str]:
+        errors: list[dict[str, Any]],
+        warnings: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate recommendations based on validation errors and warnings."""
         recommendations = []
 

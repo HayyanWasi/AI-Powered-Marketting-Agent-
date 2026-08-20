@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-from ..models import ApprovalRequest, ApprovalStatus, WorkflowContext, ExecutionState
+from ..models import ApprovalRequest, ApprovalStatus
 
 logger = logging.getLogger(__name__)
 

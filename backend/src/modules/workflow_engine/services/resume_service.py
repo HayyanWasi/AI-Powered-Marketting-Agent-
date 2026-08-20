@@ -2,7 +2,7 @@
 
 import logging
 
-from ..models import WorkflowContext, ExecutionState
+from ..models import ExecutionState, WorkflowContext
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
 """Unit tests for StateMachine."""
 
-import pytest
 from src.models.campaign import CampaignState
 from src.services.state_machine import StateMachine
 

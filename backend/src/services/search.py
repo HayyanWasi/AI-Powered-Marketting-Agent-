@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Any
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from src.config.settings import settings
 
@@ -33,20 +33,25 @@ class GuestSearchService:
     def _search(self, query: str) -> list[dict[str, Any]]:
         self._rate_limit()
         try:
-            results: list[dict[str, Any]] = self._ddgs.text(keywords=query, max_results=MAX_RESULTS)
+            logger.info("[DDGS SEARCH] Executing query: '%s' (Max results: %d)", query, MAX_RESULTS)
+            results: list[dict[str, Any]] = self._ddgs.text(query, max_results=MAX_RESULTS)
             self._last_search_time = time.time()
+            logger.info("[DDGS SEARCH] Query '%s' returned %d results.", query, len(results))
             return results
         except Exception as e:
             self._last_search_time = time.time()
+            logger.error("[DDGS SEARCH FAILED] Query '%s' failed: %s", query, e)
             raise SearchError(f"Search failed for '{query}': {e}") from e
 
     def search(self, guest_name: str, company_name: str | None = None) -> list[dict[str, Any]]:
+        logger.info("=== [GUEST SEARCH INITIATED] ===")
+        logger.info("Target: %s | Company: %s", guest_name, company_name)
         if company_name:
             query = f"{guest_name} {company_name}"
             results = self._search(query)
             if len(results) < INSUFFICIENT_RESULT_THRESHOLD:
                 logger.info(
-                    "Company-based search returned < %d results; retrying with name only",
+                    "[GUEST SEARCH] Company-based search returned < %d results; retrying with name only",
                     INSUFFICIENT_RESULT_THRESHOLD,
                 )
                 name_results = self._search(guest_name)
@@ -57,4 +62,7 @@ class GuestSearchService:
         else:
             results = self._search(guest_name)
 
+        logger.info("=== [GUEST SEARCH COMPLETED] Total unique results: %d ===", len(results))
+        for idx, res in enumerate(results[:3]):
+            logger.info("   Result %d: %s...", idx + 1, str(res.get("body", ""))[:100])
         return results

@@ -5,42 +5,60 @@ External APIs (LLM, Cloudflare) are mocked at the boundary — all internal
 code (agents, graph routing, retry, checkpointing) runs for real.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.agents.context import GenerationContext, BrandData, EventData
+import pytest
+
+from src.agents.context import BrandData, EventData, GenerationContext
 from src.agents.orchestrator import Orchestrator
 from src.models.llm import LLMResponse, TokenUsage
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — mock ONLY external APIs, everything else is real
 # ---------------------------------------------------------------------------
 
+
 def _fake_llm() -> MagicMock:
-    """LLM returning a well-formed labeled copy response (no network)."""
-    llm = MagicMock()
-    llm.generate.return_value = LLMResponse(
-        text=(
-            "VARIANT_A: Story variant.\n"
-            "VARIANT_B: Value variant.\n"
-            "VARIANT_C: Question variant?\n"
-            "IMAGE_PROMPT: A branded event banner."
-        ),
-        token_usage=TokenUsage(),
-        provider="openai",
-        model="gpt-4o",
+    """LLM returning well-formed labeled responses (no network).
+
+    Responds per prompt type: the strategy agent and the content generator
+    expect different label sets.
+    """
+    strategy_text = (
+        "USP_HOOK: The one event where you meet the people building the future.\n"
+        "MESSAGING_PILLARS: Learn from leaders, High value, Limited seats\n"
+        "OBJECTION_HANDLING: Worth my time? — Industry leaders attend; "
+        "Is it free? — Yes, seats are limited\n"
+        "CTA_HIERARCHY: Follow for updates, Register now"
     )
+    content_text = (
+        "VARIANT_A: Story variant.\n"
+        "VARIANT_B: Value variant.\n"
+        "VARIANT_C: Question variant?\n"
+        "IMAGE_PROMPT: A branded event banner."
+    )
+
+    def _generate(request):
+        text = strategy_text if request.prompt_name == "generate_strategy" else content_text
+        return LLMResponse(
+            text=text,
+            token_usage=TokenUsage(),
+            provider="openai",
+            model="gpt-4o",
+        )
+
+    llm = MagicMock()
+    llm.generate.side_effect = _generate
     return llm
 
 
 def _fake_cloudflare() -> MagicMock:
     """Cloudflare returning a base64 image (no network)."""
     img_bytes = (
-        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
-        b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00'
-        b'\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00'
-        b'\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
+        b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
+        b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     service = MagicMock()
     service.img2img_model = "@cf/runwayml/stable-diffusion-v1-5-img2img"
@@ -83,6 +101,7 @@ def _make_context(
 # ---------------------------------------------------------------------------
 # Tests — all exercise the REAL pipeline end-to-end
 # ---------------------------------------------------------------------------
+
 
 class TestAIGenerationFullPipeline:
     """Integration tests for the complete AI Generation pipeline.
@@ -133,9 +152,15 @@ class TestAIGenerationFullPipeline:
         # Verify all expected agents ran through LangGraph
         agent_names = [entry["agent"] for entry in orch.workflow_log]
         expected_agents = [
-            "reference_matcher", "strategy", "campaign_planner",
-            "content_generator", "hashtag_research", "hook_analyzer",
-            "readability_scorer", "asset_generator", "validator",
+            "reference_matcher",
+            "strategy",
+            "campaign_planner",
+            "content_generator",
+            "hashtag_research",
+            "hook_analyzer",
+            "readability_scorer",
+            "asset_generator",
+            "validator",
         ]
         for name in expected_agents:
             assert name in agent_names, f"Agent {name} did not execute through LangGraph"

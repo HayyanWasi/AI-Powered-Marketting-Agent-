@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class BrandImageResponse(BaseModel):
@@ -24,7 +24,7 @@ class BrandReferenceImage:
     content_type: str = ""
     file_size: int = 0
     sort_order: int = 0
-    uploaded_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    uploaded_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_response(self, url: str) -> BrandImageResponse:
         return BrandImageResponse(

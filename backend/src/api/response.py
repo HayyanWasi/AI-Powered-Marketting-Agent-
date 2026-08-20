@@ -1,7 +1,7 @@
 """Standardized API response envelope models."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,9 @@ class APIResponse(BaseModel):
     status: str = "success"
     data: Any = None
     message: str = "OK"
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    )
 
 
 class ValidationErrorDetail(BaseModel):
@@ -29,8 +31,10 @@ class APIErrorResponse(BaseModel):
     status: str = "error"
     error: str = "internal_error"
     message: str = "An unexpected error occurred"
-    details: Optional[List[ValidationErrorDetail]] = None
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+    details: list[ValidationErrorDetail] | None = None
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    )
 
 
 def success_response(data: Any = None, message: str = "OK") -> APIResponse:
@@ -49,7 +53,7 @@ def success_response(data: Any = None, message: str = "OK") -> APIResponse:
 def error_response(
     error: str = "internal_error",
     message: str = "An unexpected error occurred",
-    details: Optional[List[ValidationErrorDetail]] = None,
+    details: list[ValidationErrorDetail] | None = None,
 ) -> APIErrorResponse:
     """Build a standardized error response envelope.
 

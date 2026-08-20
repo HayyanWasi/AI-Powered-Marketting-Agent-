@@ -1,10 +1,10 @@
 """Integration tests for API authentication."""
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.response import success_response
 from src.api.dependencies import get_authenticated_user
+from src.api.response import success_response
 
 
 class TestAuthentication:

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -16,14 +16,14 @@ class CopyArtifact:
     generated_at: datetime
     strategy_id: str
     platform: str
-    headlines: List[str]
-    captions: List[str]
-    ctas: List[str]
-    hashtags: List[str]
-    content_blocks: List[Dict[str, Any]] = field(default_factory=list)
-    validation_results: Optional[Dict[str, Any]] = None
+    headlines: list[str]
+    captions: list[str]
+    ctas: list[str]
+    hashtags: list[str]
+    content_blocks: list[dict[str, Any]] = field(default_factory=list)
+    validation_results: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize copy to dictionary for storage/transmission."""
         return {
             "id": self.id,
@@ -39,7 +39,7 @@ class CopyArtifact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CopyArtifact":
+    def from_dict(cls, data: dict[str, Any]) -> "CopyArtifact":
         """Deserialize copy from dictionary."""
         return cls(
             id=data["id"],

@@ -1,11 +1,10 @@
 """AI Generation Engine API endpoints for FastAPI."""
 
-from typing import Optional, Union
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from datetime import datetime
 
 from backend.src.modules.ai_generation.services.ai_generation_service import AIGenerationService
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -31,7 +30,7 @@ class GenerationContext(BaseModel):
     reference_materials: list[dict] = Field(
         ..., description="Relevant assets, benchmarks, competitor examples, previous campaigns"
     )
-    user_intent: Optional[dict] = Field(
+    user_intent: dict | None = Field(
         None, description="Additional instructions for specific content variations or emphasis"
     )
 
@@ -43,7 +42,7 @@ class StrategyRequest(BaseModel):
 class CopyRequest(BaseModel):
     strategy_artifact: dict
     platform: str
-    context: Optional[dict] = Field(None, description="Context for regeneration if applicable")
+    context: dict | None = Field(None, description="Context for regeneration if applicable")
 
 
 class ImagePromptRequest(BaseModel):
@@ -62,7 +61,7 @@ class ValidationRequest(BaseModel):
 
 class RegenerationRequest(BaseModel):
     existing_context: dict
-    user_instructions: Optional[dict] = Field(
+    user_instructions: dict | None = Field(
         None, description="Instructions for what aspects to regenerate"
     )
 

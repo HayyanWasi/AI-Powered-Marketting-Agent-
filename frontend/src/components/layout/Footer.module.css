@@ -1,0 +1,37 @@
+.footer {
+  border-top: 1px solid var(--border-color);
+  padding: 4rem 0;
+  background-color: var(--bg-color);
+}
+
+.footerContent {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.logo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.copyright {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.right {
+  display: flex;
+  gap: 2rem;
+}
+
+.right a {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.right a:hover {
+  color: var(--text-primary);
+}

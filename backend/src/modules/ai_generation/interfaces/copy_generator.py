@@ -1,6 +1,6 @@
 """Copy generator interface for AI Generation Engine."""
 
-from typing import Dict, Any, List
+from typing import Any
 
 from ..models.copy_artifact import CopyArtifact
 from ..models.validation_artifact import ValidationArtifact
@@ -11,7 +11,7 @@ class CopyGeneratorInterface:
 
     def generate_copy(
         self,
-        strategy_artifact: Dict[str, Any],
+        strategy_artifact: dict[str, Any],
         platform: str,
     ) -> CopyArtifact:
         """
@@ -31,8 +31,8 @@ class CopyGeneratorInterface:
 
     def regenerate_copy(
         self,
-        existing_copy: Dict[str, Any],
-        new_context: Dict[str, Any],
+        existing_copy: dict[str, Any],
+        new_context: dict[str, Any],
     ) -> CopyArtifact:
         """
         Regenerate copy based on updated context while preserving strategy.
@@ -51,7 +51,7 @@ class CopyGeneratorInterface:
 
     def validate_copy(
         self,
-        copy: Dict[str, Any],
+        copy: dict[str, Any],
         platform: str,
     ) -> ValidationArtifact:
         """

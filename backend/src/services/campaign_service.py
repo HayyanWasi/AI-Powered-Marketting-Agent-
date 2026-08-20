@@ -1,23 +1,22 @@
 """Campaign service - core business logic."""
 
-from typing import Optional, List, Dict, Any
-from uuid import UUID
 from datetime import datetime
-from src.models.campaign import Campaign, CampaignState, Goals, TargetAudience, Schedule
-from src.models.history import EventType
-from src.repositories.campaign_repository import CampaignRepository
-from src.repositories.asset_repository import AssetRepository
-from src.services.state_machine import StateMachine
-from src.services.history_service import HistoryService
-from src.services.asset_service import AssetService
+from typing import Any
+from uuid import UUID
+
+from src.models.campaign import Campaign, CampaignState, Goals, Schedule, TargetAudience
 from src.models.errors import (
+    DuplicateNameError,
     NotFoundError,
+    PreconditionFailedError,
     StateTransitionError,
     VersionConflictError,
-    DuplicateNameError,
-    PreconditionFailedError,
-    ValidationError,
 )
+from src.repositories.asset_repository import AssetRepository
+from src.repositories.campaign_repository import CampaignRepository
+from src.services.asset_service import AssetService
+from src.services.history_service import HistoryService
+from src.services.state_machine import StateMachine
 
 
 class CampaignService:
@@ -42,10 +41,10 @@ class CampaignService:
         name: str,
         goals: dict,
         target_audience: dict,
-        platforms: List[str],
+        platforms: list[str],
         schedule: dict,
-        metadata: Optional[dict] = None,
-        company_profile_id: Optional[UUID] = None,
+        metadata: dict | None = None,
+        company_profile_id: UUID | None = None,
         organization_id: UUID = None,
         actor_id: UUID = None,
     ) -> Campaign:
@@ -111,13 +110,13 @@ class CampaignService:
     async def list_campaigns(
         self,
         organization_id: UUID,
-        state: Optional[CampaignState] = None,
+        state: CampaignState | None = None,
         page: int = 1,
         page_size: int = 20,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        owner_id: Optional[UUID] = None,
-    ) -> tuple[List[Campaign], int]:
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        owner_id: UUID | None = None,
+    ) -> tuple[list[Campaign], int]:
         """List campaigns with filters."""
         return await self.campaign_repository.list(
             organization_id=organization_id,
@@ -132,7 +131,7 @@ class CampaignService:
     async def update_campaign(
         self,
         campaign_id: UUID,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
         expected_version: int,
         actor_id: UUID,
     ) -> Campaign:
@@ -186,7 +185,7 @@ class CampaignService:
         campaign_id: UUID,
         to_state: CampaignState,
         actor_id: UUID,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> Campaign:
         """Transition campaign to new state with validation."""
         campaign = await self.get_campaign(campaign_id)
@@ -238,7 +237,7 @@ class CampaignService:
         self,
         campaign_id: UUID,
         actor_id: UUID,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         organization_id: UUID | None = None,
     ) -> Campaign:
         """Archive a campaign."""

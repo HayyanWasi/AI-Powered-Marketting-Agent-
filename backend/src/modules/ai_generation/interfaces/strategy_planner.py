@@ -1,6 +1,6 @@
 """Strategy planner interface for AI Generation Engine."""
 
-from typing import Dict, Any, Optional
+from typing import Any
 
 from ..models.strategy_artifact import StrategyArtifact
 from ..models.validation_artifact import ValidationArtifact
@@ -11,7 +11,7 @@ class StrategyPlannerInterface:
 
     def generate_strategy(
         self,
-        generation_context: Dict[str, Any],
+        generation_context: dict[str, Any],
     ) -> StrategyArtifact:
         """
         Generate campaign strategy from generation context.
@@ -30,7 +30,7 @@ class StrategyPlannerInterface:
 
     def validate_strategy(
         self,
-        strategy: Dict[str, Any],
+        strategy: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate generated strategy against business rules.

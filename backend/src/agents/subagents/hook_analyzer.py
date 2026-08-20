@@ -1,11 +1,12 @@
 """Hook Analyzer Sub-Agent — scores the first line for scroll-stopping power.
 
-Requires: LLM (Gemini — cheap call)
+Uses heuristics to score hooks from 0-100.
 """
 
-from src.agents.base import BaseAgent, AgentResult
-from src.agents.context import GenerationContext
 from dataclasses import replace
+
+from src.agents.base import AgentResult, BaseAgent
+from src.agents.context import GenerationContext
 
 
 class HookAnalyzerAgent(BaseAgent):
@@ -15,7 +16,7 @@ class HookAnalyzerAgent(BaseAgent):
         super().__init__("hook_analyzer")
 
     def execute(self, context: GenerationContext) -> AgentResult:
-        """Score each content draft's hook."""
+        """Score each content draft's hook and save to context."""
         if not context.content_drafts:
             return AgentResult(
                 success=False,
@@ -23,11 +24,10 @@ class HookAnalyzerAgent(BaseAgent):
                 message="No content drafts to analyze.",
             )
 
-        # Score each draft's first variant (hook)
         scored_drafts = []
         for draft in context.content_drafts:
             score = self._score_hook(draft.variant_a)
-            scored_drafts.append(draft)
+            scored_drafts.append(replace(draft, hook_score=score))
 
             self.logger.info(
                 "Slot %s hook score: %d/100",
@@ -35,17 +35,26 @@ class HookAnalyzerAgent(BaseAgent):
                 score,
             )
 
+        new_context = replace(context, content_drafts=tuple(scored_drafts))
+
+        avg_score = sum(d.hook_score for d in scored_drafts) / len(scored_drafts)
+        self.logger.info("Average hook score: %.1f/100", avg_score)
+
         return AgentResult(
             success=True,
-            context=context,
-            message=f"Hook analysis complete for {len(scored_drafts)} drafts.",
+            context=new_context,
+            message=f"Hook analysis complete. Average score: {avg_score:.0f}/100 for {len(scored_drafts)} drafts.",
         )
 
     def _score_hook(self, hook: str) -> int:
         """Score a hook from 0-100.
 
-        In production, this calls Gemini for nuanced analysis.
-        For now, use simple heuristics.
+        Scoring criteria:
+        - Length: 10-50 chars is ideal (+15)
+        - Question marks suggest engagement (+10)
+        - Numbers suggest specificity (+10)
+        - Power words increase urgency (+10)
+        - Too long (>100 chars) penalized (-10)
         """
         score = 50  # Base score
 
@@ -64,7 +73,16 @@ class HookAnalyzerAgent(BaseAgent):
             score += 10
 
         # Power words
-        power_words = ["discover", "secret", "exclusive", "free", "new", "proven"]
+        power_words = [
+            "discover",
+            "secret",
+            "exclusive",
+            "free",
+            "new",
+            "proven",
+            "boost",
+            "ultimate",
+        ]
         if any(w in hook.lower() for w in power_words):
             score += 10
 

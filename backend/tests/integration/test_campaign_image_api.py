@@ -35,9 +35,9 @@ VALID_REQUEST = {
 
 
 class TestGenerateCampaignImageSuccess:
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.ImageValidationService")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.ImageValidationService")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_success_with_brand(
         self, mock_pollinations_cls, mock_validation_cls, mock_profile_svc
     ) -> None:
@@ -70,9 +70,9 @@ class TestGenerateCampaignImageSuccess:
         assert data["brand_applied"] is True
         assert data["validation"]["passed"] is True
 
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.ImageValidationService")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.ImageValidationService")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_success_without_brand(
         self, mock_pollinations_cls, mock_validation_cls, mock_profile_svc
     ) -> None:
@@ -106,7 +106,7 @@ class TestGenerateCampaignImageSuccess:
 
 
 class TestGenerateCampaignImageErrors:
-    @patch("src.api.routes.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.company_profile_service")
     def test_profile_not_found(self, mock_profile_svc) -> None:
         from src.services.company_profile_service import CompanyProfileNotFoundError
 
@@ -139,8 +139,8 @@ class TestGenerateCampaignImageErrors:
         )
         assert response.status_code == 422
 
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_pollinations_server_error_returns_fallback(
         self, mock_pollinations_cls, mock_profile_svc
     ) -> None:
@@ -163,8 +163,8 @@ class TestGenerateCampaignImageErrors:
         data = response.json()
         assert data["fallback_used"] is True
 
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_pollinations_rate_limit_returns_503(
         self, mock_pollinations_cls, mock_profile_svc
     ) -> None:
@@ -184,8 +184,8 @@ class TestGenerateCampaignImageErrors:
         data = response.json()
         assert data["detail"]["error"] == "service_unavailable"
 
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_pollinations_timeout_returns_503(
         self, mock_pollinations_cls, mock_profile_svc
     ) -> None:
@@ -205,8 +205,8 @@ class TestGenerateCampaignImageErrors:
         data = response.json()
         assert data["detail"]["error"] == "service_unavailable"
 
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_pollinations_general_error_returns_503(
         self, mock_pollinations_cls, mock_profile_svc
     ) -> None:
@@ -228,9 +228,9 @@ class TestGenerateCampaignImageErrors:
 
 
 class TestValidationRetry:
-    @patch("src.api.routes.campaign_images.company_profile_service")
-    @patch("src.api.routes.campaign_images.ImageValidationService")
-    @patch("src.api.routes.campaign_images.PollinationsService")
+    @patch("src.api.v1.campaign_images.company_profile_service")
+    @patch("src.api.v1.campaign_images.ImageValidationService")
+    @patch("src.api.v1.campaign_images.PollinationsService")
     def test_validation_failure_triggers_retry_then_success(
         self, mock_pollinations_cls, mock_validation_cls, mock_profile_svc
     ) -> None:

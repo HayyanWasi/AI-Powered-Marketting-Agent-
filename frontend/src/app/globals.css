@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg-main: #F8FAFC;
+  --color-bg-sidebar: #F1F5F9;
+  --color-bg-card: #FFFFFF;
+  --color-bg-card-elevated: #F1F5F9;
+  --color-bg-card-recessed: #F8FAFC;
+  --color-bg-input: #FFFFFF;
+  
+  --color-accent-pink: #55E6C1;
+  --color-accent-pink-hover: #38D4AD;
+  --color-accent-fuchsia: #2DD4BF;
+  
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748B;
+  
+  --color-border-subtle: #F1F5F9;
+  --color-border-default: #E2E8F0;
+  --color-border-hover: #CBD5E1;
+  
+  --color-status-success: #059669;
+  --color-status-warning: #D97706;
+  --color-status-error: #DC2626;
+  --color-status-info: #0284C7;
+}
+
+:root {
+  /* 4-Layer Cool Slate Surface Elevation System */
+  --bg-color: #F8FAFC;             /* Layer 0: Soft Canvas Page Background (slate-50) */
+  --bg-sidebar: #F1F5F9;           /* Layer 1: Cool Slate App Shell (sidebar & header slate-100) */
+  --bg-card: #FFFFFF;              /* Layer 2: Pure White Floating Primary Cards (white) */
+  --bg-card-elevated: #F1F5F9;     /* Elevated Cool Slate Tint */
+  --bg-card-recessed: #F8FAFC;     /* Layer 3: Recessed Inner Container Fill */
+  --bg-input: #FFFFFF;             /* Crisp Input Field Surface */
+  
+  /* Text & Typography Hierarchy */
+  --text-primary: #0F172A;         /* Rich Slate Charcoal for Maximum Contrast */
+  --text-secondary: #334155;       /* Slate Secondary Text */
+  --text-muted: #64748B;           /* Muted Slate Text */
+  --text-inverse: #FFFFFF;
+  
+  /* Border & Separation Hierarchy */
+  --border-subtle: #F1F5F9;
+  --border-color: #E2E8F0;         /* Crisp Slate Border (slate-200) */
+  --border-hover: #CBD5E1;         /* Slate Border Hover */
+  
+  /* Mint Turquoise (#55E6C1) Primary Accent Palette */
+  --accent-color: #55E6C1;        /* Vibrant Mint Turquoise Primary Accent */
+  --accent-hover: #38D4AD;        /* Deeper Turquoise Hover State */
+  --accent-light: #0D9488;        /* High-Contrast Deep Teal for Text & Icons */
+  --accent-gradient: linear-gradient(135deg, #55E6C1 0%, #2DD4BF 100%);
+  --accent-text: #0F172A;         /* Dark Slate Text on Mint Buttons */
+  --accent-glow: rgba(85, 230, 193, 0.25);   /* Mint Glow Shadow */
+  --accent-subtle: rgba(85, 230, 193, 0.12); /* Soft Mint Tint */
+  --accent-ring: rgba(85, 230, 193, 0.3);
+  
+  /* Status Colors */
+  --status-success: #059669;
+  --status-success-bg: rgba(16, 185, 129, 0.08);
+  --status-success-border: rgba(16, 185, 129, 0.25);
+  
+  --status-warning: #D97706;
+  --status-warning-bg: rgba(245, 158, 11, 0.08);
+  --status-warning-border: rgba(245, 158, 11, 0.25);
+  
+  --status-error: #DC2626;
+  --status-error-bg: rgba(239, 68, 68, 0.08);
+  --status-error-border: rgba(239, 68, 68, 0.25);
+  
+  --status-info: #0284C7;
+  --status-info-bg: rgba(6, 182, 212, 0.08);
+  --status-info-border: rgba(6, 182, 212, 0.25);
+  
+  /* Component Specific Tokens - Inputs */
+  --input-bg: #FFFFFF;
+  --input-border: #E2E8F0;
+  --input-text: #0F172A;
+  --input-placeholder: #64748B;
+  --input-focus-border: #55E6C1;
+  --input-focus-ring: rgba(85, 230, 193, 0.2);
+  --input-error-border: #DC2626;
+  --input-error-ring: rgba(220, 38, 38, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* Light Mode Input Defaults */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="url"],
+input[type="number"],
+select,
+textarea {
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+input.error,
+textarea.error {
+  border-color: var(--input-error-border);
+  box-shadow: 0 0 0 3px var(--input-error-ring);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.section {
+  padding: 6rem 0;
+}
+
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}

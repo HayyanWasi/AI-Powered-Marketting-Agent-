@@ -36,6 +36,33 @@ def _register_versioned_routers(app: FastAPI) -> None:
     app.include_router(latest_router)
 
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """Lifecycle manager for the FastAPI application."""
+    from src.api.dependencies import get_operations_service
+    from src.modules.linkedin.worker.scheduler import (
+        shutdown_linkedin_scheduler,
+        start_linkedin_scheduler,
+    )
+
+    # Initialize observability telemetry buffers on startup
+    operations = get_operations_service()
+    await operations.initialize()
+
+    # Start background scheduler for LinkedIn AutoPilot
+    start_linkedin_scheduler()
+
+    yield
+
+    # Flush buffers and gracefully shutdown telemetry & scheduler on exit
+    shutdown_linkedin_scheduler()
+    await operations.shutdown()
+
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -54,11 +81,24 @@ def create_app() -> FastAPI:
         contact={
             "name": "AI Marketing Agent Team",
         },
+        lifespan=app_lifespan,
     )
 
     register_middleware(app)
     register_exception_handlers(app)
     _register_versioned_routers(app)
+
+    @app.get("/health")
+    async def health_check():
+        return {"status": "healthy"}
+
+    @app.get("/")
+    async def root():
+        return {
+            "message": "AI Social Campaign Manager API",
+            "version": "1.0.0",
+            "status": "running",
+        }
 
     return app
 

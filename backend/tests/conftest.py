@@ -1,12 +1,14 @@
 """Pytest configuration and fixtures."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID, uuid4
 from datetime import datetime
-from src.models.campaign import Campaign, CampaignState, Goals, TargetAudience, Schedule
-from src.models.history import CampaignHistoryEntry, EventType
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import pytest
+
+from src.models.campaign import Campaign, CampaignState, Goals, Schedule, TargetAudience
 from src.models.guest_profile import ConfidenceLevel
+from src.models.history import CampaignHistoryEntry, EventType
 
 
 @pytest.fixture

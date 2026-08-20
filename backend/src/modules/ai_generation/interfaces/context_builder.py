@@ -1,10 +1,6 @@
-from typing import Dict, Any, Optional
+from typing import Any
 
 from ..models.generation_context import GenerationContext
-from ..models.strategy_artifact import StrategyArtifact
-from ..models.copy_artifact import CopyArtifact
-from ..models.image_prompt_artifact import ImagePromptArtifact
-from ..models.image_artifact import ImageArtifact
 from ..models.validation_artifact import ValidationArtifact
 
 
@@ -13,13 +9,13 @@ class ContextBuilderInterface:
 
     def build_generation_context(
         self,
-        campaign_context: Dict[str, Any],
-        company_profile: Dict[str, Any],
-        audience: Dict[str, Any],
+        campaign_context: dict[str, Any],
+        company_profile: dict[str, Any],
+        audience: dict[str, Any],
         platforms: list[str],
-        brand_guidelines: Dict[str, Any],
-        reference_materials: list[Dict[str, Any]],
-        user_intent: Optional[Dict[str, Any]] = None,
+        brand_guidelines: dict[str, Any],
+        reference_materials: list[dict[str, Any]],
+        user_intent: dict[str, Any] | None = None,
     ) -> GenerationContext:
         """
         Build a complete generation context from input artifacts.
@@ -43,7 +39,7 @@ class ContextBuilderInterface:
 
     def validate_context_completeness(
         self,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ValidationArtifact:
         """
         Validate that a generation context contains all required fields.

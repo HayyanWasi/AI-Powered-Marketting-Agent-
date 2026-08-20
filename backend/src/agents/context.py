@@ -6,8 +6,12 @@ during the same execution.
 """
 
 from dataclasses import dataclass, field
-from uuid import UUID, uuid4
 from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+if TYPE_CHECKING:
+    from src.modules.planning.models.campaign_plan import CampaignPlan
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,8 @@ class EventData:
     platforms: tuple[str, ...] = ()
     registration_link: str = ""
     ticket_price: str = "Free"
+    category: str | None = None
+    outcome_deliverable: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,7 @@ class ContentSlot:
     phase: str
     theme: str
     format_type: str
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,10 @@ class ContentDraft:
     variant_c: str = ""
     image_prompt: str = ""
     selected_variant: str = ""
+    image_url: str = ""
+    image_model: str = ""
+    hook_score: int = 0
+    readability_score: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -91,7 +102,7 @@ class ValidationResult:
     image_valid: bool = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class GenerationContext:
     """Immutable context for a single workflow execution.
 
@@ -108,8 +119,16 @@ class GenerationContext:
     guests: tuple[GuestData, ...] = ()
     event: EventData = field(default_factory=EventData)
 
+    # Free-text goal the marketer typed (e.g. "campaigns for an AI hackathon")
+    user_goal: str = ""
+
     # Reference posts for style matching
     reference_posts: tuple[str, ...] = ()
+
+    # Approved marketing plan (loaded by Context Builder before the graph runs).
+    # This is the strategic source of truth; StrategyData below is a projection
+    # of it kept for the existing pipeline nodes.
+    plan: "CampaignPlan | None" = None
 
     # Strategy output (populated by Strategy Agent)
     strategy: StrategyData = field(default_factory=StrategyData)

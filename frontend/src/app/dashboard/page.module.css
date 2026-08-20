@@ -1,0 +1,708 @@
+.dashboardContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+}
+
+/* 1. Header Banner & Welcome Section */
+.dashboardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 0.5rem;
+}
+
+.headerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-light);
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-ring);
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  margin-bottom: 0.75rem;
+}
+
+.badgePulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-color);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  max-width: 620px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* 2. Top Metric / Analytics Row (4 Stat Cards - Pure White Floating Cards) */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+}
+
+.statCard {
+  border-radius: 14px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 130px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Card 1: Active Campaigns (Mint Emerald) */
+.cardMint {
+  background-color: rgba(236, 253, 245, 0.85);
+  border: 1px solid rgba(167, 243, 208, 0.9);
+}
+.cardMint:hover {
+  background-color: rgba(209, 250, 229, 0.95);
+  border-color: rgba(110, 231, 183, 1);
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.12);
+  transform: translateY(-2px);
+}
+.cardMint .statLabel {
+  color: #047857;
+}
+.cardMint .statNumber {
+  color: #047857;
+}
+.cardMint .statSubtext {
+  color: #047857;
+  opacity: 0.9;
+}
+.cardMint .statIconBadge {
+  background-color: rgba(209, 250, 229, 0.95);
+  border: 1px solid rgba(110, 231, 183, 0.9);
+  color: #047857;
+}
+.cardMint .statTrendGreen {
+  background-color: rgba(209, 250, 229, 0.95);
+  border: 1px solid rgba(110, 231, 183, 0.9);
+  color: #047857;
+}
+
+/* Card 2: Total AI Generations (Electric Indigo) */
+.cardCyan {
+  background-color: rgba(238, 242, 255, 0.85);
+  border: 1px solid rgba(199, 210, 254, 0.9);
+}
+.cardCyan:hover {
+  background-color: rgba(224, 231, 255, 0.95);
+  border-color: rgba(165, 180, 252, 1);
+  box-shadow: 0 6px 20px rgba(67, 56, 202, 0.12);
+  transform: translateY(-2px);
+}
+.cardCyan .statLabel {
+  color: #4338CA;
+}
+.cardCyan .statNumber {
+  color: #4338CA;
+}
+.cardCyan .statIconBadge {
+  background-color: rgba(224, 231, 255, 0.95);
+  border: 1px solid rgba(165, 180, 252, 0.9);
+  color: #4338CA;
+}
+.cardCyan .statTag {
+  background-color: rgba(224, 231, 255, 0.95);
+  border: 1px solid rgba(165, 180, 252, 0.9);
+  color: #4338CA;
+}
+.cardCyan .miniProgressBar {
+  background-color: rgba(199, 210, 254, 0.7);
+}
+.cardCyan .miniProgressFill {
+  background: linear-gradient(90deg, #6366F1, #4338CA);
+  box-shadow: 0 0 8px rgba(67, 56, 202, 0.35);
+}
+
+/* Card 3: Brand Voice Memory (Soft Rose Coral) */
+.cardRose {
+  background-color: rgba(255, 241, 242, 0.85);
+  border: 1px solid rgba(254, 205, 211, 0.9);
+}
+.cardRose:hover {
+  background-color: rgba(254, 226, 226, 0.95);
+  border-color: rgba(252, 165, 165, 1);
+  box-shadow: 0 6px 20px rgba(190, 18, 60, 0.12);
+  transform: translateY(-2px);
+}
+.cardRose .statLabel {
+  color: #BE123C;
+}
+.cardRose .statTextHighlight {
+  color: #BE123C;
+}
+.cardRose .statSubtext {
+  color: #BE123C;
+  opacity: 0.9;
+}
+.cardRose .statIconBadge {
+  background-color: rgba(254, 226, 226, 0.95);
+  border: 1px solid rgba(252, 165, 165, 0.9);
+  color: #BE123C;
+}
+.cardRose .statusBadgeSynced {
+  background-color: rgba(254, 226, 226, 0.95);
+  border: 1px solid rgba(252, 165, 165, 0.9);
+  color: #BE123C;
+}
+
+/* Card 4: System Capacity & Health (Sky Cyan Blue) */
+.cardSky {
+  background-color: rgba(240, 249, 255, 0.85);
+  border: 1px solid rgba(186, 230, 253, 0.9);
+}
+.cardSky:hover {
+  background-color: rgba(224, 242, 254, 0.95);
+  border-color: rgba(125, 211, 252, 1);
+  box-shadow: 0 6px 20px rgba(3, 105, 161, 0.12);
+  transform: translateY(-2px);
+}
+.cardSky .statLabel {
+  color: #0369A1;
+}
+.cardSky .statNumber {
+  color: #0369A1;
+}
+.cardSky .statSubtext {
+  color: #0369A1;
+  opacity: 0.9;
+}
+.cardSky .statIconBadge {
+  background-color: rgba(224, 242, 254, 0.95);
+  border: 1px solid rgba(125, 211, 252, 0.9);
+  color: #0369A1;
+}
+.cardSky .statusBadgeOnline {
+  background-color: rgba(224, 242, 254, 0.95);
+  border: 1px solid rgba(125, 211, 252, 0.9);
+  color: #0369A1;
+}
+.cardSky .statusBadgeOffline {
+  background-color: rgba(254, 226, 226, 0.95);
+  border: 1px solid rgba(252, 165, 165, 0.85);
+  color: #991B1B;
+}
+
+.statCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.875rem;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.statIconBadge {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.statCard:hover .statIconBadge {
+  transform: scale(1.04);
+}
+
+.statValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.statNumber {
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-family: var(--font-mono, monospace);
+}
+
+.statTrendGreen {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.statTag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.statTextHighlight {
+  font-size: 1.25rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusBadgeSynced {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.statusBadgeOnline {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.statusBadgeOffline {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.statSubtext {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.miniProgressBar {
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.miniProgressFill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* 3. Main Workflow Section (2-Column Layout) */
+.mainGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.leftColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Primary Top-Level Floating Section Container */
+.sectionBlock {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.blockHeader {
+  margin-bottom: 1.25rem;
+}
+
+.blockHeaderBetween {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.blockTitle {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.blockSub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.viewAllLink {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.viewAllLink:hover {
+  color: var(--accent-light);
+  text-decoration: underline;
+}
+
+/* Recessed Inner Interactive Workflow Cards */
+.workflowGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.workflowCard {
+  background-color: var(--bg-card-recessed);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-decoration: none;
+  min-height: 150px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workflowCard:hover {
+  background-color: #FFFFFF;
+  border-color: var(--accent-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px var(--accent-subtle);
+}
+
+.workflowIcon {
+  color: var(--accent-color);
+  margin-bottom: 1rem;
+}
+
+.workflowContent h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.workflowContent p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.workflowArrow {
+  font-size: 1rem;
+  color: var(--accent-color);
+  margin-top: 1rem;
+  align-self: flex-end;
+  transition: transform 0.2s ease;
+}
+
+.workflowCard:hover .workflowArrow {
+  transform: translateX(4px);
+}
+
+/* Recessed Inner Activity Items */
+.activityList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.activityItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.875rem 1rem;
+  background-color: var(--bg-card-recessed);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.activityItem:hover {
+  background-color: #FFFFFF;
+  border-color: var(--accent-color);
+}
+
+.activityMain {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.activityIconCompleted {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--status-success-bg);
+  color: var(--status-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activityIconGenerating {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--accent-subtle);
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activityIconDraft {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--border-color);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activityName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activityMeta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.activityRight {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.chipCompleted {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--status-success);
+  background-color: var(--status-success-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.chipGenerating {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent-light);
+  background-color: var(--accent-subtle);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.chipDraft {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background-color: var(--border-color);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.activityTime {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Primary Top-Level Floating Widget Cards */
+.widgetCard {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.widgetHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.widgetIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background-color: var(--accent-subtle);
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.widgetTitle {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.widgetSubtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.widgetBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.metricBold {
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.widgetProgressBar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--bg-card-recessed);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.widgetProgressFill {
+  height: 100%;
+  background: var(--accent-gradient);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.featureList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.featureItem svg {
+  color: var(--status-success);
+}
+
+.shortcutsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.shortcutItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-card-recessed);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.shortcutItem:hover {
+  background-color: #FFFFFF;
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.shortcutArrow {
+  color: var(--accent-color);
+  transition: transform 0.2s ease;
+}
+
+.shortcutItem:hover .shortcutArrow {
+  transform: translateX(4px);
+}
+
+@media (max-width: 1200px) {
+  .statsRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+  .workflowGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,7 +1,7 @@
 """Generation context model for AI Generation Engine."""
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -11,15 +11,15 @@ class GenerationContext:
     Serves as the single source of truth for all generation stages.
     """
 
-    campaign_context: Dict[str, Any]
-    company_profile: Dict[str, Any]
-    audience: Dict[str, Any]
-    platforms: List[str]
-    brand_guidelines: Dict[str, Any]
-    reference_materials: List[Dict[str, Any]]
-    user_intent: Optional[Dict[str, Any]] = None
+    campaign_context: dict[str, Any]
+    company_profile: dict[str, Any]
+    audience: dict[str, Any]
+    platforms: list[str]
+    brand_guidelines: dict[str, Any]
+    reference_materials: list[dict[str, Any]]
+    user_intent: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize context to dictionary for storage/transmission."""
         return {
             "campaign_context": self.campaign_context,
@@ -32,7 +32,7 @@ class GenerationContext:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GenerationContext":
+    def from_dict(cls, data: dict[str, Any]) -> "GenerationContext":
         """Deserialize context from dictionary."""
         return cls(
             campaign_context=data["campaign_context"],

@@ -5,16 +5,16 @@ import pytest
 from src.config.prompts import PROMPT_TEMPLATES
 from src.models.llm import LLMRequest, LLMResponse, StreamChunk, TokenUsage
 from src.services.llm_service import (
+    GeminiProvider,
+    GrokProvider,
     LLMProviderError,
     LLMService,
     LLMServiceError,
     LLMTemplateNotFoundError,
-    OpenAIProvider,
-    GeminiProvider,
 )
 
 
-def _make_openai_response(text="Hello", prompt_tokens=10, completion_tokens=20):
+def _make_grok_response(text="Hello", prompt_tokens=10, completion_tokens=20):
     usage = MagicMock()
     usage.prompt_tokens = prompt_tokens
     usage.completion_tokens = completion_tokens
@@ -38,30 +38,15 @@ def _make_gemini_response(text="Hello from Gemini", prompt_tokens=5, completion_
     return response
 
 
-class TestOpenAIProvider:
+class TestGrokProvider:
     def test_generate_success(self) -> None:
         client = MagicMock()
-        client.chat.completions.create.return_value = _make_openai_response()
-        provider = OpenAIProvider(client=client)
+        client.chat.completions.create.return_value = _make_grok_response()
+        provider = GrokProvider(client=client)
         result = provider.generate("system", "user")
         assert result.text == "Hello"
-        assert result.provider == "openai"
+        assert result.provider == "grok"
         assert result.token_usage.prompt_tokens == 10
-
-    def test_generate_stream(self) -> None:
-        chunk1 = MagicMock()
-        chunk1.choices = [MagicMock(delta=MagicMock(content="Hi"), finish_reason=None)]
-        chunk2 = MagicMock()
-        chunk2.choices = [MagicMock(delta=MagicMock(content=" there"), finish_reason="stop")]
-        client = MagicMock()
-        client.chat.completions.create.return_value = [chunk1, chunk2]
-        provider = OpenAIProvider(client=client)
-        chunks = list(provider.generate_stream("system", "user"))
-        assert len(chunks) == 2
-        assert chunks[0].content == "Hi"
-        assert chunks[0].finished is False
-        assert chunks[1].content == " there"
-        assert chunks[1].finished is True
 
 
 class TestGeminiProvider:
@@ -98,13 +83,16 @@ class TestLLMServiceGenerate:
     def test_generate_primary_success(self) -> None:
         primary = MagicMock()
         primary.generate.return_value = LLMResponse(
-            text="Hi", token_usage=TokenUsage(provider="openai"), provider="openai", model="gpt-4o"
+            text="Hi",
+            token_usage=TokenUsage(provider="grok"),
+            provider="grok",
+            model="llama-3.3-70b-versatile",
         )
         service = LLMService(primary=primary)
         req = LLMRequest(user_prompt="hello")
         result = service.generate(req)
         assert result.text == "Hi"
-        assert result.provider == "openai"
+        assert result.provider == "grok"
         primary.generate.assert_called_once()
 
     def test_generate_fallback_on_transient_error(self) -> None:
@@ -115,7 +103,7 @@ class TestLLMServiceGenerate:
             text="Gemini response",
             token_usage=TokenUsage(provider="gemini"),
             provider="gemini",
-            model="models/gemini-1.5-flash",
+            model="models/gemini-2.5-flash",
         )
         service = LLMService(primary=primary, fallback=fallback)
         req = LLMRequest(user_prompt="hello")
@@ -140,14 +128,14 @@ class TestLLMServiceGenerate:
         fallback = MagicMock()
         service = LLMService(primary=primary, fallback=fallback)
         req = LLMRequest(user_prompt="hello")
-        with pytest.raises(LLMProviderError, match="openai"):
+        with pytest.raises(LLMProviderError, match="grok"):
             service.generate(req)
         fallback.generate.assert_not_called()
 
     def test_generate_with_inline_system_prompt(self) -> None:
         primary = MagicMock()
         primary.generate.return_value = LLMResponse(
-            text="ok", token_usage=TokenUsage(), provider="openai", model="gpt-4o"
+            text="ok", token_usage=TokenUsage(), provider="grok", model="llama-3.3-70b-versatile"
         )
         service = LLMService(primary=primary)
         req = LLMRequest(system_prompt="Be helpful", user_prompt="hi")
@@ -159,7 +147,7 @@ class TestLLMServiceGenerate:
         PROMPT_TEMPLATES["test_tpl"] = "You are {role}. Guest: {name}"
         primary = MagicMock()
         primary.generate.return_value = LLMResponse(
-            text="ok", token_usage=TokenUsage(), provider="openai", model="gpt-4o"
+            text="ok", token_usage=TokenUsage(), provider="grok", model="llama-3.3-70b-versatile"
         )
         service = LLMService(primary=primary)
         req = LLMRequest(

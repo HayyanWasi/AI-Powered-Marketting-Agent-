@@ -1,17 +1,17 @@
 """Tests for Campaign model and related dataclasses."""
 
-from uuid import uuid4
 from datetime import datetime
+from uuid import uuid4
 
 from src.models.campaign import (
+    AssetSource,
+    AssetType,
     Campaign,
     CampaignAsset,
     CampaignState,
-    AssetType,
-    AssetSource,
     Goals,
-    TargetAudience,
     Schedule,
+    TargetAudience,
 )
 
 

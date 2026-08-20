@@ -11,12 +11,69 @@ from src.models.guest_profile import (
 )
 from src.services.llm import LLMError, LLMService
 from src.services.search import GuestSearchService, SearchError
+from src.services.supabase import SupabaseService, SupabaseServiceError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/guest", tags=["guest"])
 search_service = GuestSearchService()
 llm_service = LLMService()
+supabase_service = SupabaseService()
+
+
+def _save_guest_profile(profile: GuestProfile) -> None:
+    """Save guest profile to the database.
+
+    Uses upsert to handle duplicate profiles (same name + organization).
+    """
+    try:
+        client = supabase_service.client
+
+        # Prepare sources as JSON
+        sources_json = []
+        for source in profile.sources_used:
+            sources_json.append(
+                {
+                    "website_name": source.website_name,
+                    "page_title": source.page_title,
+                    "snippet": source.snippet,
+                    "source_url": source.source_url,
+                }
+            )
+
+        # Upsert guest profile
+        row = {
+            "full_name": profile.full_name,
+            "current_position": profile.current_position,
+            "organization": profile.organization,
+            "professional_biography": profile.professional_biography,
+            "areas_of_expertise": profile.areas_of_expertise,
+            "confidence_level": (
+                profile.confidence_level.value
+                if hasattr(profile.confidence_level, "value")
+                else str(profile.confidence_level)
+            ),
+            "sources": sources_json,
+        }
+
+        # Use upsert to insert or update
+        result = (
+            client.table("guest_profiles")
+            .upsert(row, on_conflict="full_name,organization")
+            .execute()
+        )
+
+        if result.data:
+            logger.info("Guest profile saved: %s", profile.full_name)
+        else:
+            logger.warning("Guest profile upsert returned no data")
+
+    except SupabaseServiceError as e:
+        logger.warning("Supabase error saving guest profile: %s", e)
+        raise
+    except Exception as e:
+        logger.warning("Unexpected error saving guest profile: %s", e)
+        raise
 
 
 def _build_search_results(raw_results: list[dict[str, Any]]) -> list[SearchResult]:
@@ -85,5 +142,13 @@ async def search_guest(body: GuestSearchRequest) -> GuestSearchResponse:
             needs_manual_input=True,
             error="Could not generate a reliable profile. Please provide the guest's biography, position, and organization manually.",
         )
+
+    # Persist guest profile to database
+    try:
+        _save_guest_profile(profile)
+        logger.info("Saved guest profile for '%s' to database", profile.full_name)
+    except Exception as e:
+        logger.warning("Failed to save guest profile to database: %s", e)
+        # Continue anyway - profile is still returned to caller
 
     return GuestSearchResponse(profile=profile.to_response(), needs_manual_input=False)

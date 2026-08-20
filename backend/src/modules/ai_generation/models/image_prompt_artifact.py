@@ -1,8 +1,8 @@
 """Image prompt artifact model for AI Generation Engine."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -18,13 +18,13 @@ class ImagePromptArtifact:
     copy_id: str
     platform: str
     prompt_text: str
-    style_guidelines: Dict[str, Any]
-    brand_elements: List[Dict[str, Any]]
-    visual_elements: List[Dict[str, Any]]
-    composition_guidelines: Dict[str, Any]
-    validation_results: Optional[Dict[str, Any]] = None
+    style_guidelines: dict[str, Any]
+    brand_elements: list[dict[str, Any]]
+    visual_elements: list[dict[str, Any]]
+    composition_guidelines: dict[str, Any]
+    validation_results: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize prompt to dictionary for storage/transmission."""
         return {
             "id": self.id,
@@ -41,7 +41,7 @@ class ImagePromptArtifact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ImagePromptArtifact":
+    def from_dict(cls, data: dict[str, Any]) -> "ImagePromptArtifact":
         """Deserialize prompt from dictionary."""
         return cls(
             id=data["id"],

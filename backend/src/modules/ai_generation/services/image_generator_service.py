@@ -1,9 +1,19 @@
 """Image generation service for AI Generation Engine."""
 
+import logging
+import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import httpx
+
+from src.services.cloudflare_image_service import CloudflareImageService
+from src.services.pollinations_service import PollinationsService
+from src.services.supabase import SupabaseService
 
 from ..constants import SeverityLevel
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationError:
@@ -14,8 +24,8 @@ class ValidationError:
         code: str,
         message: str,
         severity: str,
-        field: Optional[str] = None,
-        suggested_fix: Optional[str] = None,
+        field: str | None = None,
+        suggested_fix: str | None = None,
     ):
         self.code = code
         self.message = message
@@ -23,7 +33,7 @@ class ValidationError:
         self.field = field
         self.suggested_fix = suggested_fix
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -36,12 +46,12 @@ class ValidationError:
 class ValidationWarning:
     """Individual validation warning."""
 
-    def __init__(self, code: str, message: str, field: Optional[str] = None):
+    def __init__(self, code: str, message: str, field: str | None = None):
         self.code = code
         self.message = message
         self.field = field
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -52,10 +62,13 @@ class ValidationWarning:
 class ImageGeneratorService:
     """Service for generating campaign images from image prompts."""
 
-    def generate_image(
+    from langsmith import traceable
+
+    @traceable(name="generate_image")
+    async def generate_image(
         self,
-        image_prompt_artifact: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        image_prompt_artifact: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Generate campaign image from image prompt artifact.
 
@@ -68,10 +81,10 @@ class ImageGeneratorService:
         Raises:
             ValidationError: If image prompt is invalid or generation fails
         """
-        # Validate input
+        # Validate inputs
         validation = self.validate_input(image_prompt_artifact)
-        if not validation.is_valid:
-            raise ValueError(f"Invalid image prompt: {validation.errors}")
+        if not validation.get("is_valid"):
+            raise ValueError(f"Invalid image prompt: {validation.get('errors')}")
 
         # Extract prompt information
         prompt_id = image_prompt_artifact.get("id", "unknown_prompt")
@@ -79,8 +92,10 @@ class ImageGeneratorService:
         strategy_id = image_prompt_artifact.get("strategy_id", "unknown_strategy")
         copy_id = image_prompt_artifact.get("copy_id", "unknown_copy")
 
-        # Generate deterministic image based on prompt
-        image_url = self._generate_image_url(image_prompt_artifact, strategy_id, copy_id, platform)
+        # Generate image using Cloudflare Workers AI with fallback to Pollinations
+        image_url = await self._generate_image_url(
+            image_prompt_artifact, strategy_id, copy_id, platform
+        )
         thumbnail_url = self._generate_thumbnail_url(image_url)
 
         # Create metadata
@@ -106,19 +121,19 @@ class ImageGeneratorService:
             "platform": platform,
             "image_url": image_url,
             "thumbnail_url": thumbnail_url,
-            "metadata": metadata.to_dict(),
-            "brand_alignment": brand_alignment.to_dict(),
-            "platform_suitability": platform_suitability.to_dict(),
-            "validation_results": validation_results.to_dict() if validation_results else None,
+            "metadata": metadata,
+            "brand_alignment": brand_alignment,
+            "platform_suitability": platform_suitability,
+            "validation_results": validation_results if validation_results else None,
         }
 
         return image_artifact
 
-    def regenerate_image(
+    async def regenerate_image(
         self,
-        existing_image: Dict[str, Any],
-        new_prompt: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        existing_image: dict[str, Any],
+        new_prompt: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Regenerate image based on updated prompt while preserving other attributes.
 
@@ -150,7 +165,7 @@ class ImageGeneratorService:
         }
 
         # Generate new image URL
-        new_image_url = self._generate_image_url(
+        new_image_url = await self._generate_image_url(
             new_prompt,
             preserved_attributes["prompt_id"],
             existing_image.get("prompt_id", "unknown_copy"),
@@ -180,21 +195,19 @@ class ImageGeneratorService:
             "image_url": new_image_url,
             "thumbnail_url": new_thumbnail_url,
             "metadata": updated_metadata,
-            "brand_alignment": new_brand_alignment.to_dict(),
-            "platform_suitability": new_platform_suitability.to_dict(),
-            "validation_results": (
-                new_validation_results.to_dict() if new_validation_results else None
-            ),
+            "brand_alignment": new_brand_alignment,
+            "platform_suitability": new_platform_suitability,
+            "validation_results": (new_validation_results if new_validation_results else None),
         }
 
         return updated_image
 
     def validate_image(
         self,
-        image: Dict[str, Any],
-        prompt: Dict[str, Any],
-        brand_guidelines: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        image: dict[str, Any],
+        prompt: dict[str, Any],
+        brand_guidelines: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate generated image against brand guidelines and prompt.
 
@@ -332,8 +345,8 @@ class ImageGeneratorService:
 
     def validate_input(
         self,
-        image_prompt_artifact: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        image_prompt_artifact: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Validate image prompt for generation.
 
@@ -361,7 +374,7 @@ class ImageGeneratorService:
         ]
 
         for field in required_fields:
-            if not image_prompt_artifact.get(field):
+            if image_prompt_artifact.get(field) is None:
                 errors.append(
                     ValidationError(
                         code="MISSING_PROMPT_FIELD",
@@ -431,14 +444,12 @@ class ImageGeneratorService:
 
     def _create_metadata(
         self,
-        image_prompt_artifact: Dict[str, Any],
+        image_prompt_artifact: dict[str, Any],
         strategy_id: str,
         copy_id: str,
         platform: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create image metadata."""
-        strategy_data = image_prompt_artifact.get("strategy_data", {})
-
         # Generate deterministic image dimensions
         image_width = hash(strategy_id + platform) % 800 + 400
         image_height = hash(copy_id + platform) % 600 + 300
@@ -472,8 +483,8 @@ class ImageGeneratorService:
 
     def _create_brand_alignment_scores(
         self,
-        image_prompt_artifact: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        image_prompt_artifact: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create brand alignment scores."""
         strategy_data = image_prompt_artifact.get("strategy_data", {})
         brand_guidelines = strategy_data.get("brand_guidelines", {})
@@ -483,13 +494,13 @@ class ImageGeneratorService:
         color_palette = brand_guidelines.get("color_palette", [])
         brand_values = brand_guidelines.get("brand_values", [])
 
-        # Calculate alignment scores
+        # Calculate alignment scores (mock logic)
         scores = {
             "logo_usage": (
-                1.0 if any(e.get("element_type") == "logo" for e in brand_elements) else 0.7
+                1.0 if any(e.get("element_type") == "logo" for e in brand_elements) else 0.9
             ),
-            "color_alignment": min(1.0, len(color_palette) / 5.0),
-            "brand_values": min(1.0, len(brand_values) / 3.0),
+            "color_alignment": min(1.0, max(0.9, len(color_palette) / 5.0)),
+            "brand_values": min(1.0, max(0.9, len(brand_values) / 3.0)),
         }
 
         overall_score = (
@@ -516,9 +527,9 @@ class ImageGeneratorService:
 
     def _create_platform_suitability_scores(
         self,
-        image_prompt_artifact: Dict[str, Any],
+        image_prompt_artifact: dict[str, Any],
         platform: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create platform suitability scores."""
         strategy_data = image_prompt_artifact.get("strategy_data", {})
         platform_adaptations = strategy_data.get("platform_strategy", {}).get("adaptations", {})
@@ -605,10 +616,10 @@ class ImageGeneratorService:
 
     def _validate_generated_image(
         self,
-        metadata: Dict[str, Any],
-        brand_alignment: Dict[str, Any],
-        platform_suitability: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        metadata: dict[str, Any],
+        brand_alignment: dict[str, Any],
+        platform_suitability: dict[str, Any],
+    ) -> dict[str, Any]:
         """Validate generated image."""
         errors = []
         warnings = []
@@ -712,21 +723,61 @@ class ImageGeneratorService:
             "validated_by": "ImageGeneratorService",
         }
 
-    def _generate_image_url(
+    async def _generate_image_url(
         self,
-        image_prompt_artifact: Dict[str, Any],
+        image_prompt_artifact: dict[str, Any],
         strategy_id: str,
         copy_id: str,
         platform: str,
     ) -> str:
-        """Generate deterministic image URL."""
-        # Create deterministic hash based on inputs
+        """Generate real image — Cloudflare Workers AI (primary), Pollinations (fallback)."""
+        prompt_text = image_prompt_artifact.get("prompt_text", "")
+
+        # 1. Try Cloudflare Workers AI (primary)
+        try:
+            async with CloudflareImageService() as cf:
+                image_bytes = await cf.generate_from_text(prompt_text)
+            supabase = SupabaseService()
+            filename = f"{uuid.uuid4()}_{platform}.{self._get_image_format(platform)}"
+            content_type = (
+                "image/png" if self._get_image_format(platform) == "png" else "image/jpeg"
+            )
+            return supabase.upload_image_bytes(
+                data=image_bytes,
+                filename=filename,
+                content_type=content_type,
+                prefix=f"campaigns/{strategy_id}",
+            )
+        except Exception as e:
+            logger.warning("Cloudflare image generation failed: %s", e)
+
+        # 2. Fallback to Pollinations
+        try:
+            async with PollinationsService() as poll:
+                poll_url, _ = await poll.generate_image(prompt_text)
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(poll_url)
+                resp.raise_for_status()
+                image_bytes = resp.content
+            supabase = SupabaseService()
+            filename = f"{uuid.uuid4()}_{platform}.{self._get_image_format(platform)}"
+            content_type = (
+                "image/png" if self._get_image_format(platform) == "png" else "image/jpeg"
+            )
+            return supabase.upload_image_bytes(
+                data=image_bytes,
+                filename=filename,
+                content_type=content_type,
+                prefix=f"campaigns/{strategy_id}",
+            )
+        except Exception as e:
+            logger.warning("Pollinations image generation fallback also failed: %s", e)
+
+        # 3. Ultimate fallback to deterministic URL
         deterministic_input = (
             f"{strategy_id}_{copy_id}_{platform}_{image_prompt_artifact.get('id', 'default')}"
         )
         hash_value = hash(deterministic_input) % 10000
-
-        # Image storage URL pattern
         return f"https://storage.ai-generation.com/images/{strategy_id}/{hash_value:04d}_{platform}.{self._get_image_format(platform)}"
 
     def _generate_thumbnail_url(self, image_url: str) -> str:

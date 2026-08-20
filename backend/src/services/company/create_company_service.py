@@ -3,7 +3,6 @@ import logging
 from src.models.company import CompanyProfile
 from src.repositories.company_repository import (
     CompanyDuplicateError,
-    CompanyNotFoundError,
     CompanyRepository,
     CompanyRepositoryError,
 )

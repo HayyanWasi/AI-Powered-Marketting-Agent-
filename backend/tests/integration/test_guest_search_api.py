@@ -19,8 +19,8 @@ class TestGuestSearchAPI:
             ]
             with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
                 from src.models.guest_profile import (
-                    GuestProfileData,
                     ConfidenceLevel,
+                    GuestProfileData,
                     SearchResultData,
                 )
 
@@ -56,7 +56,7 @@ class TestGuestSearchAPI:
                 {"title": "Jane Doe - CEO", "href": "https://ex.com", "body": "CEO at Acme Corp."},
             ]
             with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
-                from src.models.guest_profile import GuestProfileData, ConfidenceLevel
+                from src.models.guest_profile import ConfidenceLevel, GuestProfileData
 
                 mock_llm_svc.analyze_search_results.return_value = GuestProfileData(
                     full_name="Jane Doe",
@@ -95,7 +95,7 @@ class TestGuestSearchAPI:
                 {"title": "Result", "href": "https://ex.com", "body": "Body"},
             ]
             with patch("src.api.v1.guest.llm_service") as mock_llm_svc:
-                from src.models.guest_profile import GuestProfileData, ConfidenceLevel
+                from src.models.guest_profile import ConfidenceLevel, GuestProfileData
 
                 mock_llm_svc.analyze_search_results.return_value = GuestProfileData(
                     full_name="",
@@ -121,7 +121,9 @@ class TestGuestSearchAPI:
             response = client.post("/api/guest/search", json={"guest_name": "Jane Doe"})
             assert response.status_code == 502
             body = response.json()
-            assert "Search service error" in body.get("message", "") or "Search service error" in body.get("error", "")
+            assert "Search service error" in body.get(
+                "message", ""
+            ) or "Search service error" in body.get("error", "")
 
     def test_invalid_input_empty_name(self) -> None:
         response = client.post("/api/guest/search", json={"guest_name": ""})

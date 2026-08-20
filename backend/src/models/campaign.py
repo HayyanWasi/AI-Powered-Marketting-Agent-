@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 
@@ -40,10 +40,10 @@ class Goals:
     """Structured campaign goals."""
 
     primary: str
-    metrics: List[str] = field(default_factory=list)
-    targets: Dict[str, Any] = field(default_factory=dict)
+    metrics: list[str] = field(default_factory=list)
+    targets: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "primary": self.primary,
             "metrics": self.metrics,
@@ -51,7 +51,7 @@ class Goals:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Goals":
+    def from_dict(cls, data: dict[str, Any]) -> "Goals":
         return cls(
             primary=data.get("primary", ""),
             metrics=data.get("metrics", []),
@@ -63,11 +63,11 @@ class Goals:
 class TargetAudience:
     """Target audience definition."""
 
-    segments: List[str] = field(default_factory=list)
-    demographics: Dict[str, Any] = field(default_factory=dict)
-    interests: List[str] = field(default_factory=list)
+    segments: list[str] = field(default_factory=list)
+    demographics: dict[str, Any] = field(default_factory=dict)
+    interests: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "segments": self.segments,
             "demographics": self.demographics,
@@ -75,7 +75,7 @@ class TargetAudience:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TargetAudience":
+    def from_dict(cls, data: dict[str, Any]) -> "TargetAudience":
         return cls(
             segments=data.get("segments", []),
             demographics=data.get("demographics", {}),
@@ -90,9 +90,9 @@ class Schedule:
     start_date: datetime
     end_date: datetime
     timezone: str
-    recurrence_rule: Optional[str] = None
+    recurrence_rule: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
@@ -101,7 +101,7 @@ class Schedule:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Schedule":
+    def from_dict(cls, data: dict[str, Any]) -> "Schedule":
         return cls(
             start_date=(
                 datetime.fromisoformat(data["start_date"])
@@ -124,24 +124,24 @@ class Campaign:
 
     id: UUID = field(default_factory=uuid4)
     organization_id: UUID = field(default_factory=uuid4)
-    company_profile_id: Optional[UUID] = None
+    company_profile_id: UUID | None = None
     name: str = ""
-    goals: Optional[Goals] = None
-    target_audience: Optional[TargetAudience] = None
-    platforms: List[str] = field(default_factory=list)
-    schedule: Optional[Schedule] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    goals: Goals | None = None
+    target_audience: TargetAudience | None = None
+    platforms: list[str] = field(default_factory=list)
+    schedule: Schedule | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     state: CampaignState = CampaignState.DRAFT
     version: int = 1
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    published_at: Optional[datetime] = None
-    archived_at: Optional[datetime] = None
+    published_at: datetime | None = None
+    archived_at: datetime | None = None
     created_by: UUID = field(default_factory=uuid4)
     updated_by: UUID = field(default_factory=uuid4)
-    previous_state: Optional[CampaignState] = None  # For archive/restore
+    previous_state: CampaignState | None = None  # For archive/restore
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize campaign to dictionary for storage/history."""
         return {
             "id": str(self.id),
@@ -165,7 +165,7 @@ class Campaign:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Campaign":
+    def from_dict(cls, data: dict[str, Any]) -> "Campaign":
         """Deserialize campaign from dictionary."""
         campaign = cls(
             id=UUID(data["id"]),
@@ -247,13 +247,13 @@ class CampaignAsset:
     id: UUID = field(default_factory=uuid4)
     campaign_id: UUID = field(default_factory=uuid4)
     asset_type: AssetType = AssetType.COPY
-    content: Dict[str, Any] = field(default_factory=dict)
-    storage_path: Optional[str] = None
+    content: dict[str, Any] = field(default_factory=dict)
+    storage_path: str | None = None
     source: AssetSource = AssetSource.MANUAL
     created_at: datetime = field(default_factory=datetime.utcnow)
     created_by: UUID = field(default_factory=uuid4)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize asset to dictionary for storage."""
         return {
             "id": str(self.id),
@@ -267,7 +267,7 @@ class CampaignAsset:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CampaignAsset":
+    def from_dict(cls, data: dict[str, Any]) -> "CampaignAsset":
         """Deserialize asset from dictionary."""
         return cls(
             id=UUID(data["id"]),

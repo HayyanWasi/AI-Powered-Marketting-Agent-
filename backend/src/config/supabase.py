@@ -1,7 +1,9 @@
 """Supabase client wrapper with connection management."""
 
-from supabase import create_client
 from functools import lru_cache
+
+from supabase import create_client
+
 from src.config.settings import settings
 
 

@@ -25,6 +25,7 @@ TIMEOUT = 10.0
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _client(timeout: float = TIMEOUT) -> httpx.Client:
     """Create a fresh HTTP client (avoids Windows connection reset issues)."""
     return httpx.Client(base_url=BASE_URL, timeout=timeout)
@@ -52,6 +53,7 @@ def company_id() -> str:
 # ---------------------------------------------------------------------------
 # Schema helpers
 # ---------------------------------------------------------------------------
+
 
 def assert_company_shape(data: dict) -> None:
     assert "id" in data and isinstance(data["id"], str)
@@ -295,8 +297,16 @@ class TestCampaignManagement:
                 "/campaigns",
                 json={
                     "name": f"Test Campaign {uuid.uuid4().hex[:8]}",
-                    "goals": {"primary": "Increase brand awareness", "metrics": ["impressions"], "targets": {}},
-                    "target_audience": {"segments": ["professionals"], "demographics": {}, "interests": []},
+                    "goals": {
+                        "primary": "Increase brand awareness",
+                        "metrics": ["impressions"],
+                        "targets": {},
+                    },
+                    "target_audience": {
+                        "segments": ["professionals"],
+                        "demographics": {},
+                        "interests": [],
+                    },
                     "platforms": ["linkedin"],
                     "schedule": {
                         "start_date": "2026-08-01T00:00:00Z",
@@ -340,7 +350,10 @@ class TestCampaignValidation:
         with _client() as c:
             resp = c.post(
                 "/api/campaigns/test-campaign/validate",
-                json={"text_content": "Excited to announce our summer sale!", "platform": "linkedin"},
+                json={
+                    "text_content": "Excited to announce our summer sale!",
+                    "platform": "linkedin",
+                },
             )
             assert resp.status_code == 200
             data = resp.json()
@@ -499,7 +512,10 @@ class TestWorkflowEngine:
         with _client() as c:
             resp = c.post(
                 "/workflow/execute",
-                json={"graph_id": "campaign-generation", "initial_state": {"campaign_id": "test-123"}},
+                json={
+                    "graph_id": "campaign-generation",
+                    "initial_state": {"campaign_id": "test-123"},
+                },
             )
             assert resp.status_code == 200
             data = resp.json()
@@ -662,7 +678,7 @@ class TestAPILayer:
             body = resp.text
             assert "traceback" not in body.lower()
             assert "stacktrace" not in body.lower()
-            assert "File \"" not in body
+            assert 'File "' not in body
 
     def test_content_type_json_on_all_endpoints(self) -> None:
         with _client() as c:
@@ -690,6 +706,7 @@ class TestPerformance:
 
     def test_concurrent_requests_no_5xx(self) -> None:
         with _client() as c:
+
             def make_request() -> int:
                 return c.get("/health").status_code
 

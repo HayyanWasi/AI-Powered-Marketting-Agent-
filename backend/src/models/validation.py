@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -77,7 +77,7 @@ class ValidationResponse(BaseModel):
         default=..., description="Image validation results"
     )
     validated_at: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        default_factory=lambda: datetime.now(UTC).isoformat(),
         description="Timestamp of validation",
     )
     can_preview: bool = Field(..., description="Whether campaign can proceed to preview")
@@ -96,7 +96,7 @@ class ValidationResultInternal:
     image_result: "ImageValidationResultInternal" = field(
         default_factory=lambda: ImageValidationResultInternal()
     )
-    validated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    validated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_response(self) -> ValidationResponse:
         return ValidationResponse(

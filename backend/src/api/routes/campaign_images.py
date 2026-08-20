@@ -12,15 +12,14 @@ from src.models.campaign_image import (
 )
 from src.models.errors import ErrorCode, create_error_response
 from src.services.brand_style_service import BrandStyleService
+from src.services.cloudflare_image_service import (
+    CloudflareImageService,
+    CloudflareImageServiceError,
+)
 from src.services.company_profile_service import CompanyProfileNotFoundError, CompanyProfileService
 from src.services.image_validation_service import ImageValidationService
-from src.services.pollinations_service import (
-    PollinationsRateLimitError,
-    PollinationsServerError,
-    PollinationsService,
-    PollinationsServiceError,
-    PollinationsTimeoutError,
-)
+from src.services.pollinations_service import PollinationsService
+from src.services.supabase import SupabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,13 @@ def _make_validation(width: int, height: int, passed: bool) -> ValidationResult:
 @router.post("", response_model=CampaignImageResponse, status_code=200)
 async def generate_campaign_image(request: CampaignImageRequest) -> CampaignImageResponse:
     """
-    Generate a brand-styled campaign image using Pollinations AI.
+    Generate a brand-styled campaign image.
+
+    Primary provider is Cloudflare Workers AI: if the company profile has a
+    reference image, it is used for image-to-image (Stable Diffusion img2img)
+    so the output follows the reference's look; otherwise text-to-image (FLUX)
+    is used. The generated image is uploaded to Supabase Storage and its public
+    URL is returned. If Cloudflare fails, the route falls back to Pollinations.
 
     Args:
         request: Campaign image generation request with company profile ID and prompt
@@ -60,8 +65,7 @@ async def generate_campaign_image(request: CampaignImageRequest) -> CampaignImag
 
     Raises:
         HTTPException: 400 for validation errors, 404 for profile not found,
-                      422 for validation failure, 503 for service unavailable,
-                      500 for internal errors
+                      503 for service unavailable, 500 for internal errors
     """
     start_time = time.monotonic()
 
@@ -73,97 +77,50 @@ async def generate_campaign_image(request: CampaignImageRequest) -> CampaignImag
         # 2. Extract brand context
         brand_context = brand_style_service.extract_brand_context(profile)
 
-        # 3. Build Pollinations prompt
-        pollinations_prompt = brand_style_service.build_prompt(
+        # 3. Build prompt (reference URLs are still appended as text conditioning)
+        prompt = brand_style_service.build_prompt(
             campaign_prompt=request.campaign_prompt,
             brand_context=brand_context,
             campaign_context=request.campaign_context,
         )
 
-        # 4. Generate image with Pollinations
-        logger.info("Generating image with Pollinations (model=kontext)")
-        async with PollinationsService() as pollinations_service:
-            try:
-                image_url, generation_time_ms = await pollinations_service.generate_image(
-                    prompt=pollinations_prompt.base_prompt,
-                    brand_context=brand_context,
-                )
-            except PollinationsServerError as e:
-                logger.warning("Pollinations server error, generating fallback: %s", e)
-                async with PollinationsService() as fallback_service:
-                    image_url, _ = await fallback_service.generate_fallback(brand_context)
-                generation_time_ms = int((time.monotonic() - start_time) * 1000)
-                return CampaignImageResponse(
-                    image_url=image_url,
-                    model="kontext",
-                    generation_time_ms=generation_time_ms,
-                    fallback_used=True,
-                    brand_applied=_is_brand_applied(brand_context),
-                    validation=_make_validation(0, 0, False),
-                )
-            except PollinationsRateLimitError as e:
-                logger.warning("Pollinations rate limited: %s", e)
-                raise HTTPException(
-                    status_code=503,
-                    detail=create_error_response(
-                        error_code=ErrorCode.SERVICE_UNAVAILABLE,
-                        message="Image generation service temporarily unavailable due to rate limiting",
-                        details={
-                            "retry_after_seconds": e.retry_after or 30,
-                            "fallback_available": True,
-                        },
-                    ).model_dump(),
-                )
-            except PollinationsTimeoutError as e:
-                logger.warning("Pollinations timeout: %s", e)
-                raise HTTPException(
-                    status_code=503,
-                    detail=create_error_response(
-                        error_code=ErrorCode.SERVICE_UNAVAILABLE,
-                        message="Image generation service timed out",
-                        details={"retry_after_seconds": 30, "fallback_available": True},
-                    ).model_dump(),
-                )
-            except PollinationsServiceError as e:
-                logger.error("Pollinations service error: %s", e)
-                raise HTTPException(
-                    status_code=503,
-                    detail=create_error_response(
-                        error_code=ErrorCode.SERVICE_UNAVAILABLE,
-                        message="Image generation service temporarily unavailable",
-                        details={"retry_after_seconds": 30, "fallback_available": True},
-                    ).model_dump(),
-                )
+        # 4. Try Cloudflare Workers AI (primary)
+        reference_urls = brand_context.reference_image_urls or []
+        try:
+            image_url, model_name = await _generate_with_cloudflare(
+                prompt=prompt,
+                reference_urls=reference_urls,
+                profile_id=str(request.company_profile_id),
+            )
+            fallback_used = False
+        except CloudflareImageServiceError as e:
+            logger.warning("Cloudflare generation failed, falling back to Pollinations: %s", e)
+            image_url, model_name = await _generate_with_pollinations(prompt, brand_context)
+            fallback_used = True
 
         # 5. Validate generated image
         logger.info("Validating generated image")
         async with ImageValidationService() as validation_service:
             validation_result = await validation_service.validate_image_url(image_url)
 
-        # 6. If validation fails, retry once with adjusted prompt
-        if not validation_result.is_valid:
-            logger.warning(
-                "Image validation failed: %s. Retrying with adjusted prompt.",
-                validation_result.errors,
-            )
-            return await _retry_with_validation(
-                pollinations_prompt=pollinations_prompt,
-                brand_context=brand_context,
-                start_time=start_time,
-            )
-
-        # Success case
         generation_time_ms = int((time.monotonic() - start_time) * 1000)
-        logger.info("Campaign image generated successfully in %dms", generation_time_ms)
+        logger.info(
+            "Campaign image generated in %dms (model=%s, fallback=%s)",
+            generation_time_ms,
+            model_name,
+            fallback_used,
+        )
 
         return CampaignImageResponse(
             image_url=image_url,
-            model="kontext",
+            model=model_name,
             generation_time_ms=generation_time_ms,
-            fallback_used=False,
+            fallback_used=fallback_used,
             brand_applied=_is_brand_applied(brand_context),
             validation=_make_validation(
-                validation_result.width, validation_result.height, validation_result.is_valid
+                validation_result.width,
+                validation_result.height,
+                validation_result.is_valid,
             ),
         )
 
@@ -201,47 +158,63 @@ async def generate_campaign_image(request: CampaignImageRequest) -> CampaignImag
         )
 
 
-async def _retry_with_validation(
-    pollinations_prompt: PollinationsPrompt,
-    brand_context: BrandStyleContextInternal,
-    start_time: float,
-) -> CampaignImageResponse:
-    """Retry image generation with high-resolution hint after validation failure."""
-    retry_prompt = f"{pollinations_prompt.base_prompt}, high resolution, 1080p, detailed"
-    async with PollinationsService() as pollinations_service:
-        retry_image_url, _ = await pollinations_service.generate_image(
-            prompt=retry_prompt,
-            brand_context=brand_context,
-        )
+async def _generate_with_cloudflare(
+    prompt: PollinationsPrompt,
+    reference_urls: list[str],
+    profile_id: str,
+) -> tuple[str, str]:
+    """Generate via Cloudflare Workers AI and upload to Supabase.
 
-    async with ImageValidationService() as validation_service:
-        retry_validation = await validation_service.validate_image_url(retry_image_url)
+    Uses img2img when a reference image is available (and downloadable),
+    otherwise text2img. Returns (public_image_url, model_name).
 
-    generation_time_ms = int((time.monotonic() - start_time) * 1000)
+    Raises:
+        CloudflareImageServiceError: if generation fails (triggers fallback).
+    """
+    async with CloudflareImageService() as cf:
+        reference_bytes: bytes | None = None
+        if reference_urls:
+            logger.info("Downloading reference image: %s", reference_urls[0])
+            reference_bytes = await cf.download_reference(reference_urls[0])
 
-    if retry_validation.is_valid:
-        logger.info("Retry validation passed")
-        return CampaignImageResponse(
-            image_url=retry_image_url,
-            model="kontext",
-            generation_time_ms=generation_time_ms,
-            fallback_used=False,
-            brand_applied=_is_brand_applied(brand_context),
-            validation=_make_validation(
-                retry_validation.width, retry_validation.height, retry_validation.is_valid
-            ),
-        )
+        if reference_bytes:
+            logger.info("Generating with Cloudflare img2img (reference-guided)")
+            image_bytes = await cf.generate_from_reference(
+                prompt=prompt.base_prompt,
+                reference_image_bytes=reference_bytes,
+            )
+            model_name = cf.img2img_model
+        else:
+            logger.info("No reference image; generating with Cloudflare text2img (flux)")
+            image_bytes = await cf.generate_from_text(prompt=prompt.base_prompt)
+            model_name = cf.text2img_model
 
-    # Retry also failed - use fallback
-    logger.warning("Retry validation failed, using fallback")
-    async with PollinationsService() as fallback_service:
-        fallback_url, _ = await fallback_service.generate_fallback(brand_context)
-
-    return CampaignImageResponse(
-        image_url=fallback_url,
-        model="kontext",
-        generation_time_ms=generation_time_ms,
-        fallback_used=True,
-        brand_applied=_is_brand_applied(brand_context),
-        validation=_make_validation(0, 0, False),
+    # Upload to Supabase Storage (sync SDK; run off the event loop not required for MVP)
+    supabase = SupabaseService()
+    filename = f"{profile_id}/{uuid.uuid4().hex}.png"
+    public_url = supabase.upload_image_bytes(
+        data=image_bytes,
+        filename=filename,
+        content_type="image/png",
+        prefix="campaigns",
     )
+    logger.info("Uploaded generated image to Supabase: %s", public_url)
+    return public_url, model_name
+
+
+async def _generate_with_pollinations(
+    prompt: PollinationsPrompt,
+    brand_context: BrandStyleContextInternal,
+) -> tuple[str, str]:
+    """Fallback generation via Pollinations. Returns (image_url, model_name)."""
+    async with PollinationsService() as pollinations_service:
+        model_name = pollinations_service.model
+        try:
+            image_url, _ = await pollinations_service.generate_image(
+                prompt=prompt.base_prompt,
+                brand_context=brand_context,
+            )
+        except Exception as e:
+            logger.warning("Pollinations primary failed, using Pollinations fallback: %s", e)
+            image_url, _ = await pollinations_service.generate_fallback(brand_context)
+    return image_url, model_name
