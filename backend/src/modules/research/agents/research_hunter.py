@@ -56,9 +56,7 @@ class ResearchHunter:
         gap_detector = GapDetector(worker_llm)
 
         # Step 1: Initial query generation
-        queries = await gap_detector.generate_initial_queries(
-            dimension, user_goal, company_name
-        )
+        queries = await gap_detector.generate_initial_queries(dimension, user_goal, company_name)
         cost_controller.record_llm_call()
 
         # Step 2: Loop iterations (Quick: 1, Standard: 2, Deep: 3)
@@ -116,9 +114,12 @@ class ResearchHunter:
 
         return evidence_collected, current_confidence, abandoned_sources_count
 
-
     async def _extract_evidence_items(
-        self, dimension: str, results: list[dict[str, Any]], user_goal: str, llm: LLMRouterService | None = None
+        self,
+        dimension: str,
+        results: list[dict[str, Any]],
+        user_goal: str,
+        llm: LLMRouterService | None = None,
     ) -> tuple[list[EvidenceItem], float]:
         """LLM extraction of claims, quotes, and confidence breakdown."""
         if not results:

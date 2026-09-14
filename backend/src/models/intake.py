@@ -32,8 +32,13 @@ class IntakeChecklist(BaseModel):
 
     def is_complete(self) -> bool:
         """Check if baseline required fields are collected."""
+
         def _valid(val: str | None) -> bool:
-            return bool(val and str(val).strip() and str(val).strip().lower() not in ("null", "none", "n/a", "undefined"))
+            return bool(
+                val
+                and str(val).strip()
+                and str(val).strip().lower() not in ("null", "none", "n/a", "undefined")
+            )
 
         core_required = [
             self.event_name,
@@ -52,7 +57,6 @@ class IntakeChecklist(BaseModel):
             guest_ok = _valid(self.guest_name) and self.guest_confirmed
 
         return has_core and guest_ok
-
 
 
 class IntakeMessage(BaseModel):
@@ -99,6 +103,7 @@ class GuestConfirmRequest(BaseModel):
 
 class ExtractedData(BaseModel):
     """The raw campaign data extracted from the user's message."""
+
     event_name: str | None = None
     category: str | None = None
     event_date: str | None = None
@@ -115,6 +120,7 @@ class ExtractedData(BaseModel):
 
 class UnifiedIntakeResponse(BaseModel):
     """The final, strict JSON structure the LLM MUST return on every single turn."""
+
     extracted: ExtractedData = Field(
         description="The campaign data found in the user's latest message. Leave missing fields as null."
     )

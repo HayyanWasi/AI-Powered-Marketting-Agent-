@@ -16,5 +16,6 @@ async def test():
     retrieved = await service.get_checklist(cid)
     print("Retrieved checklist from DB:", retrieved.model_dump())
 
+
 if __name__ == "__main__":
     asyncio.run(test())

@@ -24,9 +24,7 @@ class ExecuteWorkflowRequest(BaseModel):
 
 class ResumeWorkflowRequest(BaseModel):
     thread_id: str = Field(..., description="Thread ID to resume")
-    resume_value: Any | None = Field(
-        default=None, description="Value to pass to interrupted node"
-    )
+    resume_value: Any | None = Field(default=None, description="Value to pass to interrupted node")
 
 
 class ApproveWorkflowRequest(BaseModel):

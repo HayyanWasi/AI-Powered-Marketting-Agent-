@@ -135,8 +135,7 @@ concrete, specific statement drawn from the actual event details provided above.
 Respond in EXACTLY this format:
 VARIANT_A: <hook using Bold claim OR Personal story/guest angle pattern, then body, then CTA>
 VARIANT_B: <hook using Data drop OR a value/benefit list pattern, then body, then CTA>
-VARIANT_C: <hook using Question OR Contrarian take pattern, then body, then CTA>
-IMAGE_PROMPT: <a vivid visual description for an image generator, on-brand>""",
+VARIANT_C: <hook using Question OR Contrarian take pattern, then body, then CTA>""",
     )
 
     logger.info("Registered %d default prompt templates", len(PROMPT_TEMPLATES))

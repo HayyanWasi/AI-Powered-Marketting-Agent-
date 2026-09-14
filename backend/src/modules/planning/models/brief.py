@@ -70,7 +70,6 @@ class PlanBrief(BaseModel):
             "research": f"\nWEB RESEARCH EVIDENCE:\n{res_str}" if res_str else "",
         }
 
-
     @classmethod
     def from_context(cls, context) -> PlanBrief:
         """Build a brief from a GenerationContext."""

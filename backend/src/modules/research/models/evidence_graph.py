@@ -62,8 +62,5 @@ class EvidenceGraph(BaseModel):
             "decisions": [d.model_dump() for d in self.decisions],
             "evidence_nodes": [e.model_dump() for e in self.evidence_nodes],
             "source_nodes": [s.model_dump() for s in self.source_nodes],
-            "edges": [
-                {"from_id": e[0], "to_id": e[1], "relationship": e[2]}
-                for e in self.edges
-            ],
+            "edges": [{"from_id": e[0], "to_id": e[1], "relationship": e[2]} for e in self.edges],
         }

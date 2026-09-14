@@ -32,6 +32,7 @@ class ContentContextBuilder:
         guest_position: str | None = None,
         guest_organization: str | None = None,
         guest_profile: dict | None = None,
+        post_time_str: str = "10:00 AM",
     ) -> ContentContext:
         """Construct a ContentContext for a specific CalendarSlot.
 
@@ -86,12 +87,14 @@ class ContentContextBuilder:
         # Extract strategic anchors from plan
         differentiation = plan.competitive.differentiation_angle if plan.competitive else ""
         usp = plan.core_strategy.unique_selling_proposition if plan.core_strategy else ""
-        tone = plan.core_strategy.tone_of_voice if plan.core_strategy else "Professional & Data-driven"
+        tone = (
+            plan.core_strategy.tone_of_voice if plan.core_strategy else "Professional & Data-driven"
+        )
 
         return ContentContext(
             slot_id=slot.slot_id,
             slot_date=slot.date,
-            scheduled_time="09:00 AM",
+            scheduled_time=post_time_str,
             theme=slot.theme,
             messaging_pillar=slot.messaging_pillar,
             cta=slot.cta,
@@ -113,4 +116,3 @@ class ContentContextBuilder:
             ticket_price=ticket_price,
             guest_profile=guest_profile,
         )
-

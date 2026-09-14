@@ -362,64 +362,20 @@ class TestCompanyCRUD:
 
 
 class TestGuestSearch:
-    """POST /api/guest/search — guest info lookup."""
+    """POST /api/guest/search — guest info lookup (Stubbed for V2)."""
 
-    @patch("src.api.v1.guest.llm_service")
-    @patch("src.api.v1.guest.search_service")
-    def test_search_success(self, mock_search, mock_llm):
-        mock_search.search.return_value = [
-            {"title": "John Doe CEO", "body": "CEO of TechCorp", "href": "https://example.com"}
-        ]
-
-        profile_data = MagicMock()
-        profile_data.full_name = "John Doe"
-        profile_data.current_position = "CEO"
-        profile_data.organization = "TechCorp"
-        profile_data.professional_biography = "Experienced leader"
-        profile_data.areas_of_expertise = ["leadership", "tech"]
-        profile_data.confidence_level = "HIGH"
-        mock_llm.analyze_search_results.return_value = profile_data
-
+    def test_search_returns_stub(self):
         response = client.post(
             "/api/guest/search",
             json={"guest_name": "John Doe", "company_name": "TechCorp"},
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["needs_manual_input"] is False
-        assert data["profile"]["full_name"] == "John Doe"
-        assert data["profile"]["current_position"] == "CEO"
-        _assert_json_content_type(response)
-
-    @patch("src.api.v1.guest.search_service")
-    def test_search_no_results_returns_needs_manual(self, mock_search):
-        mock_search.search.return_value = []
-        response = client.post(
-            "/api/guest/search",
-            json={"guest_name": "Unknown Person"},
-        )
-        assert response.status_code == 200
-        data = response.json()
         assert data["needs_manual_input"] is True
-        assert "error" in data
-
-    @patch("src.api.v1.guest.search_service")
-    def test_search_service_error_returns_502(self, mock_search):
-        from src.services.search import SearchError
-
-        mock_search.search.side_effect = SearchError("Service unavailable")
-        response = client.post(
-            "/api/guest/search",
-            json={"guest_name": "John Doe"},
-        )
-        assert response.status_code == 502
+        assert "Search implementation removed" in data["error"]
 
     def test_search_missing_name_returns_422(self):
         response = client.post("/api/guest/search", json={})
-        assert response.status_code == 422
-
-    def test_search_empty_name_returns_422(self):
-        response = client.post("/api/guest/search", json={"guest_name": ""})
         assert response.status_code == 422
 
 

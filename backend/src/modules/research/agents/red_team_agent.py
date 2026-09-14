@@ -27,9 +27,7 @@ class RedTeamAgent:
         self.search = search_executor or SearchExecutor()
         self.llm = llm_router or LLMRouterService()
 
-    async def challenge_research(
-        self, session_id: str, brief: ResearchBrief
-    ) -> RedTeamReport:
+    async def challenge_research(self, session_id: str, brief: ResearchBrief) -> RedTeamReport:
         """Run counter-evidence searches against top audience and channel claims."""
         # Pick the first claim from each high-risk dimension to challenge
         claims_to_challenge = [

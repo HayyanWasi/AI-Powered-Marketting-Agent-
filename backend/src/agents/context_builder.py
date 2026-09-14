@@ -13,7 +13,6 @@ from src.agents.context import (
     GenerationContext,
     GuestData,
 )
-from src.services.search import GuestSearchService, SearchError
 from src.services.supabase import NotFoundError, SupabaseService, SupabaseServiceError
 
 logger = logging.getLogger(__name__)
@@ -32,19 +31,17 @@ class ContextBuilder:
     def __init__(
         self,
         supabase_service: SupabaseService | None = None,
-        guest_search_service: GuestSearchService | None = None,
     ) -> None:
         """Initialize the builder with the services it reads from.
 
         Args:
             supabase_service: Source of company brand data. Constructed lazily
                 on first use if not provided (keeps tests offline-friendly).
-            guest_search_service: Source of guest/speaker data.
         """
         self._brand_service = supabase_service
-        self._guest_service = guest_search_service
+        self._guest_profile_service = None
 
-    def build(
+    async def build(
         self,
         company_profile_id: str | None = None,
         guest_names: list[str] | None = None,
@@ -73,17 +70,22 @@ class ContextBuilder:
             registration_link: Event registration URL.
             user_goal: Free-text goal typed by the marketer.
             campaign_id: When provided, the approved plan for this campaign
-                is loaded and attached to the context so the generation
-                pipeline uses the marketer-approved strategy.
+                is attached.
 
         Returns:
             An immutable GenerationContext snapshot.
         """
+        import asyncio
+
         logger.info("Building GenerationContext for event: %s", event_name)
 
-        brand = self._load_brand_data(company_profile_id)
-        guests = self._load_guest_data(guest_names or [], brand.company_name)
-        plan = self._load_approved_plan(campaign_id)
+        brand_task = asyncio.create_task(self._load_brand_data_async(company_profile_id))
+        guest_task = asyncio.create_task(
+            self._load_guest_data(guest_names or [], company_profile_id)
+        )
+        plan_task = asyncio.create_task(self._load_approved_plan(campaign_id))
+
+        brand, guests, plan = await asyncio.gather(brand_task, guest_task, plan_task)
 
         event = EventData(
             event_name=event_name,
@@ -111,6 +113,12 @@ class ContextBuilder:
         )
 
         return context
+
+    async def _load_brand_data_async(self, company_profile_id: str | None) -> BrandData:
+        """Async wrapper for loading brand data to allow it to run in gather."""
+        import asyncio
+
+        return await asyncio.to_thread(self._load_brand_data, company_profile_id)
 
     def _load_brand_data(self, company_profile_id: str | None) -> BrandData:
         """Load brand data from the company profile.
@@ -158,18 +166,17 @@ class ContextBuilder:
             style_guide=row.get("brand_guidelines", ""),
         )
 
-    def _load_guest_data(self, guest_names: list[str], company_name: str) -> list[GuestData]:
-        """Research and snapshot guest/speaker data.
-
-        A failure researching one guest MUST NOT abort the build; that guest
-        is logged and skipped so the remaining guests still snapshot.
+    async def _load_guest_data(
+        self, guest_names: list[str], company_profile_id: str | None = None
+    ) -> list[GuestData]:
+        """Research and snapshot guest/speaker data concurrently.
 
         Args:
             guest_names: Names of guests/speakers to research.
-            company_name: Company context to disambiguate the search.
+            company_profile_id: Profile ID, to fetch company name if needed (optional).
 
         Returns:
-            A list of GuestData snapshots (may be shorter than the input).
+            A list of GuestData snapshots.
         """
         if not guest_names:
             return []
@@ -178,43 +185,45 @@ class ContextBuilder:
         if service is None:
             return []
 
-        guests: list[GuestData] = []
-        for name in guest_names:
+        company_name = ""
+        if company_profile_id:
             try:
-                results = service.search(name, company_name or None)
-            except SearchError as e:
-                logger.warning("Guest search failed for '%s' (%s); skipping", name, e)
-                continue
+                brand = self._load_brand_data(company_profile_id)
+                company_name = brand.company_name
+            except Exception:
+                pass
 
-            biography = self._summarize_search(results)
-            guests.append(
-                GuestData(
-                    full_name=name,
-                    biography=biography,
-                    confidence="MEDIUM" if results else "LOW",
+        import asyncio
+
+        # Generate a distinct session ID for this build step if caching globally
+        session_id = "context_build_session"
+
+        async def _fetch_guest(name: str) -> GuestData | None:
+            try:
+                profile = await service.get_fresh_profile(
+                    session_id=session_id, guest_name=name, company_name=company_name
                 )
-            )
+                return GuestData(
+                    full_name=profile.full_name,
+                    position=profile.current_position,
+                    organization=profile.organization,
+                    biography=profile.professional_biography,
+                    expertise=tuple(profile.areas_of_expertise),
+                    confidence=str(profile.confidence_level),
+                )
+            except Exception as e:
+                logger.error("Failed to load guest profile for %s: %s", name, e)
+                return GuestData(
+                    full_name=name,
+                    biography="",
+                    confidence="LOW",
+                )
 
-        return guests
+        tasks = [_fetch_guest(name) for name in guest_names]
+        results = await asyncio.gather(*tasks)
+        return [g for g in results if g is not None]
 
-    @staticmethod
-    def _summarize_search(results: list[dict]) -> str:
-        """Condense raw search results into a short biography context.
-
-        Args:
-            results: Raw DuckDuckGo result dicts.
-
-        Returns:
-            A newline-joined summary of the top result snippets.
-        """
-        snippets = []
-        for result in results[:_MAX_GUEST_SNIPPETS]:
-            body = (result.get("body") or "").strip()
-            if body:
-                snippets.append(body)
-        return "\n".join(snippets)
-
-    def _load_approved_plan(self, campaign_id: UUID | None):
+    async def _load_approved_plan(self, campaign_id: UUID | None):
         """Load the approved plan for a campaign, or None.
 
         A missing plan or any read error MUST NOT block generation so that
@@ -230,21 +239,12 @@ class ContextBuilder:
             return None
 
         try:
-            import asyncio
-
             from src.modules.planning.models.campaign_plan import CampaignPlan
             from src.modules.planning.repositories.plan_repository import PlanRepository
 
             repo = PlanRepository()
-            # PlanRepository methods are declared async; run them synchronously
-            # here because ContextBuilder.build() is a sync method called before
-            # the async event loop starts running workflow nodes.
-            loop = asyncio.new_event_loop()
-            try:
-                plan_row = loop.run_until_complete(repo.get_plan_row(campaign_id))
-            finally:
-                loop.close()
 
+            plan_row = await repo.get_plan_row(campaign_id)
             if not plan_row:
                 return None
 
@@ -252,13 +252,7 @@ class ContextBuilder:
             if not version_num:
                 return None
 
-            loop2 = asyncio.new_event_loop()
-            try:
-                plan_version = loop2.run_until_complete(
-                    repo.get_version(plan_row["id"], version_num)
-                )
-            finally:
-                loop2.close()
+            plan_version = await repo.get_version(plan_row["id"], version_num)
 
             if not plan_version:
                 return None
@@ -273,7 +267,9 @@ class ContextBuilder:
             return plan
 
         except Exception as e:  # noqa: BLE001 - plan is optional
-            logger.warning("Could not load plan for campaign %s (%s); continuing without", campaign_id, e)
+            logger.warning(
+                "Could not load plan for campaign %s (%s); continuing without", campaign_id, e
+            )
             return None
 
     def _get_brand_service(self) -> SupabaseService | None:
@@ -291,17 +287,25 @@ class ContextBuilder:
                 return None
         return self._brand_service
 
-    def _get_guest_service(self) -> GuestSearchService | None:
-        """Return the guest search service, constructing it lazily.
-
-        Returns:
-            A GuestSearchService, or None if it cannot be constructed
-            — guest data is optional.
-        """
-        if self._guest_service is None:
+    def _get_guest_service(self):
+        """Return the guest profile service, constructing it lazily."""
+        if self._guest_profile_service is None:
             try:
-                self._guest_service = GuestSearchService()
-            except Exception as e:  # noqa: BLE001 - guest data is optional
-                logger.warning("Could not initialize guest service (%s)", e)
+                from src.cache import session_cache
+                from src.config.settings import settings
+                from src.services.guest_profile_service import GuestProfileService
+                from src.services.guest_research import ExaGuestResearchProvider
+                from src.services.llm_service import LLMService
+
+                if not settings.exa_api_key:
+                    logger.warning("EXA_API_KEY is not set. Guest research will fail.")
+
+                provider = ExaGuestResearchProvider(api_key=settings.exa_api_key)
+                llm = LLMService()
+                self._guest_profile_service = GuestProfileService(
+                    research_provider=provider, llm_service=llm, cache=session_cache
+                )
+            except Exception as e:
+                logger.warning("Could not initialize guest profile service (%s)", e)
                 return None
-        return self._guest_service
+        return self._guest_profile_service

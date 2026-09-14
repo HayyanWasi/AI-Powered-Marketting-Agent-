@@ -1,6 +1,5 @@
 """Unit tests for API response models and serialization utilities."""
 
-
 from src.api.response import (
     APIErrorResponse,
     APIResponse,

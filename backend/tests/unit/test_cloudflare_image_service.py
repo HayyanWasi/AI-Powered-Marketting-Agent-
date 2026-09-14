@@ -129,9 +129,11 @@ class TestRetry:
     ) -> None:
         mock_client.post.return_value = _response(503)
 
-        with patch("src.services.cloudflare_image_service.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(CloudflareImageServiceError):
-                await service.generate_from_text("p")
+        with (
+            patch("src.services.cloudflare_image_service.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(CloudflareImageServiceError),
+        ):
+            await service.generate_from_text("p")
 
         assert mock_client.post.call_count == 3
 

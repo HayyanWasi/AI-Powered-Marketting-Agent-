@@ -1,6 +1,5 @@
 """Unit and integration tests for the independent Autonomous Research Engine."""
 
-
 import pytest
 
 from src.modules.research.models.config import ResearchTier, ResearchTierConfig

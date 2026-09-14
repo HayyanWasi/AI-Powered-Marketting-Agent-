@@ -24,6 +24,8 @@
  *  Health (3): check, ready, live
  */
 
+import { getActiveAccessToken } from '@/context/AuthContext';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // ─── Generic helpers ────────────────────────────────────────────────
@@ -36,6 +38,11 @@ async function request<T>(
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
+
+  const token = getActiveAccessToken();
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -77,6 +84,13 @@ async function put<T>(path: string, body?: unknown, extraHeaders?: Record<string
     method: 'PUT',
     body: body ? JSON.stringify(body) : undefined,
     headers: extraHeaders,
+  });
+}
+
+async function patch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PATCH',
+    body: body ? JSON.stringify(body) : undefined,
   });
 }
 
@@ -203,10 +217,13 @@ export const companyApi = {
   uploadImages: async (id: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('images', f));
+    const token = getActiveAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${BASE_URL}/company/${id}/brand-images`, {
       method: 'POST',
       body: formData,
-      // Do NOT set Content-Type - browser sets multipart boundary automatically
+      headers,
     });
     if (!res.ok) {
       const json = await res.json();
@@ -224,9 +241,13 @@ export const companyApi = {
   replaceImage: async (id: string, index: number, file: File) => {
     const formData = new FormData();
     formData.append('image', file);
+    const token = getActiveAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${BASE_URL}/company/${id}/brand-images/${index}/replace`, {
       method: 'POST',
       body: formData,
+      headers,
     });
     if (!res.ok) {
       const json = await res.json();
@@ -314,6 +335,23 @@ export const campaignApi = {
   /** GET /api/campaigns/{id}/assets */
   listAssets: (id: string) =>
     get<{ assets: CampaignAsset[]; total: number }>(`/campaigns/${id}/assets`),
+
+  /** GET /api/campaigns/{id}/posts */
+  getPosts: (id: string) =>
+    get<
+      Array<{
+        id: string;
+        campaign_id: string;
+        slot_id?: string;
+        hook?: string;
+        body?: string;
+        cta_text?: string;
+        full_content?: string;
+        status?: string;
+        scheduled_at?: string;
+        created_at?: string;
+      }>
+    >(`/campaigns/${id}/posts`),
 };
 
 // ─── Validation API (2/2) ─────────────────────────────────────────────────────
@@ -604,7 +642,20 @@ export interface LaunchpadPreviewData {
 export const linkedinApi = {
   /** POST /api/linkedin/campaigns/{id}/generate */
   generate: (campaignId: string, researchBriefDict?: Record<string, unknown>) =>
-    post<{ status: string; posts_generated: number; sequence_generated: boolean }>(
+    post<{
+      status: string;
+      posts_generated: number;
+      sequence_generated: boolean;
+      posts?: Array<{
+        id?: string;
+        post_id?: string;
+        hook?: string;
+        body?: string;
+        cta_text?: string;
+        full_content?: string;
+        content?: string;
+      }>;
+    }>(
       `/linkedin/campaigns/${campaignId}/generate`,
       { research_brief_dict: researchBriefDict }
     ),
@@ -635,6 +686,13 @@ export const linkedinApi = {
       connected_leads: number;
       replied_leads: number;
     }>(`/linkedin/campaigns/${campaignId}/status`),
+
+  /** POST /api/v1/linkedin/accounts/publish */
+  publishPost: (text: string, accountId?: string) =>
+    post<{ status: string; post_id: string; message: string }>('/linkedin/accounts/publish', {
+      text,
+      account_id: accountId,
+    }),
 };
 
 export interface IntakeChecklistState {
@@ -704,5 +762,182 @@ export const intakeApi = {
       '/campaigns/intake/migrate',
       { session_id: sessionId, campaign_id: campaignId }
     ),
+};
+
+// ─── Video API (1/1) ───────────────────────────────────────────────────────
+
+export const videoApi = {
+  /** POST /api/campaigns/{id}/video */
+  generate: (campaignId: string, prompt?: string) =>
+    post<{ video_url: string; scenes: unknown[] }>(`/campaigns/${campaignId}/video`, prompt ? { prompt } : undefined),
+};
+
+// ─── Autopilot API ─────────────────────────────────────────────────────────
+
+export const autopilotApi = {
+  /** GET /api/v1/autopilot/settings */
+  getSettings: () =>
+    get<{
+      daily_connections: number;
+      daily_likes: number;
+      daily_comments: number;
+      post_time_slot: string;
+      video_time_slot: string;
+      master_active: boolean;
+    }>('/autopilot/settings'),
+
+  /** POST /api/v1/autopilot/settings */
+  saveSettings: (settings: {
+    daily_connections: number;
+    daily_likes: number;
+    daily_comments: number;
+    post_time_slot: string;
+    video_time_slot: string;
+    master_active?: boolean;
+  }) =>
+    post<{
+      daily_connections: number;
+      daily_likes: number;
+      daily_comments: number;
+      post_time_slot: string;
+      video_time_slot: string;
+      master_active: boolean;
+    }>('/autopilot/settings', settings),
+
+  /** POST /api/v1/autopilot/toggle */
+  toggle: (active: boolean) =>
+    post<{ status: string; master_active: boolean }>('/autopilot/toggle', { active }),
+
+  /** GET /api/v1/autopilot/tracker */
+  getTracker: () =>
+    get<{
+      master_active: boolean;
+      daily_progress: {
+        connections_sent: number;
+        connections_max: number;
+        likes_given: number;
+        likes_max: number;
+        comments_posted: number;
+        comments_max: number;
+      };
+      upcoming_queue: Array<{
+        id: string;
+        type: 'video' | 'post';
+        title: string;
+        scheduled_time: string;
+        status: string;
+      }>;
+      running_campaigns: Array<{
+        campaign_id: string;
+        campaign_name: string;
+        status: string;
+        last_action: string;
+        progress_pct: number;
+      }>;
+    }>('/autopilot/tracker'),
+
+  /** DELETE /api/v1/autopilot/queue/{id} */
+  deleteQueueItem: (id: string) =>
+    del<{
+      success: boolean;
+      id: string;
+      deleted_from_db: boolean;
+      message: string;
+    }>(`/autopilot/queue/${id}`),
+
+  /** POST /api/v1/autopilot/publish-now/{post_id} */
+  publishNow: (postId: string) =>
+    post<{ success: boolean; post_id?: string; unipile_post_id?: string; error?: string; message?: string }>(
+      `/autopilot/publish-now/${postId}`
+    ),
+
+  /** GET /api/v1/autopilot/publisher-status */
+  getPublisherStatus: () =>
+    get<{
+      total_posts: number;
+      by_status: Record<string, number>;
+      overdue_count: number;
+      overdue_posts: Array<{ id: string; scheduled_at: string }>;
+    }>('/autopilot/publisher-status'),
+};
+
+// ─── Personas API ─────────────────────────────────────────────────────────
+
+export interface TargetPersona {
+  id: string;
+  account_id: string;
+  label: string;
+  search_keywords: string;
+  max_profiles: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const personasApi = {
+  /** GET /api/v1/autopilot/personas */
+  list: () => get<{ personas: TargetPersona[]; total: number }>('/autopilot/personas'),
+
+  /** POST /api/v1/autopilot/personas */
+  create: (data: { label: string; search_keywords: string; max_profiles?: number }) =>
+    post<{ success: boolean; persona?: TargetPersona }>('/autopilot/personas', data),
+
+  /** DELETE /api/v1/autopilot/personas/{id} */
+  delete: (id: string) =>
+    del<{ success: boolean; id: string }>(`/autopilot/personas/${id}`),
+};
+
+// ─── Review Queue API ─────────────────────────────────────────────────────
+
+export interface ReviewComment {
+  id: string;
+  target_post_id: string;
+  target_post_snippet: string;
+  target_author_name: string;
+  persona_label: string;
+  generated_text: string;
+  status: 'pending_review' | 'approved' | 'rejected' | 'published' | 'expired';
+  reject_reason?: string;
+  generated_at: string;
+  reviewed_at?: string;
+}
+
+export const reviewQueueApi = {
+  /** GET /api/v1/autopilot/review-queue */
+  list: (statusFilter = 'pending_review') =>
+    get<{ comments: ReviewComment[]; total: number }>(`/autopilot/review-queue?status_filter=${statusFilter}`),
+
+  /** POST /api/v1/autopilot/review-queue/{id}/approve */
+  approve: (id: string) =>
+    post<{ success: boolean; comment_id: string; status: string }>(`/autopilot/review-queue/${id}/approve`),
+
+  /** POST /api/v1/autopilot/review-queue/{id}/reject */
+  reject: (id: string, reason?: string) =>
+    post<{ success: boolean; comment_id: string; status: string }>(
+      `/autopilot/review-queue/${id}/reject${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`
+    ),
+
+  /** POST /api/v1/autopilot/review-queue/approve-all */
+  approveAll: () =>
+    post<{ success: boolean; approved_count: number }>('/autopilot/review-queue/approve-all'),
+};
+
+// ─── Circuit Breaker API ──────────────────────────────────────────────────
+
+export const circuitBreakerApi = {
+  /** GET /api/v1/autopilot/circuit-breaker */
+  getStatus: () =>
+    get<{
+      account_id?: string;
+      state: string;
+      tripped_at?: string | null;
+      trip_reason?: string | null;
+      cooldown_hours?: number;
+      can_proceed?: boolean;
+      message?: string;
+    }>('/autopilot/circuit-breaker'),
+
+  /** POST /api/v1/autopilot/circuit-breaker/reset */
+  reset: () =>
+    post<{ success: boolean; new_state: string; message: string }>('/autopilot/circuit-breaker/reset'),
 };
 

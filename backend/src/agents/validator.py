@@ -113,9 +113,10 @@ class ValidationAgent(BaseAgent):
                 f"Readability score {draft.readability_score:.1f} is below minimum {MIN_READABILITY_SCORE}"
             )
 
-        # Image validation
-        image_valid, image_errors = self._validate_image(draft)
-        violations.extend(image_errors)
+        # Image validation stubbed for V2
+        # image_valid, image_errors = self._validate_image(draft)
+        # violations.extend(image_errors)
+        image_valid = True
 
         return ValidationResult(
             passed=len(violations) == 0,

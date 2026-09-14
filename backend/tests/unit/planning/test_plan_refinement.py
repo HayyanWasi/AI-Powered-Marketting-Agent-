@@ -27,9 +27,7 @@ _PLAN = CampaignPlan.model_validate(
         "channel_plan": {
             "platforms": [{"platform": "linkedin", "posting_cadence": "3x per week"}],
             "phases": [{"phase": "teaser", "primary_cta": "Follow for updates"}],
-            "calendar_slots": [
-                {"date": "2026-09-01", "platform": "linkedin", "phase": "teaser"}
-            ],
+            "calendar_slots": [{"date": "2026-09-01", "platform": "linkedin", "phase": "teaser"}],
             "overall_cadence": "Ramp from 2x to daily.",
         },
         "measurement": {
@@ -99,7 +97,10 @@ class TestRefinementIsolation:
     async def test_version_bumps_and_approval_resets(self):
         state = await _run(
             targets=["measurement"],
-            revised={"kpis": [{"name": "Signups", "target": "700"}], "definition_of_success": "700."},
+            revised={
+                "kpis": [{"name": "Signups", "target": "700"}],
+                "definition_of_success": "700.",
+            },
         )
         revised = state["revised_plan"]
 

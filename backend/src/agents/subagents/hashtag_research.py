@@ -8,18 +8,16 @@ from dataclasses import replace
 
 from src.agents.base import AgentResult, BaseAgent
 from src.agents.context import GenerationContext
-from src.services.search import GuestSearchService, SearchError
 
 
 class HashtagResearchAgent(BaseAgent):
     """Researches trending hashtags for content topics."""
 
-    def __init__(self, search_service: GuestSearchService | None = None):
+    def __init__(self, search_service=None):
         """Initialize the agent.
 
         Args:
-            search_service: DuckDuckGo search backend. Constructed lazily
-                if not provided.
+            search_service: Unused stub for V2 migration.
         """
         super().__init__("hashtag_research")
         self._search_service = search_service
@@ -47,19 +45,8 @@ class HashtagResearchAgent(BaseAgent):
 
     def _search_hashtags(self, context: GenerationContext) -> list[str]:
         """Search for trending hashtags related to the event."""
-        service = self._get_search_service()
-        if service is None:
-            return self._default_hashtags(context)
-
-        # Build search queries
-        queries = []
-        if context.event.event_name:
-            queries.append(f"{context.event.event_name} trending hashtags")
-        if context.brand.company_name:
-            queries.append(f"{context.brand.company_name} marketing hashtags")
-        if context.event.platforms:
-            platform = context.event.platforms[0]
-            queries.append(f"{platform} trending hashtags {context.event.event_name}")
+        # Legacy DDGS search removed.
+        return self._default_hashtags(context)
 
         all_hashtags: list[str] = []
         seen: set[str] = set()
@@ -102,13 +89,3 @@ class HashtagResearchAgent(BaseAgent):
             brand_tag = f"#{context.brand.company_name.replace(' ', '')}"
             defaults.append(brand_tag)
         return defaults
-
-    def _get_search_service(self) -> GuestSearchService | None:
-        """Return the search service, constructing it lazily."""
-        if self._search_service is None:
-            try:
-                self._search_service = GuestSearchService()
-            except Exception as e:
-                self.logger.warning("Could not initialize search service (%s)", e)
-                return None
-        return self._search_service

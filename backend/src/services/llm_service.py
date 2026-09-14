@@ -9,11 +9,12 @@ from src.models.llm import LLMRequest, LLMResponse, StreamChunk, TokenUsage
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "models/gemini-3.5-flash"
-GROK_MODEL = "llama-3.3-70b-versatile"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+GROK_MODEL = "openai/gpt-oss-20b"
 GROK_BASE_URL = "https://api.groq.com/openai/v1"
-MAX_RETRIES = 3
-RETRY_DELAYS = [1, 2, 4]
+GEMINI_MODEL = "gemini-2.5-flash"
+MAX_RETRIES = 4
+RETRY_DELAYS = [5, 10, 20, 30]
 
 
 class LLMServiceError(Exception):
@@ -66,10 +67,23 @@ class GeminiProvider:
 
     def _ensure_model(self) -> None:
         if not self._initialized:
+            import random
+
             import google.generativeai as genai
 
             if self._model is None:
-                genai.configure(api_key=settings.google_api_key)  # type: ignore[attr-defined]
+                # Randomly select a key to distribute load across the free-tier pool
+                keys = [
+                    k
+                    for k in (
+                        settings.google_api_key,
+                        settings.google_api_key_2,
+                        settings.google_api_key_3,
+                    )
+                    if k
+                ]
+                active_key = random.choice(keys) if keys else settings.google_api_key
+                genai.configure(api_key=active_key)  # type: ignore[attr-defined]
                 self._model = genai.GenerativeModel(GEMINI_MODEL)  # type: ignore[attr-defined]
             self._initialized = True
 
@@ -111,6 +125,83 @@ class GeminiProvider:
         yield StreamChunk(content="", finished=True)
 
 
+class OpenRouterProvider:
+    def __init__(self, client: Any = None) -> None:
+        self._client = client
+        self._initialized = False
+
+    def _ensure_client(self) -> None:
+        if not self._initialized:
+            import random
+
+            from openai import OpenAI
+
+            if self._client is None:
+                # Randomly select a key to distribute load across the free-tier pool
+                keys = [
+                    k
+                    for k in (
+                        settings.openrouter_api_key,
+                        settings.openrouter_api_key_2,
+                        settings.openrouter_api_key_3,
+                    )
+                    if k
+                ]
+                active_key = random.choice(keys) if keys else None
+                self._client = OpenAI(
+                    api_key=active_key,
+                    base_url=OPENROUTER_BASE_URL,
+                )
+            self._initialized = True
+
+    def generate(self, system_prompt: str, user_prompt: str) -> LLMResponse:
+        self._ensure_client()
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        completion = self._client.chat.completions.create(
+            model=settings.openrouter_model,
+            messages=messages,
+            stream=False,
+        )
+        choice = completion.choices[0]
+        usage = completion.usage
+
+        return LLMResponse(
+            text=choice.message.content or "",
+            token_usage=TokenUsage(
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+                provider="openrouter",
+            ),
+            provider="openrouter",
+            model=settings.openrouter_model,
+        )
+
+    def generate_stream(self, system_prompt: str, user_prompt: str) -> Iterator[StreamChunk]:
+        self._ensure_client()
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        stream = self._client.chat.completions.create(
+            model=settings.openrouter_model,
+            messages=messages,
+            stream=True,
+        )
+        for chunk in stream:
+            content = (
+                chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else ""
+            )
+            if content:
+                yield StreamChunk(content=content, finished=False)
+        yield StreamChunk(content="", finished=True)
+
+
 class GrokProvider:
     def __init__(self, client: Any = None) -> None:
         self._client = client
@@ -118,11 +209,24 @@ class GrokProvider:
 
     def _ensure_client(self) -> None:
         if not self._initialized:
+            import random
+
             from openai import OpenAI
 
             if self._client is None:
+                # Randomly select a key to distribute load across the free-tier pool
+                keys = [
+                    k
+                    for k in (
+                        settings.grok_api_key,
+                        settings.grok_api_key_2,
+                        settings.grok_api_key_3,
+                    )
+                    if k
+                ]
+                active_key = random.choice(keys) if keys else None
                 self._client = OpenAI(
-                    api_key=settings.grok_api_key,
+                    api_key=active_key,
                     base_url=GROK_BASE_URL,
                 )
             self._initialized = True
@@ -138,6 +242,7 @@ class GrokProvider:
             model=GROK_MODEL,
             messages=messages,
             stream=False,
+            max_tokens=4096,
         )
         choice = completion.choices[0]
         usage = completion.usage

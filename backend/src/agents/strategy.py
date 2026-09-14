@@ -55,9 +55,7 @@ class StrategyAgent(BaseAgent):
             strategy = context.plan.to_strategy_data()
             return AgentResult(
                 success=True,
-                context=replace(
-                    context, strategy=strategy, current_step="strategy_complete"
-                ),
+                context=replace(context, strategy=strategy, current_step="strategy_complete"),
                 message="Strategy derived from the approved campaign plan.",
             )
 

@@ -50,7 +50,7 @@ async def run_campaign_generation(initial_state: dict) -> dict:
     campaign_id_raw = initial_state.get("campaign_id")
     campaign_id: UUID | None = UUID(str(campaign_id_raw)) if campaign_id_raw else None
 
-    context = ContextBuilder().build(
+    context = await ContextBuilder().build(
         company_profile_id=str(company_profile_id) if company_profile_id else None,
         guest_names=initial_state.get("guest_names"),
         event_name=initial_state.get("event_name") or user_goal,
@@ -78,8 +78,10 @@ async def run_campaign_generation(initial_state: dict) -> dict:
         },
         target_audience={
             "segments": [
-                p.name for p in (final_context.plan.core_strategy.personas if final_context.plan else [])
-            ] or ["general"],
+                p.name
+                for p in (final_context.plan.core_strategy.personas if final_context.plan else [])
+            ]
+            or ["general"],
             "demographics": {},
             "interests": [],
         },

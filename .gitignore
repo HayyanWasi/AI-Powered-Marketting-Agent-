@@ -16,6 +16,11 @@ env/
 # Environment
 .env
 .env.local
+*.key.json
+*key.json
+.agents/*.json
+.playwright-mcp/
+*.mp4
 
 # Node.js
 node_modules/

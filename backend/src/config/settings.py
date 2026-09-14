@@ -1,6 +1,5 @@
 """Application configuration using Pydantic Settings."""
 
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,13 +18,15 @@ class Settings(BaseSettings):
 
     # LLM (Multi-Account Pool)
     google_api_key: str
+    google_api_key_2: str = ""
+    google_api_key_3: str = ""
     grok_api_key: str = ""
     grok_api_key_2: str = ""
     grok_api_key_3: str = ""
     openrouter_api_key: str = ""
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
-    openrouter_model: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model: str = "openrouter/free"
 
     # Supabase
     SUPABASE_URL: str
@@ -36,6 +37,9 @@ class Settings(BaseSettings):
     unipile_dsn: str = "https://api1.unipile.com:13XXX"
     unipile_token: str = ""
     unipile_account_id: str = ""
+
+    # Mock mode (safe development — no real LinkedIn API calls)
+    use_mock_unipile: bool = False
 
     # Database (PostgreSQL via Supabase)
     DATABASE_URL: str | None = None
@@ -65,9 +69,13 @@ class Settings(BaseSettings):
     min_image_height: int = 1080
     image_validation_timeout_seconds: int = 10
 
-    # DuckDuckGo Search
-    ddgs_timeout_seconds: int = 15
-    ddgs_rate_limit_seconds: int = 5
+    # Exa Research
+    exa_api_key: str = ""
+
+    # Video Generation
+    imagemagick_binary: str = "/usr/bin/convert"
+    video_max_concurrent_renders: int = 1
+    video_render_timeout_seconds: int = 300
 
     # Session
     session_timeout_hours: int = 24
@@ -88,6 +96,10 @@ class Settings(BaseSettings):
 
     # Optimistic locking
     ENABLE_VERSION_CHECK: bool = True
+
+    # Authentication & Security
+    REQUIRE_AUTH: bool = True
+    SUPABASE_JWT_SECRET: str | None = None
 
     # When an LLM call fails, agents may fall back to hardcoded placeholder
     # copy. Off by default: a silent placeholder looks like a successful

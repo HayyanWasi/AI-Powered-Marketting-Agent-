@@ -19,14 +19,14 @@ async def run_simulation():
         "curriculum will be loop engineering and spec driven development",
         "outcome will be building production ready autonomous agents",
         "free of cost event hai",
-        "https://forms.gle/agentic-ai-seminar-register"
+        "https://forms.gle/agentic-ai-seminar-register",
     ]
 
     print("=== STARTING MULTI-TURN INTAKE SIMULATION ===", flush=True)
     print(f"Campaign ID: {cid}\n", flush=True)
 
     for i, user_msg in enumerate(turns, 1):
-        print(f"Turn {i} USER: \"{user_msg}\"", flush=True)
+        print(f'Turn {i} USER: "{user_msg}"', flush=True)
         res = await service.process_chat_turn(
             campaign_id=cid,
             user_message=user_msg,
@@ -38,14 +38,17 @@ async def run_simulation():
         current_checklist = res["checklist"]
         is_complete = res["is_complete"]
 
-        print(f"Turn {i} AI REPLY: \"{reply}\"", flush=True)
-        print(f"Turn {i} COLLECTED STATE: {current_checklist.model_dump(exclude_none=True)}", flush=True)
+        print(f'Turn {i} AI REPLY: "{reply}"', flush=True)
+        print(
+            f"Turn {i} COLLECTED STATE: {current_checklist.model_dump(exclude_none=True)}",
+            flush=True,
+        )
         print(f"Turn {i} IS COMPLETE: {is_complete}", flush=True)
         print("-" * 60, flush=True)
 
-
         history.append({"role": "user", "content": user_msg})
         history.append({"role": "assistant", "content": reply})
+
 
 if __name__ == "__main__":
     asyncio.run(run_simulation())

@@ -7,7 +7,10 @@ Creates and configures the FastAPI application with:
 - Versioned API route registration
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter, FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from src.api.exception_handlers import register_exception_handlers
 from src.api.middleware import register_middleware
@@ -62,7 +65,6 @@ async def app_lifespan(app: FastAPI):
     await operations.shutdown()
 
 
-
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -88,6 +90,11 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     _register_versioned_routers(app)
 
+    # Mount static files for local video serving (fallback when Supabase is unavailable)
+    static_videos_dir = Path(__file__).parent.parent.parent / "static" / "videos"
+    static_videos_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(static_videos_dir.parent)), name="static")
+
     @app.get("/health")
     async def health_check():
         return {"status": "healthy"}
@@ -109,3 +116,6 @@ def get_app() -> FastAPI:
     if _APP is None:
         _APP = create_app()
     return _APP
+
+
+app = get_app()

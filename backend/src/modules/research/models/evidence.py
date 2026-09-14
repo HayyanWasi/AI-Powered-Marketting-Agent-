@@ -59,9 +59,7 @@ class EvidenceItem(BaseModel):
     quote: str
     source: SourceItem
     confidence: ConfidenceScore = Field(default_factory=ConfidenceScore)
-    extracted_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+    extracted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON representation."""

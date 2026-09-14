@@ -123,7 +123,5 @@ def compile_graph():
     return graph.compile()
 
 
-def initial_state(
-    plan: CampaignPlan, brief: PlanBrief, critique: str
-) -> RefinementState:
+def initial_state(plan: CampaignPlan, brief: PlanBrief, critique: str) -> RefinementState:
     return {"plan": plan, "brief": brief, "critique": critique, "revisions": []}

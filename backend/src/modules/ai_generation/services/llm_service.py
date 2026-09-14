@@ -74,9 +74,9 @@ def _trim_prompt(prompt: str, max_chars: int = 10000) -> str:
 class LLMService:
     """Service for LLM-powered text generation using Groq."""
 
-    DEFAULT_MODEL = "openai/gpt-oss-120b"
+    DEFAULT_MODEL = "openai/gpt-oss-20b"
     FAST_MODEL = "openai/gpt-oss-20b"
-    REASONING_MODEL = "openai/gpt-oss-120b"
+    REASONING_MODEL = "openai/gpt-oss-20b"
 
     def __init__(
         self,
@@ -85,27 +85,54 @@ class LLMService:
         provider: str | None = None,
     ):
 
+        import random
 
-        self.provider = (provider or "groq").lower()
+        self.provider = (provider or "gemini").lower()
         if self.provider == "openrouter":
-            self.api_key = api_key or getattr(settings, "openrouter_api_key", "") or getattr(settings, "grok_api_key", "")
+            if api_key:
+                self.api_key = api_key
+            else:
+                or_keys = [
+                    getattr(settings, "openrouter_api_key", ""),
+                    getattr(settings, "openrouter_api_key_2", ""),
+                    getattr(settings, "openrouter_api_key_3", ""),
+                ]
+                valid_or_keys = [k for k in or_keys if k]
+                self.api_key = (
+                    random.choice(valid_or_keys)
+                    if valid_or_keys
+                    else getattr(settings, "grok_api_key", "")
+                )
             self.base_url = "https://openrouter.ai/api/v1"
-            self.model = model or getattr(settings, "openrouter_model", "google/gemma-2-9b-it:free")
+            self.model = model or getattr(settings, "openrouter_model", "openrouter/free")
         elif self.provider == "gemini":
-            self.api_key = api_key or getattr(settings, "google_api_key", "")
+            gemini_keys = [
+                getattr(settings, "google_api_key", ""),
+                getattr(settings, "google_api_key_2", ""),
+                getattr(settings, "google_api_key_3", ""),
+            ]
+            valid_gemini_keys = [k for k in gemini_keys if k]
+            self.api_key = random.choice(valid_gemini_keys) if valid_gemini_keys else api_key
             self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-            self.model = model or "gemini-3.5-flash"
+            self.model = model or "gemini-2.5-flash"
         else:
-            self.api_key = api_key or settings.grok_api_key
+            if api_key:
+                self.api_key = api_key
+            else:
+                groq_keys = [
+                    getattr(settings, "grok_api_key", ""),
+                    getattr(settings, "grok_api_key_2", ""),
+                    getattr(settings, "grok_api_key_3", ""),
+                ]
+                valid_groq_keys = [k for k in groq_keys if k]
+                self.api_key = random.choice(valid_groq_keys) if valid_groq_keys else ""
             self.base_url = "https://api.groq.com/openai/v1"
-            self.model = model or self.DEFAULT_MODEL
-
+            self.model = model or "openai/gpt-oss-20b"
 
         if self.api_key:
             self.client = wrap_openai(AsyncOpenAI(api_key=self.api_key, base_url=self.base_url))
         else:
             self.client = None
-
 
     from langsmith import traceable
 
@@ -165,12 +192,13 @@ class LLMService:
                 ],
                 response_format={"type": "json_object"},
                 temperature=temperature,
-                max_tokens=2000,
+                max_tokens=4000,
             )
 
-
             result_text = response.choices[0].message.content
-            logging.getLogger(__name__).info("[LLM CALL SUCCESS] Provider: %s | Model: %s", self.provider, self.model)
+            logging.getLogger(__name__).info(
+                "[LLM CALL SUCCESS] Provider: %s | Model: %s", self.provider, self.model
+            )
             if response.usage:
                 input_tokens = response.usage.prompt_tokens
                 output_tokens = response.usage.completion_tokens
@@ -178,6 +206,7 @@ class LLMService:
                 output_tokens = len(result_text.split())
 
             import re
+
             clean_text = re.sub(r"<think>[\s\S]*?</think>", "", result_text)
             fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", clean_text)
             if fenced:
@@ -189,15 +218,34 @@ class LLMService:
             return json.loads(clean_text)
         except Exception as e:
             # Tier 2 Failover: OpenRouter (Gemini / Gemma free models on OpenRouter)
-            openrouter_key = getattr(settings, "openrouter_api_key", "") or getattr(settings, "grok_api_key", "") or getattr(settings, "google_api_key", "")
+            or_keys = [
+                getattr(settings, "openrouter_api_key", ""),
+                getattr(settings, "openrouter_api_key_2", ""),
+                getattr(settings, "openrouter_api_key_3", ""),
+            ]
+            valid_or_keys = [k for k in or_keys if k]
+            import random
+
+            openrouter_key = (
+                (random.choice(valid_or_keys) if valid_or_keys else "")
+                or getattr(settings, "grok_api_key", "")
+                or getattr(settings, "google_api_key", "")
+            )
             if openrouter_key:
-                openrouter_model = getattr(settings, "openrouter_model", "google/gemma-2-9b-it:free")
+                openrouter_model = getattr(
+                    settings, "openrouter_model", "google/gemma-2-9b-it:free"
+                )
                 logging.getLogger(__name__).warning(
                     "[LLM FAILOVER TIER 2] Primary LLM (%s:%s) failed (%s). Retrying with OpenRouter (%s)...",
-                    self.provider, self.model, e, openrouter_model
+                    self.provider,
+                    self.model,
+                    e,
+                    openrouter_model,
                 )
                 try:
-                    or_client = wrap_openai(AsyncOpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1"))
+                    or_client = wrap_openai(
+                        AsyncOpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
+                    )
                     or_resp = await or_client.chat.completions.create(
                         model=openrouter_model,
                         messages=[
@@ -210,22 +258,34 @@ class LLMService:
                         ],
                         response_format={"type": "json_object"},
                         temperature=0.7,
-                        max_tokens=2000,
+                        max_tokens=4000,
                     )
                     result_text = or_resp.choices[0].message.content
-                    logging.getLogger(__name__).info("[LLM FAILOVER SUCCESS] Tier 2 OpenRouter (%s) succeeded!", openrouter_model)
+                    logging.getLogger(__name__).info(
+                        "[LLM FAILOVER SUCCESS] Tier 2 OpenRouter (%s) succeeded!", openrouter_model
+                    )
                     return json.loads(result_text)
                 except Exception as or_err:
-                    logging.getLogger(__name__).warning("[LLM FAILOVER TIER 2 FAILED] OpenRouter error: %s", or_err)
+                    logging.getLogger(__name__).warning(
+                        "[LLM FAILOVER TIER 2 FAILED] OpenRouter error: %s", or_err
+                    )
 
             # Tier 3 Failover: Groq (qwen/qwen3.6-27b)
-            groq_key = getattr(settings, "grok_api_key", "")
+            groq_keys = [
+                getattr(settings, "grok_api_key", ""),
+                getattr(settings, "grok_api_key_2", ""),
+                getattr(settings, "grok_api_key_3", ""),
+            ]
+            valid_groq_keys = [k for k in groq_keys if k]
+            groq_key = random.choice(valid_groq_keys) if valid_groq_keys else ""
             if groq_key:
                 logging.getLogger(__name__).warning(
                     "[LLM FAILOVER TIER 3] Retrying with Groq (qwen/qwen3.6-27b)..."
                 )
                 try:
-                    groq_client = wrap_openai(AsyncOpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1"))
+                    groq_client = wrap_openai(
+                        AsyncOpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+                    )
                     groq_resp = await groq_client.chat.completions.create(
                         model="qwen/qwen3.6-27b",
                         messages=[
@@ -238,18 +298,23 @@ class LLMService:
                         ],
                         response_format={"type": "json_object"},
                         temperature=0.7,
-                        max_tokens=2000,
+                        max_tokens=4000,
                     )
                     result_text = groq_resp.choices[0].message.content
-                    logging.getLogger(__name__).info("[LLM FAILOVER SUCCESS] Tier 3 Groq (qwen/qwen3.6-27b) succeeded!")
+                    logging.getLogger(__name__).info(
+                        "[LLM FAILOVER SUCCESS] Tier 3 Groq (qwen/qwen3.6-27b) succeeded!"
+                    )
                     return json.loads(result_text)
                 except Exception as groq_err:
-                    logging.getLogger(__name__).error("[LLM FAILOVER TIER 3 FAILED] Groq error: %s", groq_err)
-
+                    logging.getLogger(__name__).error(
+                        "[LLM FAILOVER TIER 3 FAILED] Groq error: %s", groq_err
+                    )
 
             status = "error"
             error_msg = str(e)
-            logging.getLogger(__name__).error(f"LLM Generation failed on provider={self.provider}: {e}")
+            logging.getLogger(__name__).error(
+                f"LLM Generation failed on provider={self.provider}: {e}"
+            )
             if raise_on_error:
                 raise LLMGenerationError(str(e)) from e
             return {}

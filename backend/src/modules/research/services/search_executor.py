@@ -18,7 +18,6 @@ from uuid import UUID
 from src.config.settings import settings
 from src.modules.research.services.cache_service import CacheService
 from src.modules.research.services.postgres_service import PostgresService
-from src.services.search import GuestSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,9 @@ class SearchExecutor:
                         timeout=self.timeout_sec,
                     )
                 except TimeoutError:
-                    logger.warning("Search query timed out after %.1fs: %s", self.timeout_sec, query)
+                    logger.warning(
+                        "Search query timed out after %.1fs: %s", self.timeout_sec, query
+                    )
                     results = []
                 except Exception as e:
                     logger.warning("Search query failed (%s): %s", e, query)
@@ -101,4 +102,5 @@ class SearchExecutor:
 
     def _run_search(self, query: str) -> list[dict[str, Any]]:
         """Synchronous search wrapper."""
-        return GuestSearchService().search(query)[:5]
+        # Legacy DDGS search removed for V2.
+        return []

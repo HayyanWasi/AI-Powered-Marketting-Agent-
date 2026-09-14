@@ -205,9 +205,8 @@ class PhasePlan(_Section):
             return _PHASE_ALIASES[s]
         # Unknown value: default to LAUNCH and log a warning
         import logging
-        logging.getLogger(__name__).warning(
-            "Unknown CampaignPhase %r — defaulting to 'launch'", v
-        )
+
+        logging.getLogger(__name__).warning("Unknown CampaignPhase %r — defaulting to 'launch'", v)
         return CampaignPhase.LAUNCH
 
 
@@ -281,9 +280,8 @@ class Kpi(_Section):
         if s in _STAGE_ALIASES:
             return _STAGE_ALIASES[s]
         import logging
-        logging.getLogger(__name__).warning(
-            "Unknown FunnelStage %r — defaulting to 'awareness'", v
-        )
+
+        logging.getLogger(__name__).warning("Unknown FunnelStage %r — defaulting to 'awareness'", v)
         return FunnelStage.AWARENESS
 
 

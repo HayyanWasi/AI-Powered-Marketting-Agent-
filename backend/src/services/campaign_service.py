@@ -70,12 +70,7 @@ class CampaignService:
                 interests=target_audience.get("interests", []),
             ),
             platforms=platforms,
-            schedule=Schedule(
-                start_date=datetime.fromisoformat(schedule["start_date"].replace("Z", "+00:00")),
-                end_date=datetime.fromisoformat(schedule["end_date"].replace("Z", "+00:00")),
-                timezone=schedule.get("timezone", "UTC"),
-                recurrence_rule=schedule.get("recurrence_rule"),
-            ),
+            schedule=Schedule.from_dict(schedule),
             metadata=metadata or {},
             created_by=actor_id,
             updated_by=actor_id,
@@ -92,8 +87,8 @@ class CampaignService:
     async def get_campaign(
         self, campaign_id: UUID, organization_id: UUID | None = None
     ) -> Campaign:
-        """Get campaign by ID."""
-        campaign = await self.campaign_repository.get_by_id(campaign_id)
+        """Get campaign by ID with organization boundary check."""
+        campaign = await self.campaign_repository.get_by_id(campaign_id, organization_id)
         if not campaign:
             raise NotFoundError("Campaign", str(campaign_id))
         return campaign
@@ -101,8 +96,8 @@ class CampaignService:
     async def get_campaign_with_assets(
         self, campaign_id: UUID, organization_id: UUID | None = None
     ) -> Campaign:
-        """Get campaign with assets."""
-        campaign = await self.campaign_repository.get_with_assets(campaign_id)
+        """Get campaign with assets with organization boundary check."""
+        campaign = await self.campaign_repository.get_with_assets(campaign_id, organization_id)
         if not campaign:
             raise NotFoundError("Campaign", str(campaign_id))
         return campaign
@@ -134,9 +129,10 @@ class CampaignService:
         updates: dict[str, Any],
         expected_version: int,
         actor_id: UUID,
+        organization_id: UUID | None = None,
     ) -> Campaign:
-        """Update campaign configuration (Draft only, atomic)."""
-        campaign = await self.get_campaign(campaign_id)
+        """Update campaign configuration (Draft only, atomic) with ownership verification."""
+        campaign = await self.get_campaign(campaign_id, organization_id or actor_id)
 
         # Check state
         if campaign.state != CampaignState.DRAFT:
@@ -186,9 +182,10 @@ class CampaignService:
         to_state: CampaignState,
         actor_id: UUID,
         reason: str | None = None,
+        organization_id: UUID | None = None,
     ) -> Campaign:
-        """Transition campaign to new state with validation."""
-        campaign = await self.get_campaign(campaign_id)
+        """Transition campaign to new state with validation and ownership check."""
+        campaign = await self.get_campaign(campaign_id, organization_id or actor_id)
         from_state = campaign.state
 
         # Validate transition
@@ -241,7 +238,9 @@ class CampaignService:
         organization_id: UUID | None = None,
     ) -> Campaign:
         """Archive a campaign."""
-        return await self.transition_campaign(campaign_id, CampaignState.ARCHIVED, actor_id, reason)
+        return await self.transition_campaign(
+            campaign_id, CampaignState.ARCHIVED, actor_id, reason, organization_id=organization_id
+        )
 
     async def restore_campaign(
         self,
@@ -249,8 +248,8 @@ class CampaignService:
         actor_id: UUID,
         organization_id: UUID | None = None,
     ) -> Campaign:
-        """Restore an archived campaign to its previous state."""
-        campaign = await self.get_campaign(campaign_id)
+        """Restore an archived campaign to its previous state with ownership check."""
+        campaign = await self.get_campaign(campaign_id, organization_id or actor_id)
 
         if campaign.state != CampaignState.ARCHIVED:
             raise StateTransitionError(
@@ -273,9 +272,11 @@ class CampaignService:
 
         return updated
 
-    async def delete_campaign(self, campaign_id: UUID, actor_id: UUID) -> None:
-        """Delete a campaign (Draft only)."""
-        campaign = await self.get_campaign(campaign_id)
+    async def delete_campaign(
+        self, campaign_id: UUID, actor_id: UUID, organization_id: UUID | None = None
+    ) -> None:
+        """Delete a campaign (Draft only) with ownership verification."""
+        campaign = await self.get_campaign(campaign_id, organization_id or actor_id)
 
         if campaign.state != CampaignState.DRAFT:
             raise StateTransitionError(
@@ -284,7 +285,9 @@ class CampaignService:
                 valid_states=["Draft"],
             )
 
-        await self.campaign_repository.delete(campaign_id, campaign.organization_id)
+        await self.campaign_repository.delete(
+            campaign_id, organization_id or campaign.organization_id
+        )
 
     def _is_config_complete(self, campaign: Campaign) -> bool:
         """Check if campaign has all required configuration."""

@@ -1,6 +1,5 @@
 """Tests for Workflow Engine services."""
 
-
 from src.modules.workflow_engine.models import (
     ApprovalStatus,
     ExecutionState,
@@ -37,7 +36,6 @@ class TestRetryService:
 
     def test_reset_attempts(self) -> None:
         svc = RetryService()
-        policy = RetryPolicy(max_retries=3, delay_seconds=0.01)
         svc.record_attempt("n")
         svc.reset_attempts("n")
         assert svc.get_attempt_count("n") == 0

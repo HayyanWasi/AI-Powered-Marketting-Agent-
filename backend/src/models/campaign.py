@@ -102,17 +102,25 @@ class Schedule:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Schedule":
+        raw_start = data.get("start_date")
+        if isinstance(raw_start, str):
+            start_date = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+        elif isinstance(raw_start, datetime):
+            start_date = raw_start
+        else:
+            start_date = datetime.utcnow()
+
+        raw_end = data.get("end_date")
+        if isinstance(raw_end, str):
+            end_date = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
+        elif isinstance(raw_end, datetime):
+            end_date = raw_end
+        else:
+            end_date = datetime.utcnow()
+
         return cls(
-            start_date=(
-                datetime.fromisoformat(data["start_date"])
-                if data.get("start_date")
-                else datetime.utcnow()
-            ),
-            end_date=(
-                datetime.fromisoformat(data["end_date"])
-                if data.get("end_date")
-                else datetime.utcnow()
-            ),
+            start_date=start_date,
+            end_date=end_date,
             timezone=data.get("timezone", "UTC"),
             recurrence_rule=data.get("recurrence_rule"),
         )

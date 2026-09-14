@@ -75,9 +75,7 @@ class CampaignPlannerAgent(BaseAgent):
                         format_type=cal_slot.format_type,
                     )
                 )
-            self.logger.info(
-                "Built %d slots from approved plan calendar", len(slots)
-            )
+            self.logger.info("Built %d slots from approved plan calendar", len(slots))
             return slots
 
         # ── Legacy path ──────────────────────────────────────────────────

@@ -51,3 +51,29 @@ async def register_webhook(req: WebhookRegisterRequest) -> dict[str, Any]:
             detail="Failed to register webhook with Unipile API",
         )
     return {"status": "success", "callback_url": req.callback_url, "events": req.events}
+
+
+class PublishPostRequest(BaseModel):
+    text: str
+    account_id: str | None = None
+
+
+@router.post("/publish")
+async def publish_post_now(req: PublishPostRequest) -> dict[str, Any]:
+    """Publish a text post immediately to LinkedIn via Unipile."""
+    from src.config.settings import settings
+
+    gateway = UnipileGateway()
+    account_id = req.account_id or settings.unipile_account_id
+    if not account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No UNIPILE_ACCOUNT_ID configured in settings",
+        )
+    post_id = await gateway.create_post(account_id, req.text)
+    if not post_id:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to publish post to LinkedIn via Unipile. Check account status.",
+        )
+    return {"status": "success", "post_id": post_id, "message": "Post published to LinkedIn!"}

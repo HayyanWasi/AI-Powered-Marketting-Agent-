@@ -41,7 +41,10 @@ class Neo4jService:
     ) -> None:
         """Save Evidence and Source nodes and CITED_FROM relationships."""
         # Always persist JSONB fallback first
-        graph_doc = await self.postgres.get_evidence_graph_fallback(session_id) or {"evidence_nodes": [], "edges": []}
+        graph_doc = await self.postgres.get_evidence_graph_fallback(session_id) or {
+            "evidence_nodes": [],
+            "edges": [],
+        }
         graph_doc["evidence_nodes"] = evidence_items
         await self.postgres.save_evidence_graph_fallback(session_id, graph_doc)
 
@@ -95,9 +98,7 @@ class Neo4jService:
         except Exception as e:
             logger.warning("Neo4j link_decisions failed (%s); fallback active", e)
 
-    async def query_why_trace(
-        self, session_id: UUID | str, decision_id: str
-    ) -> dict[str, Any]:
+    async def query_why_trace(self, session_id: UUID | str, decision_id: str) -> dict[str, Any]:
         """Execute Cypher query for "Why?" explainability.
 
         Query: (Decision)-[:SUPPORTED_BY]->(Evidence)-[:CITED_FROM]->(Source)

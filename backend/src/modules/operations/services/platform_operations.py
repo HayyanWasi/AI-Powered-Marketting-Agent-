@@ -31,7 +31,6 @@ from ..services.telemetry_buffer import TelemetryBuffer
 logger = logging.getLogger(__name__)
 
 
-
 class PlatformOperationsService(PlatformOperationsServiceABC):
     """Concrete implementation of the PlatformOperationsService.
 
@@ -148,9 +147,7 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
         try:
             stack = ExitStack()
             span = stack.enter_context(
-                self.otel.start_workflow_span(
-                    workflow_id=workflow_id, workflow_type=workflow_type
-                )
+                self.otel.start_workflow_span(workflow_id=workflow_id, workflow_type=workflow_type)
             )
             self._workflow_spans[trace.id] = (stack, span)
         except Exception as e:

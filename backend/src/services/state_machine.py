@@ -1,6 +1,5 @@
 """Deterministic state machine for campaign lifecycle."""
 
-
 from src.models.campaign import CampaignState
 
 

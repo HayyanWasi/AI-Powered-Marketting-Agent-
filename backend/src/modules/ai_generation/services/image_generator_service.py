@@ -7,7 +7,6 @@ from typing import Any
 
 import httpx
 
-from src.services.cloudflare_image_service import CloudflareImageService
 from src.services.pollinations_service import PollinationsService
 from src.services.supabase import SupabaseService
 
@@ -730,28 +729,10 @@ class ImageGeneratorService:
         copy_id: str,
         platform: str,
     ) -> str:
-        """Generate real image — Cloudflare Workers AI (primary), Pollinations (fallback)."""
+        """Generate real image — Pollinations AI."""
         prompt_text = image_prompt_artifact.get("prompt_text", "")
 
-        # 1. Try Cloudflare Workers AI (primary)
-        try:
-            async with CloudflareImageService() as cf:
-                image_bytes = await cf.generate_from_text(prompt_text)
-            supabase = SupabaseService()
-            filename = f"{uuid.uuid4()}_{platform}.{self._get_image_format(platform)}"
-            content_type = (
-                "image/png" if self._get_image_format(platform) == "png" else "image/jpeg"
-            )
-            return supabase.upload_image_bytes(
-                data=image_bytes,
-                filename=filename,
-                content_type=content_type,
-                prefix=f"campaigns/{strategy_id}",
-            )
-        except Exception as e:
-            logger.warning("Cloudflare image generation failed: %s", e)
-
-        # 2. Fallback to Pollinations
+        # 1. Primary: Pollinations AI
         try:
             async with PollinationsService() as poll:
                 poll_url, _ = await poll.generate_image(prompt_text)
@@ -771,7 +752,8 @@ class ImageGeneratorService:
                 prefix=f"campaigns/{strategy_id}",
             )
         except Exception as e:
-            logger.warning("Pollinations image generation fallback also failed: %s", e)
+            logger.warning("Pollinations image generation failed: %s", e)
+            raise
 
         # 3. Ultimate fallback to deterministic URL
         deterministic_input = (

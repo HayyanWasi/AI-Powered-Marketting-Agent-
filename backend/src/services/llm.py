@@ -15,7 +15,7 @@ from typing import Any
 from openai import OpenAI
 
 from src.config.settings import settings
-from src.models.guest_profile import ConfidenceLevel, GuestProfileData
+from src.models.guest_profile import ConfidenceLevel, GuestProfile
 
 logger = logging.getLogger(__name__)
 
@@ -79,17 +79,19 @@ class LLMService:
             self._client = client
         else:
             api_key = settings.grok_api_key or settings.openrouter_api_key
-            base_url = "https://api.groq.com/openai/v1" if settings.grok_api_key else OPENROUTER_BASE_URL
+            base_url = (
+                "https://api.groq.com/openai/v1" if settings.grok_api_key else OPENROUTER_BASE_URL
+            )
             self._client = OpenAI(api_key=api_key, base_url=base_url)
 
         self._model = "qwen/qwen3.6-27b" if settings.grok_api_key else settings.openrouter_model
 
-    def analyze_search_results(self, results: list[dict[str, Any]], campaign_context: str = "") -> GuestProfileData:
+    def analyze_search_results(
+        self, results: list[dict[str, Any]], campaign_context: str = ""
+    ) -> GuestProfile:
         context = json.dumps(results, indent=2)
         ctx_prompt = f"Event/Campaign Context: {campaign_context}\n\n" if campaign_context else ""
-        user_message = (
-            f"{ctx_prompt}Analyze the following search results and build a guest profile:\n\n{context}"
-        )
+        user_message = f"{ctx_prompt}Analyze the following search results and build a guest profile:\n\n{context}"
 
         try:
             completion = self._client.chat.completions.create(
@@ -122,7 +124,7 @@ class LLMService:
         except ValueError:
             conf = ConfidenceLevel.LOW
 
-        return GuestProfileData(
+        return GuestProfile(
             full_name=str(data.get("full_name") or ""),
             current_position=str(data.get("current_position") or ""),
             organization=str(data.get("organization") or ""),

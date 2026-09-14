@@ -225,9 +225,7 @@ class IntentAnalyzerService:
 
         return None
 
-    def _extract_strategy_instructions(
-        self, user_intent: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _extract_strategy_instructions(self, user_intent: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract strategy revision instructions from user intent.
 

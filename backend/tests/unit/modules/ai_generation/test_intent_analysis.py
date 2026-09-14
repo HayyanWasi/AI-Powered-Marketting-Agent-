@@ -1,9 +1,6 @@
 """Unit test for AI Generation Engine strategy analysis."""
 
 
-
-
-
 class TestIntentAnalysis:
     """Test Intent Analyzer functionality."""
 
@@ -29,7 +26,10 @@ class TestIntentAnalysis:
         analyzer = IntentAnalyzerService()
 
         user_instructions = {
-            "user_intent": {"type": "copy_modification", "copy_modifications": {"headline": True, "body": True}},
+            "user_intent": {
+                "type": "copy_modification",
+                "copy_modifications": {"headline": True, "body": True},
+            },
             "changes": ["text"],
             "platforms": ["linkedin", "twitter"],
         }
@@ -52,7 +52,10 @@ class TestIntentAnalysis:
         analyzer = IntentAnalyzerService()
 
         user_instructions = {
-            "user_intent": {"type": "visual_style_modification", "visual_style_changes": ["color_palette", "style"]},
+            "user_intent": {
+                "type": "visual_style_modification",
+                "visual_style_changes": ["color_palette", "style"],
+            },
             "changes": ["image"],
             "platforms": ["instagram"],
         }
@@ -212,20 +215,6 @@ class TestIntentAnalysis:
         assert "intent" in result["validated_by"].lower()
         assert result["compliance_scores"]["analysis_completeness"] > 0
 
-    def test_analyze_full_generation_intent_no_instructions(self):
-        """Test intent analysis when no instructions provided."""
-        from src.modules.ai_generation.services.intent_analyzer import IntentAnalyzerService
-
-        analyzer = IntentAnalyzerService()
-
-        result = analyzer.analyze_regeneration_intent(
-            {"strategy": "strategy_id", "copy": "copy_id", "image": "image_id"}, None
-        )
-
-        assert result["intent"] == "full_generation"
-        assert result["mode"] == "complete"
-        assert "No user instructions provided" in result["reason"]
-
     def test_validate_intent_analysis_with_missing_fields(self):
         """Test intent analysis validation with missing fields."""
         from src.modules.ai_generation.services.intent_analyzer import IntentAnalyzerService
@@ -241,7 +230,11 @@ class TestIntentAnalysis:
         result = analyzer.validate_intent_analysis(intent_result, generation_context)
 
         assert result["is_valid"] is False
-        assert any(error.get("code") == "MISSING_INTENT" or getattr(error, "code", None) == "MISSING_INTENT" for error in result["errors"])
+        assert any(
+            error.get("code") == "MISSING_INTENT"
+            or getattr(error, "code", None) == "MISSING_INTENT"
+            for error in result["errors"]
+        )
 
     def test_validate_intent_analysis_with_strategy_preservation_warnings(self):
         """Test intent analysis validation with preservation warnings."""

@@ -66,7 +66,7 @@ def assert_company_shape(data: dict) -> None:
 
 
 def assert_error_shape(data: dict) -> None:
-    assert "detail" in data, f"Error response missing 'detail': {data}"
+    assert "error" in data, f"Error response missing 'error': {data}"
 
 
 def assert_workflow_response_shape(data: dict) -> None:
@@ -142,7 +142,7 @@ class TestCompanyProfileCRUD:
             c.post("/api/company", json={"company_name": name, "brand_guidelines": "g"})
             resp = c.post("/api/company", json={"company_name": name, "brand_guidelines": "o"})
             assert resp.status_code == 409
-            assert "already exists" in resp.json().get("detail", "").lower()
+            assert "already exists" in resp.json().get("message", "").lower()
 
     def test_get_company_happy_path(self, company_id: str) -> None:
         with _client() as c:
@@ -474,8 +474,8 @@ class TestCampaignImages:
             )
             assert resp.status_code == 404
             data = resp.json()
-            assert "detail" in data
-            assert "PROFILE_NOT_FOUND" in data["detail"].get("error", "")
+            assert "message" in data
+            assert "profile not found" in data["message"].lower()
 
     def test_generate_image_prompt_too_short(self, company_id: str) -> None:
         with _client() as c:
@@ -666,11 +666,11 @@ class TestAPILayer:
             resp = c.post("/api/company", json={})
             assert resp.status_code == 422
             data = resp.json()
-            assert "detail" in data
-            if isinstance(data["detail"], list):
-                for err in data["detail"]:
-                    assert "loc" in err
-                    assert "msg" in err
+            assert "details" in data
+            if isinstance(data["details"], list):
+                for err in data["details"]:
+                    assert "field" in err
+                    assert "message" in err
 
     def test_no_stack_trace_in_errors(self) -> None:
         with _client() as c:

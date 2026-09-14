@@ -100,19 +100,27 @@ class ContentGenerationAgent(BaseAgent):
         prompt = self._build_content_prompt(slot, context)
 
         # ── DATA INSERTION LOGGING ──
-        self.logger.info("=== [CONTENT GENERATION] PROMPT DATA INSERTION AUDIT (Slot: %s) ===", slot.slot_id)
+        self.logger.info(
+            "=== [CONTENT GENERATION] PROMPT DATA INSERTION AUDIT (Slot: %s) ===", slot.slot_id
+        )
         self.logger.info("Prompt String Sent to LLM:\n%s", prompt)
 
         check_event = context.event.event_name in prompt if context.event.event_name else True
         check_guest = context.guests[0].full_name in prompt if context.guests else True
         check_date = context.event.event_date in prompt if context.event.event_date else True
         check_venue = context.event.venue in prompt if context.event.venue else True
-        check_link = context.event.registration_link in prompt if context.event.registration_link else True
+        check_link = (
+            context.event.registration_link in prompt if context.event.registration_link else True
+        )
 
         if check_event and check_guest and check_date and check_venue and check_link:
-            self.logger.info("[AUDIT RESULT] Data-Insertion: PASSED (All available fields present in prompt)")
+            self.logger.info(
+                "[AUDIT RESULT] Data-Insertion: PASSED (All available fields present in prompt)"
+            )
         else:
-            self.logger.warning("[AUDIT RESULT] Data-Insertion: FAILED (Some fields missing from prompt string)")
+            self.logger.warning(
+                "[AUDIT RESULT] Data-Insertion: FAILED (Some fields missing from prompt string)"
+            )
 
         try:
             response = self._get_llm().generate(
@@ -139,14 +147,28 @@ class ContentGenerationAgent(BaseAgent):
         # ── INSTRUCTION FOLLOWING LOGGING ──
         full_copy = f"{variant_a}\n{variant_b}\n{variant_c}"
         self.logger.info("=== [CONTENT GENERATION] INSTRUCTION FOLLOWING AUDIT ===")
-        self.logger.info("Generated Copy Variants:\nVARIANT_A: %s\nVARIANT_B: %s\nVARIANT_C: %s", variant_a, variant_b, variant_c)
+        self.logger.info(
+            "Generated Copy Variants:\nVARIANT_A: %s\nVARIANT_B: %s\nVARIANT_C: %s",
+            variant_a,
+            variant_b,
+            variant_c,
+        )
 
         if context.guests:
-            has_guest_name = any(g.full_name in full_copy or g.full_name.split()[0] in full_copy for g in context.guests)
-            self.logger.info("[INSTRUCTION AUDIT] Guest Name Included: %s", "PASSED" if has_guest_name else "FAILED")
+            has_guest_name = any(
+                g.full_name in full_copy or g.full_name.split()[0] in full_copy
+                for g in context.guests
+            )
+            self.logger.info(
+                "[INSTRUCTION AUDIT] Guest Name Included: %s",
+                "PASSED" if has_guest_name else "FAILED",
+            )
         if context.event.registration_link:
             has_link = context.event.registration_link in full_copy or "http" in full_copy
-            self.logger.info("[INSTRUCTION AUDIT] Registration Link Included: %s", "PASSED" if has_link else "FAILED")
+            self.logger.info(
+                "[INSTRUCTION AUDIT] Registration Link Included: %s",
+                "PASSED" if has_link else "FAILED",
+            )
 
         return ContentDraft(
             slot_id=slot.slot_id,
@@ -157,7 +179,6 @@ class ContentGenerationAgent(BaseAgent):
             selected_variant="",
         )
 
-
     def _build_content_prompt(self, slot: ContentSlot, context: GenerationContext) -> str:
         """Build the LLM user prompt for content generation.
 
@@ -165,12 +186,10 @@ class ContentGenerationAgent(BaseAgent):
         the plan's strategy — draft or approved — so copy reflects all
         dimensions instead of defaulting to generic hype copy.
         """
+        from src.agents.context_selector import ContextSelector
+
         guests_text = ", ".join(g.full_name for g in context.guests) or "N/A"
-        guest_bios = "\n".join(
-            f"- {g.full_name} ({getattr(g, 'position', '')}): {g.biography}"
-            for g in context.guests
-            if g.biography
-        )
+        guest_bios = ContextSelector.select_guest_context(slot, context.guests)
         guest_directive = (
             "GUEST RULE: The guest(s) above are the primary hook. "
             "VARIANT_A must open by naming them and their title — do not "
@@ -204,11 +223,14 @@ class ContentGenerationAgent(BaseAgent):
                 phase_cta = context.plan.channel_plan.phases[-1].primary_cta
 
             objections = "; ".join(
-                f"{o.objection} → {o.response}"
-                for o in cs.objection_handling[:2]
+                f"{o.objection} → {o.response}" for o in cs.objection_handling[:2]
             )
 
-            status_note = "APPROVED" if context.plan.approved else "DRAFT (still authoritative for tone/messaging)"
+            status_note = (
+                "APPROVED"
+                if context.plan.approved
+                else "DRAFT (still authoritative for tone/messaging)"
+            )
             plan_block = f"""
 MARKETING STRATEGY [{status_note}] (follow this):
 USP: {cs.unique_selling_proposition}

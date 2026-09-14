@@ -45,7 +45,7 @@ class DraftPlanRequest(BaseModel):
     platforms: list[str] = []
     guests: list[str] = []
     language: str = "en"
-    research_tier: str = "Standard"  # Quick, Standard, Deep
+    research_tier: str = "Quick"  # Quick, Standard, Deep
 
 
 class RefinePlanRequest(BaseModel):
@@ -99,8 +99,14 @@ async def draft_plan(
 
     try:
         from src.repositories.base import BaseRepository
+
         repo = BaseRepository("intake_checklists")
-        res = repo.client.table("intake_checklists").select("*").eq("campaign_id", str(campaign_id)).execute()
+        res = (
+            repo.client.table("intake_checklists")
+            .select("*")
+            .eq("campaign_id", str(campaign_id))
+            .execute()
+        )
         if res.data:
             cdata = res.data[0]
             if not event_name and cdata.get("event_name"):
@@ -118,14 +124,18 @@ async def draft_plan(
             outcome_deliverable = cdata.get("outcome_deliverable") or ""
             ticket_price = cdata.get("is_free_or_paid") or "Free"
 
-            g_name = cdata.get("guest_name")
-            g_title = cdata.get("guest_title")
-            if g_name and not any(g_name.lower() in g.lower() for g in guests_list):
-                g_str = f"{g_name} ({g_title})" if g_title else g_name
-                guests_list.append(g_str)
+            if cdata.get("has_guest") is True:
+                g_name = cdata.get("guest_name")
+                g_title = cdata.get("guest_title")
+                if g_name and not any(g_name.lower() in g.lower() for g in guests_list):
+                    g_str = f"{g_name} ({g_title})" if g_title else g_name
+                    guests_list.append(g_str)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning("Could not hydrate intake checklist details in draft_plan: %s", e)
+
+        logging.getLogger(__name__).warning(
+            "Could not hydrate intake checklist details in draft_plan: %s", e
+        )
 
     brief = PlanBrief(
         user_goal=user_goal,

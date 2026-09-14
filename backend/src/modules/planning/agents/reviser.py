@@ -96,7 +96,9 @@ async def revise_section(
     variables.update(
         {
             "section_name": section_name,
-            "section_content": json.dumps(section.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            "section_content": json.dumps(
+                section.model_dump(mode="json"), ensure_ascii=False, indent=2
+            ),
             "plan_context": _plan_summary(plan),
             "critique": critique,
             "instructions": instructions or critique,
@@ -120,7 +122,11 @@ async def revise_section(
         # cannot reach the plan.
         return type(section).model_validate(payload).model_dump(mode="json")
     except Exception as e:
-        logger.warning("Revised %s full validation failed: %s; attempting field-by-field merge", section_name, e)
+        logger.warning(
+            "Revised %s full validation failed: %s; attempting field-by-field merge",
+            section_name,
+            e,
+        )
         try:
             current_dict = section.model_dump(mode="json")
             if isinstance(payload, dict):

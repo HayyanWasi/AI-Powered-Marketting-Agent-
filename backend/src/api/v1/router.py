@@ -2,9 +2,12 @@
 
 from fastapi import APIRouter
 
+from src.api.routes import linkedin_review
 from src.api.v1 import (
     ai_generation,
+    autopilot,
     campaign_images,
+    campaign_images_iterative,
     campaigns,
     company,
     guest,
@@ -17,6 +20,7 @@ from src.api.v1 import (
     operations,
     plans,
     validation,
+    video,
     workflow,
 )
 from src.modules.research.api.v1 import research
@@ -29,6 +33,7 @@ router.include_router(company.router)
 router.include_router(guest.router)
 router.include_router(ai_generation.router)
 router.include_router(campaign_images.router)
+router.include_router(campaign_images_iterative.router)
 router.include_router(validation.router)
 router.include_router(workflow.router)
 router.include_router(operations.router)
@@ -38,6 +43,7 @@ router.include_router(research.router)
 router.include_router(linkedin.router)
 router.include_router(linkedin_setup.router)
 router.include_router(linkedin_webhooks.router)
+router.include_router(linkedin_review.router)
+router.include_router(autopilot.router)
 router.include_router(intake.router)
-
-
+router.include_router(video.router)

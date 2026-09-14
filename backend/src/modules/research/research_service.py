@@ -33,7 +33,8 @@ from src.modules.research.services.search_executor import SearchExecutor
 
 logger = logging.getLogger(__name__)
 
-_WORKERS = ("market", "competitor", "audience", "content", "channel", "trend")
+_WORKERS = ("audience", "content", "trend")
+_LLM_SEMAPHORE = asyncio.Semaphore(2)
 
 
 class ResearchEngineService:
@@ -59,7 +60,7 @@ class ResearchEngineService:
         self,
         user_goal: str,
         company_name: str = "",
-        tier: str = "Deep",
+        tier: str = "Quick",
         campaign_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Execute complete autonomous research pipeline.
@@ -93,18 +94,21 @@ class ResearchEngineService:
 
         async def _run_worker(dim: str) -> tuple[str, list[EvidenceItem], float, int]:
             async with semaphore:
-                items, conf, abandoned = await self.hunter.collect_dimension_evidence(
-                    session_id=session_id,
-                    dimension=dim,
-                    user_goal=user_goal,
-                    company_name=company_name,
-                    tier_config=tier_config,
-                    cost_controller=cost_controller,
-                )
+                async with _LLM_SEMAPHORE:
+                    items, conf, abandoned = await self.hunter.collect_dimension_evidence(
+                        session_id=session_id,
+                        dimension=dim,
+                        user_goal=user_goal,
+                        company_name=company_name,
+                        tier_config=tier_config,
+                        cost_controller=cost_controller,
+                    )
                 return dim, items, conf, abandoned
 
         worker_results = await asyncio.gather(*(_run_worker(w) for w in _WORKERS))
-        dimension_data = {dim: (items, conf, abandoned) for dim, items, conf, abandoned in worker_results}
+        dimension_data = {
+            dim: (items, conf, abandoned) for dim, items, conf, abandoned in worker_results
+        }
 
         # ── STAGE 2: Synthesis, Red Team & Neo4j Evidence Graph Save ─────────────
         brief: ResearchBrief = await self.synthesis.synthesize_brief(
@@ -115,21 +119,35 @@ class ResearchEngineService:
         cost_controller.record_llm_call()
 
         # Save Evidence & Source nodes in Neo4j + Postgres JSONB fallback
-        all_evidence_items = [item.to_dict() for items, _, _ in dimension_data.values() for item in items]
+        all_evidence_items = [
+            item.to_dict() for items, _, _ in dimension_data.values() for item in items
+        ]
 
         await self.neo4j.save_evidence_nodes(session_id, all_evidence_items)
 
-        # Run Red Team Adversarial Challenge
-        red_team_report: RedTeamReport = await self.red_team.challenge_research(
-            session_id=str(session_id), brief=brief
-        )
-        cost_controller.record_llm_call()
+        if tier_config.tier != "Quick":
+            # Run Red Team Adversarial Challenge
+            red_team_report: RedTeamReport = await self.red_team.challenge_research(
+                session_id=str(session_id), brief=brief
+            )
+            cost_controller.record_llm_call()
 
-        # ── STAGE 3: Strategy Reasoner & Decision Graph Linker ────────────────────
-        deliverables, graph, traces = await self.reasoner.generate_strategy_decisions(
-            session_id=session_id, brief=brief
-        )
-        cost_controller.record_llm_call()
+            # ── STAGE 3: Strategy Reasoner & Decision Graph Linker ────────────────────
+            deliverables, graph, traces = await self.reasoner.generate_strategy_decisions(
+                session_id=session_id, brief=brief
+            )
+            cost_controller.record_llm_call()
+        else:
+            red_team_report = RedTeamReport(
+                counter_claims=(), weak_assumptions_flagged=(), overall_risk_score=0.0
+            )
+            # Lightweight stubs
+            from src.modules.research.models.strategy import AgentConversationTraces
+
+            from src.modules.research.models.evidence_graph import EvidenceGraph
+
+            graph = EvidenceGraph(nodes={}, edges=[])
+            traces = AgentConversationTraces(agent_chats={})
 
         # Complete audit session log
         total_latency_ms = int((time.perf_counter() - start_time) * 1000)

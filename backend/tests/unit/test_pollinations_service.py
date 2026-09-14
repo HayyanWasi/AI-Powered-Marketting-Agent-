@@ -95,9 +95,11 @@ class TestGenerateImage:
     ) -> None:
         mock_client.get.return_value = MagicMock(status_code=500)
 
-        with patch("src.services.pollinations_service.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(PollinationsServiceError, match="Failed after 3 attempts"):
-                await service.generate_image("test prompt")
+        with (
+            patch("src.services.pollinations_service.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(PollinationsServiceError, match="Failed after 3 attempts"),
+        ):
+            await service.generate_image("test prompt")
 
         assert mock_client.get.call_count == 3
 

@@ -1,6 +1,5 @@
 """Unit test for AI Generation Engine ContextBuilder service."""
 
-
 import pytest
 
 from src.modules.ai_generation.models.validation_artifact import (

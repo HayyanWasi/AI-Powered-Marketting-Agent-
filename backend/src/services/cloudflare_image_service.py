@@ -190,7 +190,7 @@ class CloudflareImageService:
         Returns:
             Decoded image bytes (the model returns base64 JSON).
         """
-        payload = {"prompt": prompt, "steps": steps, "width": self._width, "height": self._height}
+        payload = {"prompt": prompt, "steps": steps}
         logger.info("Cloudflare text2img generating (flux, steps=%d)", steps)
         response = await self._post(self._text2img_model, payload)
 

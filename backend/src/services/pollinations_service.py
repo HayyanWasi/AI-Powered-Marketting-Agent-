@@ -66,7 +66,9 @@ class PollinationsService:
         self._image_width = image_width or settings.pollinations_image_width
         self._image_height = image_height or settings.pollinations_image_height
 
-        headers = {}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
 
@@ -95,7 +97,16 @@ class PollinationsService:
         params = [f"width={self._image_width}", f"height={self._image_height}"]
         if self._model:
             params.append(f"model={self._model}")
+        params.append("nologo=true")
         return f"{self._base_url}/{encoded_prompt}?{'&'.join(params)}"
+
+    async def generate_image_bytes(self, prompt: str) -> tuple[bytes, str]:
+        """Generate image and return raw image bytes along with model name."""
+        image_url, _ = await self.generate_image(prompt)
+        response = await self._client.get(image_url)
+        if response.status_code == 200:
+            return response.content, self.model
+        raise PollinationsServiceError(f"Pollinations returned status {response.status_code}")
 
     def _build_fallback_prompt(self, brand_context: BrandStyleContextInternal | None) -> str:
         """Build a branded fallback prompt."""

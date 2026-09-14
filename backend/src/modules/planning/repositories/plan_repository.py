@@ -57,10 +57,7 @@ class PlanRepository(BaseRepository):
     async def get_plan_row(self, campaign_id: UUID) -> dict[str, Any] | None:
         """Return the raw plan row for a campaign, or None."""
         result = (
-            self.client.table(PLANS_TABLE)
-            .select("*")
-            .eq("campaign_id", str(campaign_id))
-            .execute()
+            self.client.table(PLANS_TABLE).select("*").eq("campaign_id", str(campaign_id)).execute()
         )
         return result.data[0] if result.data else None
 
@@ -78,12 +75,7 @@ class PlanRepository(BaseRepository):
 
     async def update_plan_row(self, plan_id: UUID, **fields: Any) -> dict[str, Any]:
         """Patch columns on the plan row."""
-        result = (
-            self.client.table(PLANS_TABLE)
-            .update(fields)
-            .eq("id", str(plan_id))
-            .execute()
-        )
+        result = self.client.table(PLANS_TABLE).update(fields).eq("id", str(plan_id)).execute()
         if not result.data:
             raise PlanNotFoundError(f"Plan {plan_id} not found")
         return result.data[0]

@@ -32,9 +32,7 @@ class RedTeamReport(BaseModel):
     counter_claims: tuple[CounterEvidenceClaim, ...] = ()
     weak_assumptions_flagged: tuple[str, ...] = ()
     overall_risk_score: float = Field(default=0.2, ge=0.0, le=1.0)
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

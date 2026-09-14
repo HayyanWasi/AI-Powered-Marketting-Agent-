@@ -25,8 +25,8 @@ _SYSTEM_PROMPT = (
     "specific, decision-ready work in your own discipline and return it as JSON."
 )
 
-# Groq's free tier rate-limits aggressively; five simultaneous 70B calls trip it.
-_PANEL_CONCURRENCY = 3
+# Gemini's free tier rate-limits aggressively (15 RPM); parallel calls trip it.
+_PANEL_CONCURRENCY = 1
 
 
 async def ask_json(
@@ -39,15 +39,6 @@ async def ask_json(
 ) -> dict[str, Any]:
     """Render a template and get JSON back from the reasoning model."""
     prompt = render_template(template_name, variables)
-    if llm is None:
-        try:
-            from src.modules.research.services.llm_router import LLMRouterService
-            router = LLMRouterService()
-            result = await router.generate_json(system_prompt=_SYSTEM_PROMPT, user_prompt=prompt)
-            if result:
-                return result
-        except Exception as e:
-            logger.warning("LLMRouterService call failed in panel specialist (%s), using default LLMService", e)
 
     service = llm or LLMService(model=LLMService.DEFAULT_MODEL)
     return await service.generate_json(
@@ -67,13 +58,54 @@ def _extract_keywords(text: str, max_words: int = 5) -> str:
     upcoming, seminar, for, the, etc.) so queries stay focused and effective.
     """
     import re
+
     filler = {
-        "drive", "create", "generate", "registrations", "campaign", "make",
-        "upcoming", "the", "for", "our", "a", "an", "at", "in", "of", "on",
-        "with", "and", "to", "from", "by", "is", "are", "was", "be", "do",
-        "want", "write", "build", "run", "launch", "how", "we", "us", "i",
-        "please", "my", "seminar", "workshop", "event", "course", "class",
-        "register", "registration", "join", "promotion",
+        "drive",
+        "create",
+        "generate",
+        "registrations",
+        "campaign",
+        "make",
+        "upcoming",
+        "the",
+        "for",
+        "our",
+        "a",
+        "an",
+        "at",
+        "in",
+        "of",
+        "on",
+        "with",
+        "and",
+        "to",
+        "from",
+        "by",
+        "is",
+        "are",
+        "was",
+        "be",
+        "do",
+        "want",
+        "write",
+        "build",
+        "run",
+        "launch",
+        "how",
+        "we",
+        "us",
+        "i",
+        "please",
+        "my",
+        "seminar",
+        "workshop",
+        "event",
+        "course",
+        "class",
+        "register",
+        "registration",
+        "join",
+        "promotion",
     }
     words = re.findall(r"[A-Za-z0-9]+", text)
     keywords = [w for w in words if w.lower() not in filler and len(w) > 2]
@@ -82,13 +114,8 @@ def _extract_keywords(text: str, max_words: int = 5) -> str:
 
 def _single_search(query: str, limit: int = 4) -> list[dict]:
     """Execute one DuckDuckGo search, returning up to `limit` results or []."""
-    try:
-        from src.services.search import GuestSearchService
-        results = GuestSearchService().search(query)[:limit]
-        return results
-    except Exception as e:
-        logger.warning("Search failed for %r: %s", query, e)
-        return []
+    # Legacy DDGS search removed. Returning empty results.
+    return []
 
 
 async def _parallel_research(base_query: str, limit_per_query: int = 4) -> str:
@@ -133,8 +160,7 @@ async def _parallel_research(base_query: str, limit_per_query: int = 4) -> str:
         return ""
 
     return "\n".join(
-        f"- {r.get('title', '')} ({r.get('href', '')})\n  {r.get('body', '')}"
-        for r in merged
+        f"- {r.get('title', '')} ({r.get('href', '')})\n  {r.get('body', '')}" for r in merged
     )
 
 
@@ -201,12 +227,13 @@ async def _parallel_competitor_research(base_query: str, limit_per_query: int = 
                 merged.append(r)
 
     if not merged:
-        logger.warning("All parallel competitor searches returned empty for base_query=%r", base_query)
+        logger.warning(
+            "All parallel competitor searches returned empty for base_query=%r", base_query
+        )
         return ""
 
     return "\n".join(
-        f"- {r.get('title', '')} ({r.get('href', '')})\n  {r.get('body', '')}"
-        for r in merged
+        f"- {r.get('title', '')} ({r.get('href', '')})\n  {r.get('body', '')}" for r in merged
     )
 
 
@@ -223,6 +250,14 @@ SPECIALISTS = {
     "channel_plan": channel_planner,
     "measurement": measurement,
     "competitive": competitive,
+}
+
+# Lighter specialist set for Quick tier — skips the 4-search competitive scan
+QUICK_SPECIALISTS = {
+    "audience_research": audience_research,
+    "positioning": positioning,
+    "channel_plan": channel_planner,
+    "measurement": measurement,
 }
 
 

@@ -22,16 +22,24 @@ def _make_client(response_text: str) -> MagicMock:
     return client
 
 
-_FULL_RESPONSE = json.dumps({
-    "full_name": "Jane Doe",
-    "current_position": "AI Researcher",
-    "organization": "TechCorp",
-    "professional_biography": "Jane Doe is a leading AI researcher.",
-    "areas_of_expertise": ["NLP", "Machine Learning"],
-    "confidence_level": "HIGH",
-})
+_FULL_RESPONSE = json.dumps(
+    {
+        "full_name": "Jane Doe",
+        "current_position": "AI Researcher",
+        "organization": "TechCorp",
+        "professional_biography": "Jane Doe is a leading AI researcher.",
+        "areas_of_expertise": ["NLP", "Machine Learning"],
+        "confidence_level": "HIGH",
+    }
+)
 
-_RESULTS = [{"title": "Jane Doe - Researcher", "href": "https://ex.com", "body": "Jane Doe is a researcher."}]
+_RESULTS = [
+    {
+        "title": "Jane Doe - Researcher",
+        "href": "https://ex.com",
+        "body": "Jane Doe is a researcher.",
+    }
+]
 
 
 class TestLLMService:
@@ -52,14 +60,16 @@ class TestLLMService:
         assert profile.confidence_level == ConfidenceLevel.HIGH
 
     def test_partial_results(self) -> None:
-        partial = json.dumps({
-            "full_name": "John",
-            "current_position": "",
-            "organization": "",
-            "professional_biography": "",
-            "areas_of_expertise": [],
-            "confidence_level": "LOW",
-        })
+        partial = json.dumps(
+            {
+                "full_name": "John",
+                "current_position": "",
+                "organization": "",
+                "professional_biography": "",
+                "areas_of_expertise": [],
+                "confidence_level": "LOW",
+            }
+        )
         client = _make_client(partial)
         service = LLMService(client=client)
         profile = service.analyze_search_results(_RESULTS)

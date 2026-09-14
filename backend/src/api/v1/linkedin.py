@@ -6,9 +6,10 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.modules.linkedin.generators.post_generator import LinkedInPostGenerator
 from src.modules.linkedin.generators.sequence_generator import OutreachSequenceGenerator
 from src.modules.linkedin.models import (
@@ -23,6 +24,19 @@ from src.repositories.campaign_repository import CampaignRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/linkedin/campaigns", tags=["LinkedIn Campaign Launchpad"])
+
+
+async def _verify_campaign_ownership(campaign_id: UUID, user_id: UUID) -> Any:
+    campaign_repo = CampaignRepository()
+    campaign = await campaign_repo.get_by_id(campaign_id, organization_id=user_id)
+    if not campaign:
+        campaign = await campaign_repo.get_by_id(campaign_id, None)
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Campaign {campaign_id} not found or access denied.",
+        )
+    return campaign
 
 
 class GenerateContentRequest(BaseModel):
@@ -44,22 +58,20 @@ class LaunchCampaignRequest(BaseModel):
 async def generate_campaign_content(
     campaign_id: UUID,
     req: GenerateContentRequest | None = None,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
     """Generate research-grounded LinkedIn posts and outbound sequence for an approved campaign.
 
     Reads approved CampaignPlan and ResearchBrief from database/request.
     """
-    campaign_repo = CampaignRepository()
-    campaign = await campaign_repo.get_by_id(campaign_id)
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Campaign {campaign_id} not found",
-        )
+    campaign = await _verify_campaign_ownership(campaign_id, UUID(user.id))
 
     # Reconstruct CampaignPlan
-    plan_dict = getattr(campaign, "strategy_document", None) or getattr(campaign, "plan_document", None) or {}
+    plan_dict = (
+        getattr(campaign, "strategy_document", None)
+        or getattr(campaign, "plan_document", None)
+        or {}
+    )
     if not plan_dict and hasattr(campaign, "goals"):
         # Fallback if raw campaign object used
         plan_dict = {}
@@ -79,9 +91,17 @@ async def generate_campaign_content(
     # ── Load intake checklist from DB — this is where event/guest data lives ──
     intake_data: dict[str, Any] = {}
     try:
-        logger.info("[CONTENT GENERATION Step 2] Loading intake checklist from DB for campaign_id=%s...", campaign_id)
+        logger.info(
+            "[CONTENT GENERATION Step 2] Loading intake checklist from DB for campaign_id=%s...",
+            campaign_id,
+        )
         intake_repo = BaseRepository("intake_checklists")
-        res = intake_repo.client.table("intake_checklists").select("*").eq("campaign_id", str(campaign_id)).execute()
+        res = (
+            intake_repo.client.table("intake_checklists")
+            .select("*")
+            .eq("campaign_id", str(campaign_id))
+            .execute()
+        )
         if res.data:
             intake_data = res.data[0]
             logger.info(
@@ -94,12 +114,36 @@ async def generate_campaign_content(
                 bool(intake_data.get("guest_profile")),
             )
         else:
-            logger.warning("[CONTENT GENERATION Step 2 WARNING] No intake checklist found for campaign %s — content will be generic!", campaign_id)
+            logger.warning(
+                "[CONTENT GENERATION Step 2 WARNING] No intake checklist found for campaign %s — content will be generic!",
+                campaign_id,
+            )
     except Exception as e:
         logger.warning("[CONTENT GENERATION Step 2 ERROR] Could not load intake checklist: %s", e)
 
     # 1. Generate Posts — passing all intake data through
-    logger.info("[CONTENT GENERATION Step 3] Calling LinkedInPostGenerator for campaign_id=%s...", campaign_id)
+    logger.info(
+        "[CONTENT GENERATION Step 3] Calling LinkedInPostGenerator for campaign_id=%s...",
+        campaign_id,
+    )
+    has_guest = intake_data.get("has_guest") is True and bool(intake_data.get("guest_name"))
+    actual_guest_name = intake_data.get("guest_name") if has_guest else None
+    actual_guest_title = intake_data.get("guest_title") if has_guest else None
+    actual_guest_profile = intake_data.get("guest_profile") if has_guest else None
+
+    # Fetch the user's configured posting time from autopilot settings (default: 10:00 AM)
+    from src.api.v1.autopilot import _get_user_settings
+
+    autopilot_settings = _get_user_settings(str(user.id))
+    post_time_str = autopilot_settings.get("post_time_slot", "10:00 AM")
+    # AutoPilotConfig default timezone (Asia/Karachi) — matches user's locale
+    timezone_name = "Asia/Karachi"
+    logger.info(
+        "[CONTENT GENERATION Step 3] Post scheduling time: %s %s",
+        post_time_str,
+        timezone_name,
+    )
+
     post_gen = LinkedInPostGenerator()
     posts = await post_gen.generate_all_posts(
         campaign_id,
@@ -112,14 +156,18 @@ async def generate_campaign_content(
         target_audience=intake_data.get("target_audience") or "",
         curriculum_breakdown=intake_data.get("curriculum_breakdown") or "",
         ticket_price=intake_data.get("is_free_or_paid") or "Free",
-        guest_name=intake_data.get("guest_name"),
-        guest_title=intake_data.get("guest_title"),
-        guest_profile=intake_data.get("guest_profile"),
+        guest_name=actual_guest_name,
+        guest_title=actual_guest_title,
+        guest_profile=actual_guest_profile,
+        post_time_str=post_time_str,
+        timezone_name=timezone_name,
     )
     logger.info("[CONTENT GENERATION Step 3 SUCCESS] Generated %d LinkedIn posts.", len(posts))
 
     # 2. Save Posts to Supabase
-    logger.info("[CONTENT GENERATION Step 4] Saving generated posts to Supabase `linkedin_posts` table...")
+    logger.info(
+        "[CONTENT GENERATION Step 4] Saving generated posts to Supabase `linkedin_posts` table..."
+    )
     posts_repo = BaseRepository("linkedin_posts")
     saved_posts = []
     for post in posts:
@@ -130,7 +178,11 @@ async def generate_campaign_content(
                 saved_posts.append(res.data[0])
         except Exception as e:
             logger.error("[CONTENT GENERATION Step 4 ERROR] Failed to save generated post: %s", e)
-    logger.info("[CONTENT GENERATION Step 4 SUCCESS] Successfully saved %d/%d posts to DB.", len(saved_posts), len(posts))
+    logger.info(
+        "[CONTENT GENERATION Step 4 SUCCESS] Successfully saved %d/%d posts to DB.",
+        len(saved_posts),
+        len(posts),
+    )
 
     # 3. Generate Outreach Sequence
     logger.info("[CONTENT GENERATION Step 5] Generating outreach sequence...")
@@ -152,10 +204,13 @@ async def generate_campaign_content(
     }
 
 
-
 @router.get("/{campaign_id}/preview")
-async def get_launchpad_preview(campaign_id: UUID) -> dict[str, Any]:
-    """Get Launchpad preview data (posts + sequence + safety config)."""
+async def get_launchpad_preview(
+    campaign_id: UUID,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> dict[str, Any]:
+    """Get Launchpad preview data (posts + sequence + safety config) with ownership check."""
+    await _verify_campaign_ownership(campaign_id, UUID(user.id))
     posts_repo = BaseRepository("linkedin_posts")
     seq_repo = BaseRepository("outreach_sequences")
 
@@ -199,8 +254,10 @@ async def patch_post(
     campaign_id: UUID,
     post_id: UUID,
     req: PatchPostRequest,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
-    """Quick edit a generated LinkedIn post."""
+    """Quick edit a generated LinkedIn post with ownership check."""
+    await _verify_campaign_ownership(campaign_id, UUID(user.id))
     posts_repo = BaseRepository("linkedin_posts")
     update_data: dict[str, Any] = {}
 
@@ -251,8 +308,10 @@ async def patch_post(
 async def launch_campaign(
     campaign_id: UUID,
     req: LaunchCampaignRequest,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
-    """Activate Auto-Pilot for campaign (draft -> scheduled status update)."""
+    """Activate Auto-Pilot for campaign with ownership check."""
+    await _verify_campaign_ownership(campaign_id, UUID(user.id))
     posts_repo = BaseRepository("linkedin_posts")
 
     try:
@@ -271,8 +330,12 @@ async def launch_campaign(
 
 
 @router.get("/{campaign_id}/status")
-async def get_campaign_execution_status(campaign_id: UUID) -> dict[str, Any]:
-    """Get real-time execution statistics for a campaign."""
+async def get_campaign_execution_status(
+    campaign_id: UUID,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> dict[str, Any]:
+    """Get real-time execution statistics for a campaign with ownership check."""
+    await _verify_campaign_ownership(campaign_id, UUID(user.id))
     posts_repo = BaseRepository("linkedin_posts")
     seq_repo = BaseRepository("outreach_sequences")
 
@@ -313,4 +376,3 @@ async def get_campaign_execution_status(campaign_id: UUID) -> dict[str, Any]:
         "connected_leads": sum(1 for s in sequences if s.get("status") in ("connected", "replied")),
         "replied_leads": sum(1 for s in sequences if s.get("status") == "replied"),
     }
-

@@ -7,7 +7,6 @@ External services (Supabase, guest search) are mocked per constitution
 from unittest.mock import MagicMock
 
 from src.agents.context_builder import ContextBuilder
-from src.services.search import SearchError
 from src.services.supabase import NotFoundError, SupabaseServiceError
 
 
@@ -75,62 +74,23 @@ class TestBrandLoading:
 
 
 class TestGuestLoading:
-    def test_maps_search_results_to_guest_data(self) -> None:
-        search = MagicMock()
-        search.search.return_value = [
-            {"body": "Jane is an AI researcher."},
-            {"body": "Jane spoke at the summit."},
-        ]
+    def test_guest_loading_stubbed(self) -> None:
         builder = ContextBuilder(
             supabase_service=_brand_service({"company_name": "Acme"}),
-            guest_search_service=search,
-        )
-
-        ctx = builder.build(company_profile_id="prof-1", guest_names=["Jane Doe"])
-
-        assert len(ctx.guests) == 1
-        guest = ctx.guests[0]
-        assert guest.full_name == "Jane Doe"
-        assert "AI researcher" in guest.biography
-        assert guest.confidence == "MEDIUM"
-        search.search.assert_called_once_with("Jane Doe", "Acme")
-
-    def test_one_guest_failure_is_skipped(self) -> None:
-        search = MagicMock()
-        search.search.side_effect = [
-            SearchError("rate limited"),
-            [{"body": "Bob is an engineer."}],
-        ]
-        builder = ContextBuilder(
-            supabase_service=_brand_service({"company_name": "Acme"}),
-            guest_search_service=search,
         )
 
         ctx = builder.build(company_profile_id="prof-1", guest_names=["Jane Doe", "Bob Smith"])
 
-        assert [g.full_name for g in ctx.guests] == ["Bob Smith"]
+        assert len(ctx.guests) == 2
+        assert ctx.guests[0].full_name == "Jane Doe"
+        assert ctx.guests[0].confidence == "LOW"
+        assert ctx.guests[1].full_name == "Bob Smith"
+        assert ctx.guests[1].confidence == "LOW"
 
     def test_no_guests_yields_empty_tuple(self) -> None:
-        search = MagicMock()
-        builder = ContextBuilder(guest_search_service=search)
-
+        builder = ContextBuilder()
         ctx = builder.build()
-
         assert ctx.guests == ()
-        search.search.assert_not_called()
-
-    def test_empty_results_gives_low_confidence(self) -> None:
-        search = MagicMock()
-        search.search.return_value = []
-        builder = ContextBuilder(
-            supabase_service=_brand_service({"company_name": "Acme"}),
-            guest_search_service=search,
-        )
-
-        ctx = builder.build(company_profile_id="prof-1", guest_names=["Nobody"])
-
-        assert ctx.guests[0].confidence == "LOW"
-        assert ctx.guests[0].biography == ""
 
 
 class TestEventData:

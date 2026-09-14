@@ -3,12 +3,10 @@ from pydantic import ValidationError
 
 from src.models.guest_profile import (
     ConfidenceLevel,
+    GuestEvidence,
     GuestProfile,
-    GuestProfileData,
     GuestSearchRequest,
     GuestSearchResponse,
-    SearchResult,
-    SearchResultData,
 )
 
 
@@ -26,76 +24,32 @@ class TestConfidenceLevel:
         assert ConfidenceLevel.LOW.value == "LOW"
 
 
-class TestSearchResult:
+class TestGuestEvidence:
     def test_default_values(self) -> None:
-        result = SearchResult()
-        assert result.website_name == ""
-        assert result.page_title == ""
-        assert result.snippet == ""
-        assert result.source_url == ""
+        evidence = GuestEvidence(url="https://example.com")
+        assert evidence.url == "https://example.com"
+        assert evidence.title == ""
+        assert evidence.highlights == []
 
     def test_all_fields_populated(self) -> None:
-        result = SearchResult(
-            website_name="Example",
-            page_title="Test Page",
-            snippet="A test snippet",
-            source_url="https://example.com",
+        evidence = GuestEvidence(
+            url="https://example.com",
+            title="Test Page",
+            highlights=["A test snippet"],
         )
-        assert result.website_name == "Example"
-        assert result.page_title == "Test Page"
-        assert result.snippet == "A test snippet"
-        assert result.source_url == "https://example.com"
-
-    def test_to_data(self) -> None:
-        result = SearchResult(
-            website_name="Ex",
-            page_title="Title",
-            snippet="Snippet",
-            source_url="https://ex.com",
-        )
-        data = result.to_data()
-        assert isinstance(data, SearchResultData)
-        assert data.website_name == "Ex"
-        assert data.page_title == "Title"
-
-
-class TestSearchResultData:
-    def test_defaults(self) -> None:
-        data = SearchResultData()
-        assert data.website_name == ""
-        assert data.page_title == ""
-        assert data.snippet == ""
-        assert data.source_url == ""
-
-    def test_serialization(self) -> None:
-        data = SearchResultData(
-            website_name="Ex",
-            page_title="T",
-            snippet="S",
-            source_url="https://ex.com",
-        )
-        dumped = data.model_dump()
-        assert dumped["website_name"] == "Ex"
-        assert dumped["source_url"] == "https://ex.com"
+        assert evidence.url == "https://example.com"
+        assert evidence.title == "Test Page"
+        assert evidence.highlights == ["A test snippet"]
 
 
 class TestGuestProfile:
     def test_default_values(self) -> None:
-        profile = GuestProfile()
-        assert profile.full_name == ""
-        assert profile.current_position == ""
-        assert profile.organization == ""
-        assert profile.professional_biography == ""
-        assert profile.areas_of_expertise == []
-        assert profile.confidence_level == ConfidenceLevel.LOW
-        assert profile.sources_used == []
+        with pytest.raises(ValidationError):
+            # full_name is required
+            GuestProfile()
 
     def test_all_fields_populated(self) -> None:
-        sources = [
-            SearchResult(
-                website_name="Ex", page_title="T", snippet="S", source_url="https://ex.com"
-            )
-        ]
+        evidence = [GuestEvidence(url="https://ex.com", title="T", highlights=["S"])]
         profile = GuestProfile(
             full_name="Jane Doe",
             current_position="Engineer",
@@ -103,40 +57,11 @@ class TestGuestProfile:
             professional_biography="An engineer.",
             areas_of_expertise=["AI", "ML"],
             confidence_level=ConfidenceLevel.HIGH,
-            sources_used=sources,
+            evidence=evidence,
         )
         assert profile.full_name == "Jane Doe"
         assert profile.confidence_level == ConfidenceLevel.HIGH
-        assert len(profile.sources_used) == 1
-
-    def test_to_response(self) -> None:
-        sources = [
-            SearchResult(
-                website_name="Ex", page_title="T", snippet="S", source_url="https://ex.com"
-            )
-        ]
-        profile = GuestProfile(
-            full_name="Jane Doe",
-            current_position="Engineer",
-            organization="Acme",
-            professional_biography="Bio.",
-            areas_of_expertise=["AI"],
-            confidence_level=ConfidenceLevel.MEDIUM,
-            sources_used=sources,
-        )
-        response = profile.to_response()
-        assert isinstance(response, GuestProfileData)
-        assert response.full_name == "Jane Doe"
-        assert response.confidence_level == ConfidenceLevel.MEDIUM
-        assert len(response.sources_used) == 1
-        assert response.sources_used[0].website_name == "Ex"
-
-    def test_to_response_empty(self) -> None:
-        profile = GuestProfile()
-        response = profile.to_response()
-        assert response.full_name == ""
-        assert response.confidence_level == ConfidenceLevel.LOW
-        assert response.sources_used == []
+        assert len(profile.evidence) == 1
 
 
 class TestGuestSearchRequest:
@@ -159,8 +84,7 @@ class TestGuestSearchRequest:
 class TestGuestSearchResponse:
     def test_default_response(self) -> None:
         resp = GuestSearchResponse()
-        assert isinstance(resp.profile, GuestProfileData)
-        assert resp.profile.full_name == ""
+        assert resp.profile is None
         assert resp.needs_manual_input is False
         assert resp.error == ""
 
@@ -170,7 +94,7 @@ class TestGuestSearchResponse:
         assert resp.error == "Insufficient results"
 
     def test_serialization(self) -> None:
-        profile = GuestProfileData(full_name="Jane", confidence_level=ConfidenceLevel.HIGH)
+        profile = GuestProfile(full_name="Jane", confidence_level=ConfidenceLevel.HIGH)
         resp = GuestSearchResponse(profile=profile)
         dumped = resp.model_dump()
         assert dumped["profile"]["full_name"] == "Jane"

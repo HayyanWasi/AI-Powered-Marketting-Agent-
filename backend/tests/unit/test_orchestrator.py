@@ -98,7 +98,6 @@ class TestGenerationContext:
 
     def test_context_is_frozen(self) -> None:
         brand = BrandData(company_name="Test")
-        ctx = GenerationContext(brand=brand)
         # BrandData is frozen — cannot modify
         try:
             brand.company_name = "Changed"

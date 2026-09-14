@@ -15,6 +15,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from src.api.response import APIErrorResponse, ValidationErrorDetail
 
 
+def _get_cors_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get("origin")
+    if origin:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    return {"Access-Control-Allow-Origin": "*"}
+
+
 async def _error_response(
     request: Request, status_code: int, error: str, message: str
 ) -> JSONResponse:
@@ -29,7 +41,8 @@ async def _error_response(
         body["request_id"] = request_id
     if trace_id:
         body["trace_id"] = trace_id
-    return JSONResponse(status_code=status_code, content=body)
+    headers = _get_cors_headers(request)
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
 
 
 async def _error_response_with_details(
@@ -47,7 +60,8 @@ async def _error_response_with_details(
         body["request_id"] = request_id
     if trace_id:
         body["trace_id"] = trace_id
-    return JSONResponse(status_code=status_code, content=body)
+    headers = _get_cors_headers(request)
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
 
 
 async def validation_exception_handler(

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Hipoclipse AI Pitch Deck</title>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #e8e8e8; user-select: none; overflow: hidden; }
+  .deck { width: 100vw; height: 100vh; overflow: hidden; position: relative; }
+  .slide { position: absolute; inset: 0; display: none; background: #ffffff; }
+  .slide.active { display: flex; }
+
+  /* ─── SLIDE 1: INTRO ───────────────────────────── */
+  #s1 { flex-direction: row; }
+  .s1-left { width: 58%; padding: 72px 64px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #e5e7eb; }
+  .slide-label { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #9ca3af; margin-bottom: 22px; }
+  .s1-title { font-size: 68px; font-weight: 900; line-height: 1.03; letter-spacing: -0.03em; color: #0a0a0a; margin-bottom: 22px; }
+  .s1-title em { font-style: normal; position: relative; }
+  .s1-title em::after { content: ""; position: absolute; bottom: 4px; left: 0; width: 100%; height: 4px; background: #0a0a0a; border-radius: 2px; }
+  .s1-sub { font-size: 17px; font-weight: 400; color: #4b5563; line-height: 1.7; max-width: 460px; margin-bottom: 44px; }
+  .s1-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+  .s1-pill { padding: 7px 16px; border: 1.5px solid #d1d5db; border-radius: 100px; font-size: 12px; font-weight: 600; color: #374151; letter-spacing: 0.01em; }
+  .s1-right { width: 42%; padding: 72px 52px; display: flex; flex-direction: column; justify-content: center; gap: 36px; background: #fafafa; }
+  .s1-stat { border-left: 3px solid #0a0a0a; padding-left: 20px; }
+  .s1-stat-num { font-size: 46px; font-weight: 900; letter-spacing: -0.04em; color: #0a0a0a; line-height: 1; }
+  .s1-stat-label { font-size: 13px; font-weight: 500; color: #6b7280; margin-top: 6px; line-height: 1.45; }
+
+  /* ─── SLIDE 2: PROBLEM & SOLUTION ─────────────── */
+  #s2 { flex-direction: column; }
+  .slide-header { padding: 46px 70px 30px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+  .slide-header-title { font-size: 38px; font-weight: 800; letter-spacing: -0.025em; color: #0a0a0a; margin-top: 10px; }
+  .s2-body { display: grid; grid-template-columns: 1fr 1fr; flex: 1; overflow: hidden; }
+  .s2-col { padding: 32px 60px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
+  .s2-col.left { border-right: 1px solid #e5e7eb; }
+  .s2-col.right { background: #fafafa; }
+  .s2-col-title { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #9ca3af; padding-bottom: 14px; border-bottom: 1px solid #e5e7eb; }
+  .ps-item { display: flex; gap: 16px; align-items: flex-start; }
+  .ps-num { width: 28px; height: 28px; border-radius: 50%; background: #0a0a0a; color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .ps-text h4 { font-size: 14.5px; font-weight: 700; color: #0a0a0a; margin-bottom: 5px; }
+  .ps-text p { font-size: 13px; color: #6b7280; line-height: 1.55; font-weight: 400; }
+
+  /* ─── SLIDE 3: ARCHITECTURE ────────────────────── */
+  #s3 { flex-direction: column; }
+  .s3-sub { font-size: 14px; font-weight: 400; color: #6b7280; margin-top: 7px; }
+  .s3-body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px 52px 100px; overflow: hidden; }
+  .s3-body img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #e5e7eb; border-radius: 8px; }
+
+  /* ─── SLIDE 4: BUSINESS ─────────────────────────── */
+  #s4 { flex-direction: column; }
+  .s4-body { display: grid; grid-template-columns: 1fr 1fr; flex: 1; padding: 28px 60px 32px; gap: 20px; overflow: hidden; }
+  .s4-card { background: #ffffff; border: 1.5px solid #e5e7eb; border-radius: 12px; padding: 28px 28px 24px; display: flex; flex-direction: column; gap: 9px; transition: border-color 0.2s; }
+  .s4-card:hover { border-color: #9ca3af; }
+  .s4-card-num { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #d1d5db; }
+  .s4-card h3 { font-size: 16px; font-weight: 700; color: #0a0a0a; line-height: 1.3; }
+  .s4-card p { font-size: 13px; color: #6b7280; line-height: 1.62; font-weight: 400; flex: 1; }
+  .s4-card-tag { display: inline-block; margin-top: 6px; padding: 4px 12px; background: #f3f4f6; border-radius: 100px; font-size: 11px; font-weight: 700; color: #374151; letter-spacing: 0.04em; }
+
+  /* ─── NAVIGATION ───────────────────────────────── */
+  .nav { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 18px; background: #ffffff; border: 1.5px solid #e5e7eb; border-radius: 100px; padding: 10px 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); z-index: 100; }
+  .nav-btn { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #d1d5db; background: #fff; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; color: #374151; }
+  .nav-btn:hover { background: #0a0a0a; color: #fff; border-color: #0a0a0a; }
+  .nav-dots { display: flex; gap: 8px; align-items: center; }
+  .nav-dot { width: 8px; height: 8px; border-radius: 4px; background: #d1d5db; cursor: pointer; transition: all 0.25s; }
+  .nav-dot.active { background: #0a0a0a; width: 24px; }
+  .nav-sep { width: 1px; height: 16px; background: #e5e7eb; }
+  .nav-label { font-size: 12px; font-weight: 600; color: #6b7280; white-space: nowrap; min-width: 120px; text-align: center; }
+  .slide-counter { position: fixed; top: 26px; right: 36px; font-size: 12px; font-weight: 700; color: #d1d5db; letter-spacing: 0.08em; z-index: 100; }
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- ══════════════════ SLIDE 1: INTRO ══════════════════ -->
+  <div class="slide active" id="s1">
+    <div class="s1-left">
+            <div class="slide-label">AI Marketing Platform, 2026</div>
+      <h1 class="s1-title">Hipoclipse<br/><em>AI</em></h1>
+      <p class="s1-sub">An autonomous AI marketing agent that researches, plans, creates, and publishes campaign content on LinkedIn, with zero manual overhead.</p>
+      <div class="s1-pills">
+        <span class="s1-pill">Multi-Agent Pipeline</span>
+        <span class="s1-pill">LangGraph</span>
+        <span class="s1-pill">LinkedIn AutoPilot</span>
+        <span class="s1-pill">9:16 Video Generation</span>
+        <span class="s1-pill">Supabase</span>
+      </div>
+    </div>
+    <div class="s1-right">
+      <div class="s1-stat">
+        <div class="s1-stat-num">5x</div>
+        <div class="s1-stat-label">Faster campaign production versus manual marketing teams</div>
+      </div>
+      <div class="s1-stat">
+        <div class="s1-stat-num">100%</div>
+        <div class="s1-stat-label">Automated publishing within peak 95 engagement windows</div>
+      </div>
+      <div class="s1-stat">
+        <div class="s1-stat-num">0</div>
+        <div class="s1-stat-label">Manual hours needed for scheduling and engagement once live</div>
+      </div>
+      <div class="s1-stat">
+        <div class="s1-stat-num">4</div>
+        <div class="s1-stat-label">Specialised AI agents running in parallel per campaign</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 2: PROBLEM & SOLUTION ══════════════════ -->
+  <div class="slide" id="s2">
+    <div class="slide-header">
+      <div class="slide-label">The Case for Automation</div>
+      <div class="slide-header-title">Problem &amp; Solution</div>
+    </div>
+    <div class="s2-body">
+      <div class="s2-col left">
+        <div class="s2-col-title">The Problem</div>
+
+        <div class="ps-item">
+          <div class="ps-num">1</div>
+          <div class="ps-text">
+            <h4>One-Size-Fits-All Content</h4>
+            <p>Marketing teams write generic posts regardless of event proximity, missing the urgency curve that actually drives engagement at each stage of a campaign.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">2</div>
+          <div class="ps-text">
+            <h4>Video is Too Expensive to Scale</h4>
+            <p>Short-form video consistently outperforms text but requires editors, voiceover talent, and design tools, making consistent production impractical for most teams.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">3</div>
+          <div class="ps-text">
+            <h4>Content Goes Live at the Wrong Time</h4>
+            <p>Posts are published when they are ready, not when audiences are most active, sacrificing reach and impressions for operational convenience.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">4</div>
+          <div class="ps-text">
+            <h4>Engagement Falls Silent After Posting</h4>
+            <p>No one can monitor comments and stay active 24/7. Platforms deprioritise unresponsive pages, steadily reducing future organic reach and campaign ROI.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="s2-col right">
+        <div class="s2-col-title">The Solution</div>
+
+        <div class="ps-item">
+          <div class="ps-num">1</div>
+          <div class="ps-text">
+            <h4>Time-Aware Content Generation</h4>
+            <p>The system reads campaign timelines and adapts automatically, urgent copy when an event is imminent, long-arc awareness content when it is weeks away. Content intelligence, not templates.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">2</div>
+          <div class="ps-text">
+            <h4>Fully Automated Video Production</h4>
+            <p>One pipeline writes the script, generates visuals via Pollinations AI, adds narration via Edge-TTS, and stitches a complete 9:16 reel, no editing, no manual steps.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">3</div>
+          <div class="ps-text">
+            <h4>Peak-Window Autonomous Scheduling</h4>
+            <p>LinkedIn AutoPilot queues and publishes content within the 9-to-5 window, the time range that consistently delivers the highest impressions based on real platform behaviour.</p>
+          </div>
+        </div>
+
+        <div class="ps-item">
+          <div class="ps-num">4</div>
+          <div class="ps-text">
+            <h4>Automated Engagement Around the Clock</h4>
+            <p>The system handles likes and comment responses automatically, keeping the page active and responsive, with built-in fallback switching between AI providers for 100% reliability.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 3: ARCHITECTURE ══════════════════ -->
+  <div class="slide" id="s3">
+    <div class="slide-header">
+      <div class="slide-label">Technical Design</div>
+      <div class="slide-header-title">Multi-Agent System Architecture</div>
+      <p class="s3-sub">Four sequential stages, Research · Strategy · Creative · Distribution, orchestrated by LangGraph with Supabase persistence.</p>
+    </div>
+    <div class="s3-body">
+      <img src="./marketing_architecture_white.png" alt="Hipoclipse AI Architecture Diagram" />
+    </div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 4: BUSINESS VALUE ══════════════════ -->
+  <div class="slide" id="s4">
+    <div class="slide-header">
+      <div class="slide-label">Business Value &amp; Market</div>
+      <div class="slide-header-title">What This Delivers</div>
+    </div>
+    <div class="s4-body">
+
+      <div class="s4-card">
+        <div class="s4-card-num">Capability 01</div>
+        <h3>Time-Aware Campaign Content</h3>
+        <p>If an event is tomorrow, the system creates urgent, high-pressure content. If it is a month away, it builds a progressive campaign, starting with awareness, building interest, then urgency as the date nears. This is not one-size-fits-all; it adapts to the actual timeline.</p>
+        <span class="s4-card-tag">Dynamic Campaign Intelligence</span>
+      </div>
+
+      <div class="s4-card">
+        <div class="s4-card-num">Capability 02</div>
+        <h3>End-to-End Video Generation</h3>
+        <p>The system takes campaign details and produces a complete short-form video, it writes the script, generates the visuals, adds narration, and puts it all together. No manual editing required at any stage of the process.</p>
+        <span class="s4-card-tag">MoviePy · Pollinations · Edge-TTS</span>
+      </div>
+
+      <div class="s4-card">
+        <div class="s4-card-num">Capability 03</div>
+        <h3>Automatic Peak-Window Publishing</h3>
+        <p>Once content is ready, the system publishes it automatically within the 9-to-5 window, the time range where platforms deliver the highest impressions and engagement, based on how people actually use these platforms.</p>
+        <span class="s4-card-tag">LinkedIn AutoPilot · Unipile</span>
+      </div>
+
+      <div class="s4-card">
+        <div class="s4-card-num">Capability 04</div>
+        <h3>Automated Engagement at Scale</h3>
+        <p>The system handles likes and comments, keeping the page active and responsive without anyone manually managing it. Multiple AI agents work in parallel, with fallback switching so the system keeps running if one provider hits a limit.</p>
+        <span class="s4-card-tag">Multi-Agent · Fault-Tolerant Pipeline</span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- SLIDE COUNTER -->
+<div class="slide-counter" id="slide-counter">01 / 04</div>
+
+<!-- NAVIGATION BAR -->
+<nav class="nav">
+  <button class="nav-btn" onclick="prev()" title="Previous slide">&#8592;</button>
+  <div class="nav-dots">
+    <div class="nav-dot active" onclick="goTo(0)" title="Introduction"></div>
+    <div class="nav-dot" onclick="goTo(1)" title="Problem and Solution"></div>
+    <div class="nav-dot" onclick="goTo(2)" title="Architecture"></div>
+    <div class="nav-dot" onclick="goTo(3)" title="Business Value"></div>
+  </div>
+  <div class="nav-sep"></div>
+  <span class="nav-label" id="nav-label">Introduction</span>
+  <button class="nav-btn" onclick="next()" title="Next slide">&#8594;</button>
+</nav>
+
+<script>
+  const slides  = document.querySelectorAll(".slide");
+  const dots    = document.querySelectorAll(".nav-dot");
+  const labels  = ["Introduction", "Problem & Solution", "Architecture", "Business Value"];
+  let cur = 0;
+
+  function goTo(n) {
+    slides[cur].classList.remove("active");
+    dots[cur].classList.remove("active");
+    cur = ((n % slides.length) + slides.length) % slides.length;
+    slides[cur].classList.add("active");
+    dots[cur].classList.add("active");
+    document.getElementById("slide-counter").textContent = String(cur + 1).padStart(2, "0") + " / 04";
+    document.getElementById("nav-label").textContent = labels[cur];
+  }
+
+  function next() { goTo(cur + 1); }
+  function prev() { goTo(cur - 1); }
+
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") { e.preventDefault(); next(); }
+    if (e.key === "ArrowLeft"  || e.key === "ArrowUp")                    { e.preventDefault(); prev(); }
+  });
+</script>
+</body>
+</html>

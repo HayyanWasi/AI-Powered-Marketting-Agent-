@@ -18,7 +18,7 @@ from typing import Annotated, Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from src.modules.planning.agents import chief_strategist
-from src.modules.planning.agents.panel import SPECIALISTS
+from src.modules.planning.agents.panel import QUICK_SPECIALISTS, SPECIALISTS
 from src.modules.planning.models.brief import PlanBrief
 from src.modules.planning.models.campaign_plan import CampaignPlan
 
@@ -63,16 +63,17 @@ async def _synthesize_node(state: PlanState) -> dict[str, Any]:
     return {"plan": plan}
 
 
-def compile_graph():
+def compile_graph(tier: str = "Quick"):
     """Build and compile the panel graph.
 
     No checkpointer: a draft run is short-lived and its durable output is the
     plan row in Postgres, not graph state.
     """
+    specialists = QUICK_SPECIALISTS if tier == "Quick" else SPECIALISTS
     graph = StateGraph(PlanState)
 
     graph.add_node("start", lambda state: {})
-    for name, fn in SPECIALISTS.items():
+    for name, fn in specialists.items():
         graph.add_node(name, _make_specialist_node(name, fn))
         graph.add_edge("start", name)
         graph.add_edge(name, "synthesize")

@@ -24,75 +24,118 @@
 This diagram shows how data flows through the user interface, the hybrid storage databases, the core agents, and free external API integrations to publish and track post metrics.
 
 ```mermaid
-graph TD
-    subgraph UI ["User Interface (Streamlit Dashboard)"]
-        A[PDF Upload - Long-term Org Profile]
-        B[Event Form - Details & Guest Links]
-        UI_Review[Review Panel: Approve Strategy, Calendar, Copy & Visuals]
+flowchart LR
+    %% Styling
+    classDef input fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef stage1 fill:#0369a1,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef stage2 fill:#4338ca,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef stage3 fill:#c2410c,stroke:#fb923c,stroke-width:2px,color:#fff;
+    classDef stage4 fill:#065f46,stroke:#34d399,stroke-width:2px,color:#fff;
+    classDef user fill:#831843,stroke:#f43f5e,stroke-width:2px,color:#fff;
+    classDef storage fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+
+    UserBrief(["👤 Marketer Input\n(Goal, Speakers, Brand)"]):::input
+
+    %% ─────────────────────────────────────────────────────────────
+    %% STAGE 1: INTAKE & RESEARCH
+    %% ─────────────────────────────────────────────────────────────
+    subgraph S1 ["1. Intake & Live Intelligence"]
+        direction TB
+        ExaBio["🔎 Exa Semantic Search\n(Speaker Bios & Credentials)"]:::stage1
+        DDGTrends["🌐 DuckDuckGo & Neo4j\n(Market & Competitor Trends)"]:::stage1
+        ExaBio ~~~ DDGTrends
     end
 
-    subgraph Storage ["Storage Layer (Supabase)"]
-        RAG[(Vector Store - Org Narrative & Tone)]
-        DB[(Relational DB - Event Info, Guest Cards, Schedules, Metrics)]
+    %% ─────────────────────────────────────────────────────────────
+    %% STAGE 2: CAMPAIGN PLAN (PANEL FAN-OUT & REFINEMENT)
+    %% ─────────────────────────────────────────────────────────────
+    subgraph S2 ["2. Campaign Plan (LangGraph Panel Fan-Out)"]
+        direction TB
+        PlanStart(["start"]):::stage2
+        
+        subgraph PanelFanOut ["5 Parallel Specialists"]
+            direction TB
+            Audience["audience_research"]:::stage2
+            Channel["channel_plan"]:::stage2
+            Measurement["measurement"]:::stage2
+            Positioning["positioning"]:::stage2
+            Competitive["competitive_analysis"]:::stage2
+        end
+
+        Synthesize["synthesize\n(Chief Strategist)"]:::stage2
+        PlanRefine["🔄 Plan Refinement Agent\n(Revise · Apply · Reply)"]:::stage2
+        HITLReview{{"🙋 Human Approval\n(Review & Approve Plan)"}}:::user
+
+        PlanStart --> Audience & Channel & Measurement & Positioning & Competitive
+        Audience & Channel & Measurement & Positioning & Competitive --> Synthesize
+        Synthesize --> HITLReview
+        HITLReview <-->|"Interactive Revisions"| PlanRefine
     end
 
-    subgraph Agents ["Core Orchestrator Logic"]
-        A2[Agent 2: Guest Research]
-        A4[Agent 4: Marketing Strategy]
-        A5[Agent 5: Campaign Planner]
-        A7[Agent 7: Content Generation]
-        A8[Agent 8: Asset Generation]
-        A9[Agent 9: Scheduler, Publisher & Tracking]
+    ContextSnapshot["🧱 Context Builder\n(Locks Brand, Speaker\n& Strategy Snapshot)"]:::input
+
+    %% ─────────────────────────────────────────────────────────────
+    %% STAGE 3: CREATIVE STUDIO (COPY & 9:16 VIDEO REELS)
+    %% ─────────────────────────────────────────────────────────────
+    subgraph S3 ["3. Creative Studio (Posts + Video)"]
+        direction TB
+        
+        subgraph S3A ["📝 Thought-Leadership Copy"]
+            direction TB
+            CopyGen["AI Copywriter\n(LinkedIn Posts)"]:::stage3
+            HookEval["Hook & Retention Analyzer"]:::stage3
+            HashEval["Hashtag Optimization"]:::stage3
+            ReadEval["Readability & Cadence Scorer"]:::stage3
+
+            CopyGen --> HookEval --> HashEval --> ReadEval
+        end
+
+        subgraph S3B ["🎬 9:16 Video Reel Studio"]
+            direction TB
+            VideoScript["Video Script Agent"]:::stage3
+            PollinationsScenes["Pollinations AI (Scenes)"]:::stage3
+            TTSVoice["Edge-TTS (Voiceover)"]:::stage3
+            MoviePyStitcher["MoviePy Video Stitcher"]:::stage3
+
+            VideoScript --> PollinationsScenes
+            VideoScript --> TTSVoice
+            PollinationsScenes --> MoviePyStitcher
+            TTSVoice --> MoviePyStitcher
+        end
     end
 
-    subgraph APIs ["External API Integrations"]
-        DDG[DuckDuckGo Search API - Free Snippets]
-        Pol[Pollinations.ai API - Free Art]
-        Buf[Buffer API - Publishing & Metrics Sync]
+    %% ─────────────────────────────────────────────────────────────
+    %% STAGE 4: AUTOPILOT & DISTRIBUTION
+    %% ─────────────────────────────────────────────────────────────
+    subgraph S4 ["4. Distribution & Guardrails"]
+        direction TB
+        BrandSafety["🛡️ Brand Safety Validator\n(Policy & Voice Compliance)"]:::stage4
+        LinkedInAuto["🤖 LinkedIn AutoPilot\n(Unipile Scheduler & Comment Triage)"]:::stage4
+        BrandSafety --> LinkedInAuto
     end
 
-    %% Data Ingestion Flow
-    A -->|Ingest text| RAG
-    B -->|Insert event metadata| DB
-    
-    %% Agent 2: Guest Research Flow
-    B -.->|Trigger Guest Link| A2
-    A2 -->|Run free query| DDG
-    DDG -->|Return text snippets| A2
-    A2 -->|Verify & save profile| DB
-    
-    %% Agent 4: Marketing Strategy Flow
-    RAG -.->|Read guidelines| A4
-    DB -.->|Read guest & event details| A4
-    A4 -->|Generate strategy brief| DB
-    DB -->|Render for approval| UI_Review
-    
-    %% Agent 5: Campaign Planner Flow
-    UI_Review -->|Approve Strategy| A5
-    A5 -->|Create empty slots grid| DB
-    DB -->|Render slots| UI_Review
-    
-    %% Agent 7: Content Generation Flow
-    UI_Review -->|Approve Slots| A7
-    DB -.->|Read slot details| A7
-    RAG -.->|Read tone context| A7
-    A7 -->|Search current trends| DDG
-    A7 -->|Generate 3 variants & image prompt| DB
-    DB -->|Display copy drafts| UI_Review
-    
-    %% Agent 8: Asset Generation Flow
-    UI_Review -->|Approve copy variant| A8
-    A8 -->|Call Free Art API| Pol
-    A8 -->|Local Pillow Image & Logo Overlay| A8
-    A8 -->|Save final PNG to storage| DB
-    
-    %% Agent 9: Scheduler, Publisher & Tracking Flow
-    UI_Review -->|Approve final post| A9
-    A9 -->|Push copy + image URL| Buf
-    Buf -->|Publish to social networks| Buf
-    Buf -->|Fetch engagement metrics| A9
-    A9 -->|Update metrics logs| DB
-    DB -->|Render live impressions chart| UI_Review
+    %% ─────────────────────────────────────────────────────────────
+    %% PERSISTENT STORAGE (SUPABASE)
+    %% ─────────────────────────────────────────────────────────────
+    subgraph Storage ["💾 Persistent Storage (Supabase)"]
+        direction TB
+        SupaDB[("PostgreSQL Database\n(Campaigns · Speaker Bios\nPlans · Post Drafts)")]:::storage
+        SupaStorage[("Asset Storage\n(9:16 Video MP4s)")]:::storage
+    end
+
+    Success(["🚀 Published to LinkedIn\nwith Live Analytics"]):::input
+
+    %% CLEAN HORIZONTAL FLOW (LEFT TO RIGHT)
+    UserBrief ==> S1
+    S1 ==>|"Live Intelligence"| PlanStart
+    HITLReview ==>|"Approved Strategy"| ContextSnapshot
+    ContextSnapshot <-->|"Syncs Snapshot"| SupaDB
+    ContextSnapshot ==> S3
+    MoviePyStitcher -.->|"Uploads MP4"| SupaStorage
+    S3 ==>|"Draft Posts & Reels"| S4
+    BrandSafety -.->|"Saves Posts"| SupaDB
+    LinkedInAuto -.->|"Logs Analytics"| SupaDB
+    LinkedInAuto ==> Success
 ```
 
 ---

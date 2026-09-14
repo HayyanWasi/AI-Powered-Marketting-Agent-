@@ -53,4 +53,3 @@ class ResearchTierConfig(BaseModel):
             per_llm_timeout_sec=l_to,
             total_pipeline_timeout_sec=p_to,
         )
-

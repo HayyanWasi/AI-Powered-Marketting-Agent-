@@ -1,6 +1,5 @@
 """Unit tests for ModelVersionRegistry."""
 
-
 from src.modules.operations.services.model_registry import (
     ModelVersionRegistry,
 )

@@ -61,3 +61,6 @@ class LLMRequest(BaseModel):
     template_name: str | None = None
     template_variables: dict[str, str] = Field(default_factory=dict)
     prompt_name: str | None = None
+    temperature: float | None = None
+    json_mode: bool = False
+    max_tokens: int | None = None

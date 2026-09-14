@@ -100,13 +100,13 @@ class PostgresService:
             self.client.table("research_evidence_graphs").upsert(
                 data, on_conflict="session_id"
             ).execute()
-            logger.info("Persisted Evidence Graph JSONB fallback to Postgres for session %s", session_id)
+            logger.info(
+                "Persisted Evidence Graph JSONB fallback to Postgres for session %s", session_id
+            )
         except Exception as e:
             logger.warning("Failed to save evidence graph fallback to Postgres: %s", e)
 
-    async def get_evidence_graph_fallback(
-        self, session_id: UUID | str
-    ) -> dict[str, Any] | None:
+    async def get_evidence_graph_fallback(self, session_id: UUID | str) -> dict[str, Any] | None:
         """Retrieve persistent Evidence Graph JSONB fallback."""
         try:
             res = (

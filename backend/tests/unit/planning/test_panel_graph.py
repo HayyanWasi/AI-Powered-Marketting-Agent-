@@ -73,18 +73,10 @@ def _fake_ask(*, fail: set[str] = frozenset()):
     return _ask
 
 
-@pytest.fixture(autouse=True)
-def _no_network():
-    """Specialists must not hit DuckDuckGo in tests."""
-    with patch(
-        "src.services.search.GuestSearchService.search", return_value=[]
-    ):
-        yield
-
-
 async def _run(fail: set[str] = frozenset()) -> CampaignPlan:
-    with patch("src.modules.planning.agents.panel.ask_json", new=_fake_ask(fail=fail)), patch(
-        "src.modules.planning.agents.chief_strategist.ask_json", new=_fake_ask(fail=fail)
+    with (
+        patch("src.modules.planning.agents.panel.ask_json", new=_fake_ask(fail=fail)),
+        patch("src.modules.planning.agents.chief_strategist.ask_json", new=_fake_ask(fail=fail)),
     ):
         state = await graph_mod.compile_graph().ainvoke(graph_mod.initial_state(_BRIEF))
     return state["plan"]
@@ -106,8 +98,9 @@ class TestPanelGraph:
     @pytest.mark.asyncio
     async def test_every_specialist_contributes(self):
         """The reducer must merge all five concurrent writes, not clobber."""
-        with patch("src.modules.planning.agents.panel.ask_json", new=_fake_ask()), patch(
-            "src.modules.planning.agents.chief_strategist.ask_json", new=_fake_ask()
+        with (
+            patch("src.modules.planning.agents.panel.ask_json", new=_fake_ask()),
+            patch("src.modules.planning.agents.chief_strategist.ask_json", new=_fake_ask()),
         ):
             state = await graph_mod.compile_graph().ainvoke(graph_mod.initial_state(_BRIEF))
 

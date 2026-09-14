@@ -159,7 +159,6 @@ class TestAIGenerationFullPipeline:
             "hashtag_research",
             "hook_analyzer",
             "readability_scorer",
-            "asset_generator",
             "validator",
         ]
         for name in expected_agents:

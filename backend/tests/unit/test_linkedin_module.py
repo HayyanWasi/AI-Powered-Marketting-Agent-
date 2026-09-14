@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -15,8 +14,9 @@ from src.modules.linkedin.generators.sequence_generator import OutreachSequenceG
 from src.modules.linkedin.models import (
     AutoPilotConfig,
     PostStatus,
+    WarmupState,
 )
-from src.modules.linkedin.worker.autopilot_worker import AutoPilotWorker
+from src.modules.linkedin.worker.human_schedule import HumanSchedule
 from src.modules.planning.models.campaign_plan import (
     CalendarSlot,
     CampaignPhase,
@@ -96,7 +96,8 @@ async def test_post_generator(sample_plan, sample_research_brief):
     post = posts[0]
     assert post.hook == "Tired of paying $800/mo for manual ETL?"
     assert "Acme Data automates" in post.body
-    assert post.status == PostStatus.DRAFT
+    assert post.status == PostStatus.SCHEDULED
+    assert post.scheduled_at is not None
     assert len(post.evidence_ids) == 1
 
 
@@ -132,21 +133,10 @@ async def test_unipile_gateway_list_accounts():
         assert accounts[0]["id"] == "acc_123"
 
 
-@pytest.mark.asyncio
-async def test_autopilot_worker_business_hours_gate():
-    mock_unipile = AsyncMock()
-    worker = AutoPilotWorker(unipile=mock_unipile)
-
-    # Config with 9 AM to 6 PM business hours
-    config = AutoPilotConfig(business_hours_start=9, business_hours_end=18)
-
-    # Mock current hour to 3 AM (outside business hours)
-    with patch("src.modules.linkedin.worker.autopilot_worker.datetime") as mock_datetime:
-        mock_now = MagicMock()
-        mock_now.hour = 3
-        mock_datetime.now.return_value = mock_now
-        mock_datetime.now.return_value.tzinfo = UTC
-
-        res = await worker.execute_daily_run("acc_123", config)
-        assert res["status"] == "skipped"
-        assert res["reason"] == "outside_business_hours"
+def test_human_schedule_planning():
+    planner = HumanSchedule()
+    config = AutoPilotConfig()
+    warmup = WarmupState(account_id="acc_123")
+    schedule = planner.plan_and_schedule_day(config, warmup)
+    assert len(schedule.sessions) >= config.sessions_per_day_min
+    assert schedule.work_start < schedule.work_end

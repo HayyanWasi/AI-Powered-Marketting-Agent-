@@ -47,11 +47,13 @@ async def receive_unipile_webhook(request: Request) -> Response:
             if provider_id:
                 (
                     sequence_repo.client.table(sequence_repo.table_name)
-                    .update({
-                        "connection_accepted_at": datetime.now(UTC).isoformat(),
-                        "current_step": 2,
-                        "status": "connected",
-                    })
+                    .update(
+                        {
+                            "connection_accepted_at": datetime.now(UTC).isoformat(),
+                            "current_step": 2,
+                            "status": "connected",
+                        }
+                    )
                     .eq("prospect_linkedin_id", provider_id)
                     .execute()
                 )

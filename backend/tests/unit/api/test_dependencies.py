@@ -1,5 +1,7 @@
 """Unit tests for API authentication and authorization dependencies."""
 
+import pytest
+from fastapi import HTTPException
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user, require_permission
 
@@ -18,11 +20,16 @@ class TestAuthenticatedUser:
 
 
 class TestGetAuthenticatedUser:
-    async def test_returns_authenticated_user(self) -> None:
-        user = await get_authenticated_user()
+    async def test_returns_authenticated_user_with_id(self) -> None:
+        user = await get_authenticated_user(x_user_id="00000000-0000-0000-0000-000000000001")
         assert isinstance(user, AuthenticatedUser)
-        assert user.id is not None
+        assert user.id == "00000000-0000-0000-0000-000000000001"
         assert len(user.roles) > 0
+
+    async def test_unauthenticated_raises_401(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            await get_authenticated_user(authorization=None, x_user_id=None)
+        assert exc_info.value.status_code == 401
 
 
 class TestRequirePermission:

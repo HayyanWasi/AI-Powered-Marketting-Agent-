@@ -34,29 +34,19 @@ class ResearchBrief(BaseModel):
     user_goal: str = ""
     company_name: str = ""
 
-    market: DimensionSummary = Field(
-        default_factory=lambda: DimensionSummary(dimension="market")
-    )
+    market: DimensionSummary = Field(default_factory=lambda: DimensionSummary(dimension="market"))
     competitor: DimensionSummary = Field(
         default_factory=lambda: DimensionSummary(dimension="competitor")
     )
     audience: DimensionSummary = Field(
         default_factory=lambda: DimensionSummary(dimension="audience")
     )
-    content: DimensionSummary = Field(
-        default_factory=lambda: DimensionSummary(dimension="content")
-    )
-    channel: DimensionSummary = Field(
-        default_factory=lambda: DimensionSummary(dimension="channel")
-    )
-    trend: DimensionSummary = Field(
-        default_factory=lambda: DimensionSummary(dimension="trend")
-    )
+    content: DimensionSummary = Field(default_factory=lambda: DimensionSummary(dimension="content"))
+    channel: DimensionSummary = Field(default_factory=lambda: DimensionSummary(dimension="channel"))
+    trend: DimensionSummary = Field(default_factory=lambda: DimensionSummary(dimension="trend"))
 
     overall_confidence_score: float = 4.0
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

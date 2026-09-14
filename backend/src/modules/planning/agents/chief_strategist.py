@@ -60,7 +60,13 @@ async def synthesize(
     variables.update(
         {
             key: json.dumps(panel.get(key) or {}, ensure_ascii=False, indent=2)
-            for key in ("audience_research", "positioning", "channel_plan", "measurement", "competitive")
+            for key in (
+                "audience_research",
+                "positioning",
+                "channel_plan",
+                "measurement",
+                "competitive",
+            )
         }
     )
 

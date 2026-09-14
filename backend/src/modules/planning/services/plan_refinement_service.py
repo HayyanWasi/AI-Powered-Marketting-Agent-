@@ -57,7 +57,7 @@ class PlanRefinementService:
         created_by: UUID,
         brief: PlanBrief,
         language: str = "en",
-        tier: str = "Standard",
+        tier: str = "Quick",
     ) -> CampaignPlan:
         """Run the research engine pre-hook, then run the 5-specialist panel and persist v1.
 
@@ -79,12 +79,14 @@ class PlanRefinementService:
         plan_id = UUID(plan_row["id"])
 
         # Execute Autonomous Research Engine pre-hook to gather live web evidence
-        research_context = await self._run_research(brief, campaign_id, tier)
-        if research_context:
-            brief = brief.model_copy(update={"research_context": research_context})
+        research_context = None
+        if tier != "Quick":
+            research_context = await self._run_research(brief, campaign_id, tier)
+            if research_context:
+                brief = brief.model_copy(update={"research_context": research_context})
 
         # Run the panel graph with enriched brief.
-        graph = plan_graph.compile_graph()
+        graph = plan_graph.compile_graph(tier=tier)
         state = plan_graph.initial_state(brief)
         final_state = await graph.ainvoke(state)
 
@@ -112,12 +114,14 @@ class PlanRefinementService:
             sections_changed=("core_strategy", "channel_plan", "measurement", "competitive"),
             parent_version=None,
         )
-        logger.info("Plan v1 drafted for campaign %s (Research Enriched: %s)", campaign_id, bool(research_context))
+        logger.info(
+            "Plan v1 drafted for campaign %s (Research Enriched: %s)",
+            campaign_id,
+            bool(research_context),
+        )
         return plan
 
-    async def _run_research(
-        self, brief: PlanBrief, campaign_id: UUID, tier: str
-    ) -> dict | None:
+    async def _run_research(self, brief: PlanBrief, campaign_id: UUID, tier: str) -> dict | None:
         """Run standalone Autonomous Research Engine pre-hook with fallback gracefully on error/timeout."""
         goal = brief.user_goal or brief.event_name or "Marketing Campaign"
         try:
@@ -133,7 +137,9 @@ class PlanRefinementService:
             )
             return results
         except Exception as e:
-            logger.warning("Pre-research hook failed or timed out (%s); continuing without web research", e)
+            logger.warning(
+                "Pre-research hook failed or timed out (%s); continuing without web research", e
+            )
             return None
 
     async def refine_plan(
@@ -288,9 +294,7 @@ class PlanRefinementService:
 
     # ── Private helpers ───────────────────────────────────────────────────
 
-    async def _load_current(
-        self, campaign_id: UUID
-    ) -> tuple[dict, CampaignPlan]:
+    async def _load_current(self, campaign_id: UUID) -> tuple[dict, CampaignPlan]:
         """Load the plan row and rebuild the current CampaignPlan from its latest version.
 
         Raises:

@@ -21,7 +21,7 @@ class GapDetector:
     ) -> list[str]:
         """Generate 3 targeted search queries for a dimension."""
         system_prompt = (
-            "You are a Senior Research Analyst. Generate 3 specific, targeted web search queries "
+            "You are a Senior Research Analyst. Generate 2 specific, targeted web search queries "
             "to gather hard facts, benchmarks, and real-world evidence for marketing strategy."
         )
         user_prompt = f"""
@@ -31,22 +31,23 @@ Company: {company_name}
 
 Return ONLY valid JSON matching this schema:
 {{
-  "queries": ["query 1", "query 2", "query 3"]
+  "queries": ["query 1", "query 2"]
 }}
 """
         try:
             res = await self.llm.generate_json(system_prompt, user_prompt)
             queries = res.get("queries", [])
             if isinstance(queries, list) and len(queries) > 0:
-                return queries[:3]
+                return queries[:2]
         except Exception as e:
-            logger.warning("Query generation failed for %s (%s); using default fallback", dimension, e)
+            logger.warning(
+                "Query generation failed for %s (%s); using default fallback", dimension, e
+            )
 
         # Fallback queries if LLM fails
         return [
             f"{user_goal} {dimension} market research",
             f"{company_name} {user_goal} competitors {dimension}",
-            f"{user_goal} industry benchmarks {dimension}",
         ]
 
     async def generate_followup_queries(
@@ -81,4 +82,3 @@ Return ONLY valid JSON matching this schema:
             logger.warning("Followup query generation failed for %s (%s)", dimension, e)
 
         return []
-
