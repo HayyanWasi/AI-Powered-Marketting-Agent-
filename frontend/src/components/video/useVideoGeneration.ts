@@ -8,7 +8,11 @@ interface GenerationOptions {
   forceError?: boolean;
 }
 
-const LOCAL_STATIC_VIDEO = "http://localhost:8000/static/videos/campaign_standalone.mp4";
+const getStaticFallbackUrl = () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+  const baseUrl = apiUrl.replace(/\/api\/?$/, "");
+  return `${baseUrl}/static/videos/campaign_standalone.mp4`;
+};
 
 export function useVideoGeneration() {
   const [status, setStatus] = useState<VideoGenerationStatus>("idle");
@@ -148,16 +152,26 @@ export function useVideoGeneration() {
 
         let finalVideoUrl = res?.video_url;
 
+        // If deployed and backend returned localhost:8000 URL, rewrite to real backend host
+        if (finalVideoUrl && finalVideoUrl.startsWith("http://localhost:8000")) {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+          if (apiUrl && !apiUrl.includes("localhost")) {
+            const baseUrl = apiUrl.replace(/\/api\/?$/, "");
+            finalVideoUrl = finalVideoUrl.replace("http://localhost:8000", baseUrl);
+          }
+        }
+
         // Fallback check to static directory if video_url is empty
         if (!finalVideoUrl) {
+          const fallbackUrl = getStaticFallbackUrl();
           try {
-            const check = await fetch(LOCAL_STATIC_VIDEO, { method: "HEAD" });
+            const check = await fetch(fallbackUrl, { method: "HEAD" });
             if (check.ok) {
-              finalVideoUrl = LOCAL_STATIC_VIDEO;
+              finalVideoUrl = fallbackUrl;
               console.info("[VideoGen] Recovered video from backend cache:", finalVideoUrl);
             }
           } catch {
-            // Local not reachable
+            // Fallback not reachable
           }
         }
 
@@ -201,7 +215,8 @@ export function useVideoGeneration() {
 
         // Check if video was rendered in static folder before showing error
         try {
-          const check = await fetch(LOCAL_STATIC_VIDEO, { method: "HEAD" });
+          const fallbackUrl = getStaticFallbackUrl();
+          const check = await fetch(fallbackUrl, { method: "HEAD" });
           if (check.ok) {
             console.info("[VideoGen] Recovered video from local cache on error recovery.");
             setTargetProgress(100);
@@ -217,10 +232,10 @@ export function useVideoGeneration() {
                     progress: 100,
                     displayProgress: 100,
                     currentStage: "Render Completed",
-                    videoUrl: LOCAL_STATIC_VIDEO,
+                    videoUrl: fallbackUrl,
                     variations: [
-                      { ...defaultVariations[0], videoUrl: LOCAL_STATIC_VIDEO },
-                      { ...defaultVariations[1], videoUrl: LOCAL_STATIC_VIDEO },
+                      { ...defaultVariations[0], videoUrl: fallbackUrl },
+                      { ...defaultVariations[1], videoUrl: fallbackUrl },
                     ],
                   }
                 : null
@@ -228,13 +243,13 @@ export function useVideoGeneration() {
             return;
           }
         } catch {
-          // Local check failed
+          // Fallback check failed
         }
 
         const errorMsg =
           err instanceof Error
             ? err.message
-            : "Video generation failed. Please verify the backend is running at http://localhost:8000.";
+            : "Video generation failed. Please verify the backend service status.";
         console.error("[VideoGen Error]", err);
         setStatus("error");
         setError(errorMsg);

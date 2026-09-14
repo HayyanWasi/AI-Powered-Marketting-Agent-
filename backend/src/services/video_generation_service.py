@@ -729,10 +729,12 @@ class VideoGenerationService:
                     static_dir.mkdir(parents=True, exist_ok=True)
                     local_filename = f"campaign_{campaign_id}.mp4"
                     local_path = static_dir / local_filename
-                    import shutil as _shutil
 
-                    _shutil.copy2(output_file, local_path)
-                    local_url = f"http://localhost:8000/static/videos/{local_filename}"
+                    render_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+                    if render_url:
+                        local_url = f"{render_url}/static/videos/{local_filename}"
+                    else:
+                        local_url = f"http://localhost:8000/static/videos/{local_filename}"
                     logger.info("Video saved locally: %s", local_url)
                     return local_url
 

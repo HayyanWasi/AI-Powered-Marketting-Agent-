@@ -43,9 +43,11 @@ export default function VideoPlayerProgress({
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [videoLoadError, setVideoLoadError] = useState(false);
 
   // Auto-play when completed
   useEffect(() => {
+    setVideoLoadError(false);
     if (status === "completed" && videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current
@@ -211,9 +213,34 @@ export default function VideoPlayerProgress({
               playsInline
               autoPlay
               onTimeUpdate={handleTimeUpdate}
+              onError={() => setVideoLoadError(true)}
               onClick={togglePlay}
-              className="w-full h-full object-cover cursor-pointer"
+              className={`w-full h-full object-cover cursor-pointer ${videoLoadError ? "hidden" : "block"}`}
             />
+
+            {/* Video Load Error Fallback Overlay */}
+            {videoLoadError && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 text-center bg-[#0E141B]">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-2.5">
+                  <AlertCircle size={20} />
+                </div>
+                <h4 className="text-sm font-semibold text-[#F5F7FA] mb-1">
+                  Video Stream Unreachable
+                </h4>
+                <p className="text-xs text-[#9AA6B2] max-w-xs mb-4 leading-relaxed">
+                  The video was generated, but the browser could not load the video stream directly.
+                </p>
+                <a
+                  href={variation.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-md bg-[#20B8E5] text-[#0E141B] font-medium text-xs flex items-center space-x-1.5 transition-colors cursor-pointer hover:bg-[#1ca3cc]"
+                >
+                  <Download size={13} />
+                  <span>Open / Download Video</span>
+                </a>
+              </div>
+            )}
 
             {/* Tap to Play / Pause Central Indicator (Only shown when paused) */}
             {!isPlaying && (
