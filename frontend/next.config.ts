@@ -15,10 +15,11 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ai-powered-marketting-agent.onrender.com/api';
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${backendUrl}/:path*`,
       },
     ];
   },
