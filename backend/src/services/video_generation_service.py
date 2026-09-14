@@ -705,14 +705,18 @@ class VideoGenerationService:
                 except TimeoutError:
                     raise VideoGenerationError("Video rendering timed out.") from None
 
-                # 5. Upload to Supabase (with local fallback)
+                # 5. Upload to Supabase (with unique path and upsert=true)
                 logger.info("Uploading video to Supabase...")
-                storage_name = f"{campaign_id}/{output_file.name}"
+                import time as _time
+                timestamp = int(_time.time())
+                storage_name = f"{campaign_id}/campaign_{campaign_id}_{timestamp}.mp4"
 
                 try:
                     with open(output_file, "rb") as f:
                         self.supabase.storage.from_(self.bucket).upload(
-                            storage_name, f, {"content-type": "video/mp4"}
+                            storage_name,
+                            f,
+                            file_options={"content-type": "video/mp4", "upsert": "true"},
                         )
                     public_url = str(
                         self.supabase.storage.from_(self.bucket).get_public_url(storage_name)
@@ -720,22 +724,25 @@ class VideoGenerationService:
                     logger.info("Video successfully uploaded to Supabase: %s", public_url)
                     return public_url
                 except Exception as upload_err:
-                    logger.warning(
-                        "Supabase upload failed (%s), falling back to local file serving.",
-                        upload_err,
-                    )
-                    # Copy to a persistent local static folder served by FastAPI
+                    logger.error("Supabase upload failed: %s", upload_err, exc_info=True)
+                    # If Supabase upload fails, check if local static serving is possible
                     static_dir = Path(__file__).parent.parent.parent / "static" / "videos"
                     static_dir.mkdir(parents=True, exist_ok=True)
-                    local_filename = f"campaign_{campaign_id}.mp4"
+                    local_filename = f"campaign_{campaign_id}_{timestamp}.mp4"
                     local_path = static_dir / local_filename
+                    import shutil as _shutil
+
+                    _shutil.copy2(output_file, local_path)
 
                     render_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-                    if render_url:
-                        local_url = f"{render_url}/static/videos/{local_filename}"
-                    else:
-                        local_url = f"http://localhost:8000/static/videos/{local_filename}"
-                    logger.info("Video saved locally: %s", local_url)
+                    if not render_url and "onrender.com" in os.environ.get("BASE_URL", ""):
+                        render_url = os.environ["BASE_URL"].rstrip("/")
+                    if not render_url:
+                        # Fallback to known Render URL for this project
+                        render_url = "https://ai-powered-marketting-agent.onrender.com"
+
+                    local_url = f"{render_url}/static/videos/{local_filename}"
+                    logger.info("Video saved locally as fallback: %s", local_url)
                     return local_url
 
             finally:
