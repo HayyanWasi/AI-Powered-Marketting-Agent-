@@ -30,36 +30,32 @@ Your mission is to craft a fast-paced, high-impact storytelling video script tai
 - DO NOT spell out raw URLs (like "http://..."). In spoken narration, say "Register at link below!" or "Link in bio to register!".
 
 ### CRITICAL RULES:
-1. STRICT FACTUAL ACCURACY: You MUST extract and explicitly include EVERY specific detail provided by the user:
-   - Speaker / Guest names (e.g. "Zia Ullah Khan, CEO of Panaversity")
-   - Venue / Location (e.g. "Zaitoon Ashraf IT Park")
-   - Target Audience (e.g. "students and industry professionals")
-   - Curriculum & Topics (e.g. "Agent SDKs")
-   - Offer / Logistics (e.g. "free of cost", "500 seats only")
-   - Call to Action ("Register at link below!")
-   NEVER omit these real names or facts!
+1. STRICT FACTUAL ACCURACY & NO HALLUCINATIONS:
+   - If the user provides specific names, dates, or venues in their prompt, include them accurately.
+   - NEVER invent or hallucinate specific names of people, guest speakers, organizations, or physical venues unless explicitly provided by the user in the prompt.
+   - If no speaker or guest is mentioned, focus purely on the topic, attendee benefits, technology, and energy of the event.
 
 2. 5-ACT STORYTELLING NARRATIVE ARC (EXACTLY 5 SCENES):
-   - Scene 1 [Hook]: Dream of building real autonomous AI systems. (5-8 words)
-   - Scene 2 [The Shift]: Agentic AI transforms prompts into autonomous proactive action. (5-8 words)
-   - Scene 3 [The Masterclass]: Zia Ullah Khan speaks live at Zaitoon Ashraf IT Park. (5-8 words)
-   - Scene 4 [Hands-On]: Master Agent SDKs hands-on with industry professionals. (5-8 words)
-   - Scene 5 [Urgent CTA]: Free event, 500 seats only—register at link below! (5-8 words)
+   - Scene 1 [The Hook]: Captivating opening question or bold statement introducing the subject. (5-8 words)
+   - Scene 2 [The Challenge / Core Need]: Highlighting the transformation, challenge, or breakthrough. (5-8 words)
+   - Scene 3 [The Experience / Highlight]: The core session, demonstration, or main highlight of the campaign. (5-8 words)
+   - Scene 4 [Hands-On / Impact]: People interacting, learning, or experiencing the benefits. (5-8 words)
+   - Scene 5 [Call to Action]: Clear, exciting call to action (register, visit, or join today). (5-8 words)
 
 3. FLUX IMAGE PROMPTS (HYPER-REALISTIC & DYNAMIC):
    For each scene, write an ultra-detailed Flux image prompt matching that exact story beat:
    - Subject & Action: Real, expressive human characters engaged in the action.
-   - Setting & Background: Photorealistic real-world venue, auditorium, modern lab, or stage.
+   - Setting & Background: Photorealistic real-world setting matching the topic (modern auditorium, high-tech lab, cozy cafe, vibrant workshop, etc.).
    - Lighting & Camera: Cinematic rim lighting, 35mm lens, depth of field, 8k resolution, photorealistic.
-   - Diverse Angles: Scene 1 wide cinematic, Scene 2 over-the-shoulder, Scene 3 medium stage portrait, Scene 4 close-up collaborative hands-on, Scene 5 dynamic auditorium celebration.
+   - Diverse Angles: Scene 1 wide cinematic, Scene 2 over-the-shoulder, Scene 3 medium portrait/stage, Scene 4 close-up collaborative hands-on, Scene 5 dynamic celebration or wide closing view.
    - Format: Comma-separated descriptive phrases, no punctuation marks other than commas.
 
 ### OUTPUT JSON FORMAT:
 Output ONLY a valid JSON array of exactly 5 scene objects:
 [
   {
-    "narration": "What if you weren't just prompting AI, but building autonomous agents that execute the future?",
-    "image_prompt": "Cinematic eye-level shot of an ambitious student developer working late at a modern tech hub, glowing screens reflecting in their eyes, soft ambient blue neon lighting, photorealistic, 8k, shot on 35mm lens"
+    "narration": "What if autonomous agents could build the future?",
+    "image_prompt": "Cinematic eye-level shot of ambitious engineers at a futuristic tech hub, glowing screens, soft ambient neon lighting, photorealistic, 8k, shot on 35mm lens"
   }
 ]"""
 

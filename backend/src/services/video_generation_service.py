@@ -112,12 +112,44 @@ class VideoGenerationService:
             flush=True,
         )
 
-        # 1. Primary: Pollinations FLUX
+        # 1. Primary: Cloudflare Workers AI FLUX (if credentials configured)
+        if settings.cloudflare_account_id and settings.cloudflare_ai_token:
+            try:
+                from src.services.cloudflare_image_service import CloudflareImageService
+
+                t_cf = time.time()
+                print(
+                    "[IMAGE MODEL] Calling Primary Model: Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell)...",
+                    flush=True,
+                )
+                async with CloudflareImageService() as cf:
+                    cf_bytes = await cf.generate_from_text(styled_prompt, steps=4)
+                    if cf_bytes and len(cf_bytes) > 2000:
+                        filename.write_bytes(cf_bytes)
+                        self._crop_and_resize_to_720_1280(filename)
+                        dur = round(time.time() - t_cf, 2)
+                        print(
+                            f"[IMAGE MODEL] [SUCCESS] Scene {idx+1}/{total_scenes} rendered via Cloudflare Flux in {dur}s ({len(cf_bytes):,} bytes)",
+                            flush=True,
+                        )
+                        print(
+                            "[IMAGE MODEL] ----------------------------------------------------\n",
+                            flush=True,
+                        )
+                        return filename
+            except Exception as cf_err:
+                print(
+                    f"[IMAGE MODEL] [WARNING] Cloudflare Workers AI Flux error: {cf_err}. Trying Pollinations fallback...",
+                    flush=True,
+                )
+
+        # 2. Secondary: Pollinations FLUX
         t_start = time.time()
         flux_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=720&height=1280&model=flux&nologo=true&seed={seed}"
+        print("[IMAGE MODEL] Calling Model: Pollinations FLUX (model=flux)...", flush=True)
         try:
             async with httpx.AsyncClient(follow_redirects=True) as client:
-                resp = await client.get(flux_url, headers=headers, timeout=12.0)
+                resp = await client.get(flux_url, headers=headers, timeout=25.0)
                 if resp.status_code == 200 and len(resp.content) > 1000:
                     filename.write_bytes(resp.content)
                     self._crop_and_resize_to_720_1280(filename)
@@ -142,13 +174,13 @@ class VideoGenerationService:
                 flush=True,
             )
 
-        # 2. Secondary: Pollinations Turbo
+        # 3. Tertiary: Pollinations Turbo
         t_turbo = time.time()
         turbo_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=720&height=1280&model=turbo&nologo=true&seed={seed}"
         print("[IMAGE MODEL] Calling Fallback Model: Pollinations Turbo (model=turbo)", flush=True)
         try:
             async with httpx.AsyncClient(follow_redirects=True) as client:
-                resp = await client.get(turbo_url, headers=headers, timeout=8.0)
+                resp = await client.get(turbo_url, headers=headers, timeout=15.0)
                 if resp.status_code == 200 and len(resp.content) > 500:
                     filename.write_bytes(resp.content)
                     self._crop_and_resize_to_720_1280(filename)
@@ -165,19 +197,33 @@ class VideoGenerationService:
         except Exception as e:
             print(f"[IMAGE MODEL] [WARNING] Pollinations Turbo timed out / error ({e})", flush=True)
 
-        # 3. Emergency Fallback: Procedural cinematic frame (720x1280)
+        # 4. Continuity Fallback: If a previous scene exists, reuse it to maintain visual immersion
+        prev_scene = temp_dir / f"scene_{idx-1}.jpg"
+        if idx > 0 and prev_scene.exists():
+            import shutil as _shutil
+
+            _shutil.copy2(prev_scene, filename)
+            print(
+                f"[IMAGE MODEL] [FALLBACK] Reusing previous scene visual for Scene {idx+1}/{total_scenes}",
+                flush=True,
+            )
+            print("[IMAGE MODEL] ----------------------------------------------------\n", flush=True)
+            return filename
+
+        # 5. High-Resolution Modern Cinematic Gradient (Emergency Fallback)
         print(
-            f"[IMAGE MODEL] [FALLBACK] Applying high-res procedural cinematic backdrop for Scene {idx+1}/{total_scenes}",
+            f"[IMAGE MODEL] [FALLBACK] Applying high-res cinematic backdrop for Scene {idx+1}/{total_scenes}",
             flush=True,
         )
         print("[IMAGE MODEL] ----------------------------------------------------\n", flush=True)
         try:
-            fallback_img = Image.new("RGB", (720, 1280), color=(14, 20, 27))
+            fallback_img = Image.new("RGB", (720, 1280), color=(18, 30, 49))
             draw = ImageDraw.Draw(fallback_img)
-            for r in range(280, 0, -15):
-                alpha_c = int(14 + (280 - r) * 0.1)
-                color = (alpha_c, alpha_c + 10, alpha_c + 25)
-                draw.ellipse([360 - r, 640 - r, 360 + r, 640 + r], fill=color)
+            for y in range(1280):
+                r = int(14 + (y / 1280.0) * 15)
+                g = int(24 + (y / 1280.0) * 20)
+                b = int(42 + (y / 1280.0) * 35)
+                draw.line([(0, y), (720, y)], fill=(r, g, b))
             fallback_img.save(filename, "JPEG")
             return filename
         except Exception as fb_err:
@@ -455,6 +501,9 @@ class VideoGenerationService:
         - Subtle translucent rounded background badge preserving background video visibility
         """
         font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             "C:/Windows/Fonts/arialbd.ttf",
             "C:/Windows/Fonts/segoeuib.ttf",
             "arialbd.ttf",
@@ -470,8 +519,15 @@ class VideoGenerationService:
                 except Exception:
                     continue
         if not font:
+            for font_name in ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", "arial.ttf"]:
+                try:
+                    font = ImageFont.truetype(font_name, 36)
+                    break
+                except Exception:
+                    continue
+        if not font:
             try:
-                font = ImageFont.truetype("arial.ttf", 36)
+                font = ImageFont.load_default(size=36)
             except Exception:
                 font = ImageFont.load_default()
 

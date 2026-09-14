@@ -3,7 +3,7 @@ FROM python:3.13-slim
 WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
-RUN apt-get update && apt-get install -y imagemagick ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y imagemagick ffmpeg fonts-dejavu-core fonts-liberation fonts-freefont-ttf && rm -rf /var/lib/apt/lists/*
 RUN pip install uv && uv sync --no-dev
 
 COPY src/ src/
