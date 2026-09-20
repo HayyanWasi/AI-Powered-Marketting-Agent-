@@ -148,6 +148,10 @@ class TargetResolver:
                     created_at_str = post_dict.get("created_at")
                     text = post_dict.get("text", "")
 
+                    # Filter posts already liked by the current user
+                    if post_dict.get("user_reacted") == "LIKE":
+                        continue
+
                     # Filter short posts
                     if len(text) < 50:
                         continue
@@ -165,7 +169,7 @@ class TargetResolver:
 
                     target_posts.append(
                         TargetPost(
-                            post_id=post_dict.get("id", ""),
+                            post_id=post_dict.get("social_id") or post_dict.get("id", ""),
                             author_profile_id=rt.profile_id,
                             author_name=rt.display_name,
                             content=text,
@@ -205,6 +209,32 @@ class TargetResolver:
         except Exception as e:
             logger.error("Error during engagement deduplication: %s", e)
             return posts[:count]
+
+    async def get_invite_targets(
+        self, account_id: str, personas: list[TargetPersona], count: int = 5
+    ) -> list[ResolvedTarget]:
+        """Return resolved profiles that have not already received an invitation."""
+        resolved = await self.resolve_personas(account_id, personas)
+        if not resolved:
+            return []
+
+        try:
+            client = get_supabase_client()
+            res = (
+                client.table("linkedin_engaged_posts")
+                .select("post_id")
+                .eq("account_id", account_id)
+                .eq("action_type", "invite")
+                .execute()
+            )
+            invited_profile_ids = {row["post_id"] for row in res.data or []}
+            available = [
+                target for target in resolved if target.profile_id not in invited_profile_ids
+            ]
+            return random.sample(available, min(count, len(available)))
+        except Exception as e:
+            logger.error("Error during invitation deduplication: %s", e)
+            return resolved[:count]
 
     async def record_engagement(self, account_id: str, post_id: str, action_type: str) -> None:
         """Record an engagement to prevent future duplicates."""

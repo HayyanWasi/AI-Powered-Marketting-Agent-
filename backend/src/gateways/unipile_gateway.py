@@ -35,6 +35,15 @@ class UnipileGateway:
         self.timeout = timeout_seconds
         self._circuit_breaker = circuit_breaker
 
+    @property
+    def is_configured(self) -> bool:
+        """Return whether a real Unipile DSN and API token are configured."""
+        return bool(
+            self.token.strip()
+            and self.dsn.startswith("https://")
+            and "13XXX" not in self.dsn
+        )
+
     def _get_headers(self) -> dict[str, str]:
         return {
             "X-API-KEY": self.token,
@@ -107,6 +116,59 @@ class UnipileGateway:
                 logger.error("Unipile get_account error: %s", e)
                 return None
 
+    async def create_hosted_auth_link(
+        self,
+        *,
+        name: str,
+        success_redirect_url: str,
+        failure_redirect_url: str,
+        notify_url: str,
+        expires_on: str,
+        providers: list[str] | None = None,
+    ) -> str | None:
+        """Create a Unipile Hosted Auth Wizard link for LinkedIn only.
+
+        Returns the hosted URL to redirect the user to, or None on failure.
+        The API key is sent ONLY in the server-to-server ``X-API-KEY`` header
+        and is never part of the returned URL.
+
+        Args:
+            name: Internal identifier tied to the authenticated user (our user
+                id). Unipile echoes this back in the notify callback so we can
+                map the connected account to the correct user.
+            success_redirect_url: Where Unipile sends the user on success.
+            failure_redirect_url: Where Unipile sends the user on failure.
+            notify_url: Our backend callback Unipile POSTs the result to.
+            expires_on: ISO-8601 UTC expiry timestamp (short-lived link).
+            providers: Provider allow-list; defaults to LinkedIn only. Never "*".
+        """
+        if not self._check_breaker("create_hosted_auth_link"):
+            return None
+        url = f"{self.dsn}/api/v1/hosted/accounts/link"
+        payload = {
+            "type": "create",
+            "providers": providers or ["LINKEDIN"],
+            "api_url": self.dsn,
+            "expiresOn": expires_on,
+            "success_redirect_url": success_redirect_url,
+            "failure_redirect_url": failure_redirect_url,
+            "notify_url": notify_url,
+            "name": name,
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                res = await client.post(url, headers=self._get_headers(), json=payload)
+                if self._handle_response(res, "create_hosted_auth_link") and res.status_code in (
+                    200,
+                    201,
+                ):
+                    data = res.json() if res.text else {}
+                    return data.get("url")
+                return None
+            except Exception as e:
+                logger.error("Unipile create_hosted_auth_link error: %s", e)
+                return None
+
     async def visit_profile(self, account_id: str, linkedin_id: str) -> bool:
         """Visit a prospect's LinkedIn profile (triggers 'viewed profile' notification)."""
         if not self._check_breaker("visit_profile"):
@@ -134,8 +196,9 @@ class UnipileGateway:
         payload = {
             "account_id": account_id,
             "provider_id": linkedin_id,
-            "message": message[:300],  # LinkedIn max note length 300
         }
+        if message.strip():
+            payload["message"] = message.strip()[:300]
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 res = await client.post(url, headers=self._get_headers(), json=payload)
@@ -188,8 +251,10 @@ class UnipileGateway:
                 logger.error("Unipile send_message error: %s", e)
                 return None
 
-    async def create_post(self, account_id: str, text: str) -> str | None:
-        """Publish a text post on the connected LinkedIn profile via multipart form-data."""
+    async def create_post(
+        self, account_id: str, text: str, media_url: str | None = None
+    ) -> str | None:
+        """Publish a LinkedIn post, optionally with a video attachment."""
         if not self._check_breaker("create_post"):
             return None
         url = f"{self.dsn}/api/v1/posts"
@@ -197,12 +262,19 @@ class UnipileGateway:
             "X-API-KEY": self.token,
             "Accept": "application/json",
         }
-        files = {
-            "account_id": (None, account_id),
-            "text": (None, text),
-        }
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        files: list[tuple[str, tuple]] = [
+            ("account_id", (None, account_id)),
+            ("text", (None, text)),
+        ]
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
             try:
+                if media_url:
+                    media_response = await client.get(media_url)
+                    media_response.raise_for_status()
+                    content_type = media_response.headers.get("content-type", "video/mp4")
+                    files.append(
+                        ("attachments", ("campaign-video.mp4", media_response.content, content_type))
+                    )
                 res = await client.post(url, headers=headers, files=files)
                 logger.info(
                     "[UNIPILE CREATE_POST] Status: %s, Response: %s",
@@ -321,8 +393,12 @@ class UnipileGateway:
         """Like a post on LinkedIn."""
         if not self._check_breaker("like_post"):
             return False
-        url = f"{self.dsn}/api/v1/posts/{post_id}/like"
-        payload = {"account_id": account_id}
+        url = f"{self.dsn}/api/v1/posts/reaction"
+        payload = {
+            "account_id": account_id,
+            "post_id": post_id,
+            "reaction_type": "like",
+        }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 res = await client.post(url, headers=self._get_headers(), json=payload)
