@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from src.gateways.unipile_gateway import UnipileGateway
+from src.models.brand_context import BrandContext
 from src.modules.linkedin.generators.content_context import ContentContextBuilder
 from src.modules.linkedin.generators.post_generator import LinkedInPostGenerator
 from src.modules.linkedin.generators.sequence_generator import OutreachSequenceGenerator
@@ -26,6 +27,16 @@ from src.modules.planning.models.campaign_plan import (
 )
 from src.modules.research.models.evidence import ConfidenceScore, EvidenceItem, SourceItem
 from src.modules.research.models.research_brief import DimensionSummary, ResearchBrief
+
+
+@pytest.fixture
+def sample_brand():
+    return BrandContext(
+        company_profile_id=uuid4(),
+        company_name="Acme Data",
+        brand_tone="Direct, concise, practical",
+        negative_guardrails=("Never use buzzwords",),
+    )
 
 
 @pytest.fixture
@@ -79,7 +90,7 @@ def test_content_context_builder(sample_plan, sample_research_brief):
 
 
 @pytest.mark.asyncio
-async def test_post_generator(sample_plan, sample_research_brief):
+async def test_post_generator(sample_plan, sample_research_brief, sample_brand):
     mock_llm = MagicMock()
     mock_llm.generate_json = AsyncMock(
         return_value={
@@ -90,19 +101,21 @@ async def test_post_generator(sample_plan, sample_research_brief):
     )
 
     generator = LinkedInPostGenerator(llm_router=mock_llm)
-    posts = await generator.generate_all_posts(uuid4(), sample_plan, sample_research_brief)
+    posts = await generator.generate_all_posts(
+        uuid4(), sample_plan, sample_research_brief, brand=sample_brand
+    )
 
     assert len(posts) == 1
     post = posts[0]
     assert post.hook == "Tired of paying $800/mo for manual ETL?"
     assert "Acme Data automates" in post.body
-    assert post.status == PostStatus.SCHEDULED
+    assert post.status == PostStatus.DRAFT
     assert post.scheduled_at is not None
     assert len(post.evidence_ids) == 1
 
 
 @pytest.mark.asyncio
-async def test_sequence_generator(sample_plan, sample_research_brief):
+async def test_sequence_generator(sample_plan, sample_research_brief, sample_brand):
     mock_llm = MagicMock()
     mock_llm.generate_json = AsyncMock(
         return_value={
@@ -113,7 +126,9 @@ async def test_sequence_generator(sample_plan, sample_research_brief):
     )
 
     generator = OutreachSequenceGenerator(llm_router=mock_llm)
-    seq = await generator.generate_sequence(uuid4(), sample_plan, sample_research_brief)
+    seq = await generator.generate_sequence(
+        uuid4(), sample_plan, sample_research_brief, brand=sample_brand
+    )
 
     assert "Hi Sarah" in seq.step_invite_msg
     assert "Cloud ETL ROI" in seq.step_value_msg
@@ -136,7 +151,7 @@ async def test_unipile_gateway_list_accounts():
 def test_human_schedule_planning():
     planner = HumanSchedule()
     config = AutoPilotConfig()
-    warmup = WarmupState(account_id="acc_123")
+    warmup = WarmupState(linkedin_account_id="acc_123")
     schedule = planner.plan_and_schedule_day(config, warmup)
     assert len(schedule.sessions) >= config.sessions_per_day_min
     assert schedule.work_start < schedule.work_end

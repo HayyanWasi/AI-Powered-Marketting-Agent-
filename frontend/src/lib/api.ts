@@ -124,6 +124,7 @@ export interface CompanyProfile {
   brand_guidelines: string;
   brand_tone?: string;
   reference_image_urls: string[];
+  default_linkedin_account_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -208,8 +209,12 @@ export const companyApi = {
   get: (id: string) => get<CompanyProfile>(`/company/${id}`),
 
   /** PUT /api/company/{id} */
-  update: (id: string, data: Partial<{ company_name: string; brand_guidelines: string; brand_tone: string }>) =>
+  update: (id: string, data: Partial<CompanyProfile>) =>
     put<CompanyProfile>(`/company/${id}`, data),
+
+  /** PATCH /api/company/{id} */
+  setLinkedInAccount: (companyId: string, accountId: string | null) =>
+    patch<CompanyProfile>(`/company/${companyId}`, { default_linkedin_account_id: accountId }),
 
   /** DELETE /api/company/{id} */
   delete: (id: string) => del<void>(`/company/${id}`),
@@ -294,11 +299,12 @@ export const campaignApi = {
   }) => post<Campaign>('/campaigns', data),
 
   /** GET /api/campaigns */
-  list: (params?: { state?: string; page?: number; page_size?: number }) => {
+  list: (params?: { state?: string; page?: number; page_size?: number; company_profile_id?: string }) => {
     const qs = new URLSearchParams();
     if (params?.state) qs.set('state', params.state);
     if (params?.page) qs.set('page', String(params.page));
     if (params?.page_size) qs.set('page_size', String(params.page_size));
+    if (params?.company_profile_id) qs.set('company_profile_id', params.company_profile_id);
     const query = qs.toString() ? `?${qs.toString()}` : '';
     return get<CampaignListResponse>(`/campaigns${query}`);
   },
@@ -354,6 +360,12 @@ export const campaignApi = {
         status?: string;
         scheduled_at?: string;
         created_at?: string;
+        media_type?: string;
+        media_url?: string;
+        unipile_post_id?: string;
+        published_at?: string;
+        linkedin_account_id?: string;
+        timezone?: string;
       }>
     >(`/campaigns/${id}/posts`),
 };
@@ -499,6 +511,10 @@ export interface PlanSection {
 export interface CampaignPlanDocument {
   plan_id?: string;
   campaign_id?: string;
+  campaign_name?: string;
+  campaign_type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source_brief?: any;
   version?: number;
   language?: string;
   status?: string;
@@ -532,6 +548,15 @@ export interface CampaignPlanDocument {
     differentiation_angle?: string;
     whitespace_opportunities?: string[];
   };
+  schedule_plan?: {
+    frequency?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    slots?: any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
+  };
+  research_status?: string;
+  research_status_reason?: string;
   generated_at?: string;
 }
 
@@ -604,16 +629,20 @@ export const planApi = {
 export interface LinkedInPostItem {
   id?: string;
   post_id?: string;
-  slot_id: string;
-  scheduled_at: string;
-  hook: string;
-  body: string;
-  cta_text: string;
-  full_content: string;
+  slot_id?: string;
+  scheduled_at?: string;
+  hook?: string;
+  body?: string;
+  cta_text?: string;
+  full_content?: string;
   evidence_ids?: string[];
-  status: 'draft' | 'scheduled' | 'published' | 'failed';
+  status?: 'draft' | 'scheduled' | 'published' | 'failed' | string;
   unipile_post_id?: string;
   published_at?: string;
+  media_type?: string;
+  media_url?: string;
+  linkedin_account_id?: string;
+  timezone?: string;
 }
 
 export interface OutreachSequenceItem {
@@ -669,7 +698,11 @@ export const linkedinApi = {
     get<LaunchpadPreviewData>(`/linkedin/campaigns/${campaignId}/preview`),
 
   /** PATCH /api/linkedin/campaigns/{id}/posts/{postId} */
-  patchPost: (campaignId: string, postId: string, data: { hook?: string; body?: string; cta_text?: string }) =>
+  patchPost: (
+    campaignId: string,
+    postId: string,
+    data: { hook?: string; body?: string; cta_text?: string; scheduled_at?: string; timezone?: string }
+  ) =>
     patch<LinkedInPostItem>(`/linkedin/campaigns/${campaignId}/posts/${postId}`, data),
 
   /** POST /api/linkedin/campaigns/{id}/launch */
@@ -697,9 +730,98 @@ export const linkedinApi = {
       text,
       account_id: accountId,
     }),
+
+  /** GET /api/v1/linkedin/connections */
+  listConnections: (verify = false) =>
+    get<LinkedInConnectedAccount[]>(`/linkedin/connections${verify ? '?verify=true' : ''}`),
+
+  /** POST /api/v1/linkedin/connections/link */
+  createConnectionLink: () =>
+    post<{ url: string }>('/linkedin/connections/link'),
+
+  /** POST /api/linkedin/campaigns/{id}/posts/{postId}/schedule */
+  schedulePost: (campaignId: string, postId: string, scheduledAt: string, timezone?: string) =>
+    post<LinkedInPostItem>(`/linkedin/campaigns/${campaignId}/posts/${postId}/schedule`, {
+      scheduled_at: scheduledAt,
+      timezone: timezone || 'UTC',
+    }),
+
+  /** POST /api/linkedin/campaigns/{id}/posts/{postId}/reschedule */
+  reschedulePost: (campaignId: string, postId: string, scheduledAt: string, timezone?: string) =>
+    post<LinkedInPostItem>(`/linkedin/campaigns/${campaignId}/posts/${postId}/reschedule`, {
+      scheduled_at: scheduledAt,
+      timezone: timezone || 'UTC',
+    }),
+
+  /** POST /api/linkedin/campaigns/{id}/posts/{postId}/cancel-schedule */
+  cancelSchedule: (campaignId: string, postId: string) =>
+    post<LinkedInPostItem>(`/linkedin/campaigns/${campaignId}/posts/${postId}/cancel-schedule`),
+
+  /** POST /api/v1/linkedin/campaigns/{campaign_id}/generate/stream */
+  generateStream: async (
+    campaignId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onEvent: (event: any) => void,
+    researchBriefDict?: Record<string, unknown>
+  ): Promise<void> => {
+    const token = getActiveAccessToken();
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`${BASE_URL}/linkedin/campaigns/${campaignId}/generate/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({ research_brief_dict: researchBriefDict }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to generate stream: ${res.statusText}`);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onEvent(data);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  },
+};
+
+export interface LinkedInConnectedAccount {
+  id: string;
+  user_id: string;
+  unipile_account_id: string;
+  account_name?: string | null;
+  account_email?: string | null;
+  provider: string;
+  status: 'connected' | 'disconnected' | 'error';
+  created_at: string;
+  updated_at: string;
+}
+
+export type LinkedInAccount = LinkedInConnectedAccount;
+
+export const linkedinAccountsApi = {
+  list: (verify = false) => linkedinApi.listConnections(verify),
 };
 
 export interface IntakeChecklistState {
+  campaign_name?: string | null;
+  campaign_type?: string | null;
   event_name?: string | null;
   event_date?: string | null;
   venue?: string | null;
@@ -712,6 +834,11 @@ export interface IntakeChecklistState {
   is_free_or_paid?: string | null;
   registration_link?: string | null;
   target_audience?: string | null;
+  audience_profile?: string | { summary?: string; [key: string]: unknown } | null;
+  objective?: string | null;
+  value_proposition?: string | null;
+  cta_url?: string | null;
+  category?: string | null;
 }
 
 export interface IntakeChatResponseData {
@@ -773,49 +900,78 @@ export const intakeApi = {
 export const videoApi = {
   /** POST /api/campaigns/{id}/video */
   generate: (campaignId: string, prompt?: string) =>
-    post<{ video_url: string; scenes: unknown[] }>(`/campaigns/${campaignId}/video`, prompt ? { prompt } : undefined),
+    post<{
+      video_url: string;
+      scenes: unknown[];
+      asset?: CampaignAsset;
+      draft_post?: LinkedInPostItem;
+    }>(`/campaigns/${campaignId}/video`, prompt ? { prompt } : undefined),
 };
 
 // ─── Autopilot API ─────────────────────────────────────────────────────────
 
+export interface AutopilotSettings {
+  company_profile_id?: string;
+  linkedin_account_id?: string | null;
+  connected_account?: LinkedInConnectedAccount | null;
+  engagement_enabled: boolean;
+  auto_like_enabled: boolean;
+  auto_comment_generation_enabled: boolean;
+  auto_connect_enabled: boolean;
+  likes_per_day: number;
+  comments_per_day: number;
+  invites_per_day: number;
+  connection_note_template: string;
+  timezone: string;
+  // Legacy aliases
+  master_active?: boolean;
+  daily_connections?: number;
+  daily_likes?: number;
+  daily_comments?: number;
+  post_time_slot?: string;
+  video_time_slot?: string;
+}
+
+export interface EngagementActivityEvent {
+  id: string;
+  user_id: string;
+  company_profile_id: string;
+  linkedin_account_id: string;
+  action_type: 'like' | 'comment' | 'connection_request';
+  target_post_id?: string | null;
+  target_profile_id?: string | null;
+  review_queue_id?: string | null;
+  comment_text?: string | null;
+  status: 'claimed' | 'succeeded' | 'failed' | 'needs_review';
+  provider_result_id?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+}
+
 export const autopilotApi = {
   /** GET /api/v1/autopilot/settings */
-  getSettings: () =>
-    get<{
-      daily_connections: number;
-      daily_likes: number;
-      daily_comments: number;
-      post_time_slot: string;
-      video_time_slot: string;
-      master_active: boolean;
-    }>('/autopilot/settings'),
+  getSettings: (companyProfileId?: string) =>
+    get<AutopilotSettings>(
+      `/autopilot/settings${companyProfileId ? `?company_profile_id=${encodeURIComponent(companyProfileId)}` : ''}`
+    ),
 
-  /** POST /api/v1/autopilot/settings */
-  saveSettings: (settings: {
-    daily_connections: number;
-    daily_likes: number;
-    daily_comments: number;
-    post_time_slot: string;
-    video_time_slot: string;
-    master_active?: boolean;
-  }) =>
-    post<{
-      daily_connections: number;
-      daily_likes: number;
-      daily_comments: number;
-      post_time_slot: string;
-      video_time_slot: string;
-      master_active: boolean;
-    }>('/autopilot/settings', settings),
+  /** PUT /api/v1/autopilot/settings */
+  saveSettings: (settings: Partial<AutopilotSettings> & { company_profile_id?: string }) =>
+    put<AutopilotSettings>('/autopilot/settings', settings),
 
   /** POST /api/v1/autopilot/toggle */
-  toggle: (active: boolean) =>
-    post<{ status: string; master_active: boolean }>('/autopilot/toggle', { active }),
+  toggle: (active: boolean, companyProfileId?: string) =>
+    post<{ status: string; master_active: boolean; company_profile_id?: string }>(
+      '/autopilot/toggle',
+      { active, company_profile_id: companyProfileId }
+    ),
 
   /** GET /api/v1/autopilot/tracker */
-  getTracker: () =>
+  getTracker: (companyProfileId?: string) =>
     get<{
       master_active: boolean;
+      company_profile_id?: string;
       daily_progress: {
         connections_sent: number;
         connections_max: number;
@@ -838,7 +994,19 @@ export const autopilotApi = {
         last_action: string;
         progress_pct: number;
       }>;
-    }>('/autopilot/tracker'),
+    }>(
+      `/autopilot/tracker${companyProfileId ? `?company_profile_id=${encodeURIComponent(companyProfileId)}` : ''}`
+    ),
+
+  /** GET /api/v1/autopilot/activity */
+  getActivity: (companyProfileId?: string, limit = 50) =>
+    get<{
+      events: EngagementActivityEvent[];
+      total: number;
+      company_profile_id: string;
+    }>(
+      `/autopilot/activity?limit=${limit}${companyProfileId ? `&company_profile_id=${encodeURIComponent(companyProfileId)}` : ''}`
+    ),
 
   /** DELETE /api/v1/autopilot/queue/{id} */
   deleteQueueItem: (id: string) =>
@@ -851,9 +1019,17 @@ export const autopilotApi = {
 
   /** POST /api/v1/autopilot/publish-now/{post_id} */
   publishNow: (postId: string) =>
-    post<{ success: boolean; post_id?: string; unipile_post_id?: string; error?: string; message?: string }>(
-      `/autopilot/publish-now/${postId}`
-    ),
+    post<{
+      success: boolean;
+      status?: string;
+      post_id?: string;
+      unipile_post_id?: string;
+      published_at?: string;
+      linkedin_account_id?: string;
+      error?: string;
+      message?: string;
+      post?: Record<string, unknown>;
+    }>(`/autopilot/publish-now/${postId}`),
 
   /** GET /api/v1/autopilot/publisher-status */
   getPublisherStatus: () =>
@@ -869,7 +1045,8 @@ export const autopilotApi = {
 
 export interface TargetPersona {
   id: string;
-  account_id: string;
+  user_id?: string;
+  company_profile_id?: string;
   label: string;
   search_keywords: string;
   max_profiles: number;
@@ -879,27 +1056,47 @@ export interface TargetPersona {
 
 export const personasApi = {
   /** GET /api/v1/autopilot/personas */
-  list: () => get<{ personas: TargetPersona[]; total: number }>('/autopilot/personas'),
+  list: (companyProfileId?: string) =>
+    get<{ personas: TargetPersona[]; total: number; company_profile_id?: string }>(
+      `/autopilot/personas${companyProfileId ? `?company_profile_id=${encodeURIComponent(companyProfileId)}` : ''}`
+    ),
 
   /** POST /api/v1/autopilot/personas */
-  create: (data: { label: string; search_keywords: string; max_profiles?: number }) =>
+  create: (data: { company_profile_id?: string; label: string; search_keywords: string; max_profiles?: number }) =>
     post<{ success: boolean; persona?: TargetPersona }>('/autopilot/personas', data),
 
-  /** DELETE /api/v1/autopilot/personas/{id} */
-  delete: (id: string) =>
-    del<{ success: boolean; id: string }>(`/autopilot/personas/${id}`),
+  /** PUT /api/v1/autopilot/personas/{id}?company_profile_id={brand_id} */
+  update: (
+    id: string,
+    data: { label?: string; search_keywords?: string; max_profiles?: number; is_active?: boolean },
+    companyProfileId: string
+  ) =>
+    put<{ success: boolean; persona?: TargetPersona }>(
+      `/autopilot/personas/${id}?company_profile_id=${encodeURIComponent(companyProfileId)}`,
+      data
+    ),
+
+  /** DELETE /api/v1/autopilot/personas/{id}?company_profile_id={brand_id} */
+  delete: (id: string, companyProfileId: string) =>
+    del<{ success: boolean; id: string }>(
+      `/autopilot/personas/${id}?company_profile_id=${encodeURIComponent(companyProfileId)}`
+    ),
 };
 
 // ─── Review Queue API ─────────────────────────────────────────────────────
 
 export interface ReviewComment {
   id: string;
+  user_id?: string;
+  company_profile_id?: string;
+  linkedin_account_id?: string;
   target_post_id: string;
   target_post_snippet: string;
   target_author_name: string;
   persona_label: string;
   generated_text: string;
-  status: 'pending_review' | 'approved' | 'rejected' | 'published' | 'expired';
+  comment_text?: string;
+  status: 'pending_review' | 'approved' | 'rejected' | 'published' | 'failed' | 'needs_review' | 'expired';
   reject_reason?: string;
   generated_at: string;
   reviewed_at?: string;
@@ -907,17 +1104,23 @@ export interface ReviewComment {
 
 export const reviewQueueApi = {
   /** GET /api/v1/autopilot/review-queue */
-  list: (statusFilter = 'pending_review') =>
-    get<{ comments: ReviewComment[]; total: number }>(`/autopilot/review-queue?status_filter=${statusFilter}`),
+  list: (companyProfileId?: string, statusFilter = 'pending_review') =>
+    get<{ comments: ReviewComment[]; total: number }>(
+      `/autopilot/review-queue?status_filter=${statusFilter}${companyProfileId ? `&company_profile_id=${encodeURIComponent(companyProfileId)}` : ''}`
+    ),
 
-  /** POST /api/v1/autopilot/review-queue/{id}/approve */
-  approve: (id: string) =>
-    post<{ success: boolean; comment_id: string; status: string }>(`/autopilot/review-queue/${id}/approve`),
+  /** POST /api/v1/autopilot/review/{id}/approve */
+  approve: (id: string, commentText?: string) =>
+    post<{ success: boolean; comment_id: string; status: string; provider_result_id?: string; error?: string }>(
+      `/autopilot/review/${id}/approve`,
+      { comment_text: commentText }
+    ),
 
-  /** POST /api/v1/autopilot/review-queue/{id}/reject */
+  /** POST /api/v1/autopilot/review/{id}/reject */
   reject: (id: string, reason?: string) =>
     post<{ success: boolean; comment_id: string; status: string }>(
-      `/autopilot/review-queue/${id}/reject${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`
+      `/autopilot/review/${id}/reject`,
+      { reason }
     ),
 
   /** POST /api/v1/autopilot/review-queue/approve-all */
@@ -929,8 +1132,9 @@ export const reviewQueueApi = {
 
 export const circuitBreakerApi = {
   /** GET /api/v1/autopilot/circuit-breaker */
-  getStatus: () =>
-    get<{
+  getStatus: (companyProfileId?: string) => {
+    const q = companyProfileId ? `?company_profile_id=${encodeURIComponent(companyProfileId)}` : '';
+    return get<{
       account_id?: string;
       state: string;
       tripped_at?: string | null;
@@ -938,10 +1142,13 @@ export const circuitBreakerApi = {
       cooldown_hours?: number;
       can_proceed?: boolean;
       message?: string;
-    }>('/autopilot/circuit-breaker'),
+    }>(`/autopilot/circuit-breaker${q}`);
+  },
 
   /** POST /api/v1/autopilot/circuit-breaker/reset */
-  reset: () =>
-    post<{ success: boolean; new_state: string; message: string }>('/autopilot/circuit-breaker/reset'),
+  reset: (companyProfileId?: string) => {
+    const q = companyProfileId ? `?company_profile_id=${encodeURIComponent(companyProfileId)}` : '';
+    return post<{ success: boolean; new_state: string; message: string }>(`/autopilot/circuit-breaker/reset${q}`);
+  },
 };
 

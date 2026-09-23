@@ -124,11 +124,10 @@ export default function GenerationTrendsChart() {
                 setTimeframe(tf);
                 setHoveredIdx(null);
               }}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                timeframe === tf
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${timeframe === tf
                   ? "bg-[#252C35] text-[#F3F4F6]"
                   : "text-[#9CA3AF] hover:text-[#F3F4F6]"
-              }`}
+                }`}
             >
               {tf}
             </button>

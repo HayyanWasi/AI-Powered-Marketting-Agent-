@@ -23,10 +23,8 @@ def test_circuit_breaker_initial_state(mock_supabase):
     assert cb.can_proceed() is True
     assert cb._state == CircuitState.CLOSED
 
-    # Verify it created initial state in DB (but only _persist_state calls upsert)
-    # The loaded state on init doesn't write unless we tripped or something
-    # Actually wait, _persist_state is not called on init unless needed.
-    # We can just assert the state.
+    # Verify query used canonical linkedin_account_id
+    mock_supabase.table().select().eq.assert_called_with("linkedin_account_id", "test_account")
 
 
 def test_circuit_breaker_trip(mock_supabase):
@@ -43,8 +41,34 @@ def test_circuit_breaker_trip(mock_supabase):
         else cb._cooldown_hours == 4.0
     )
 
-    # Verify it saved the tripped state to DB
+    # Verify it saved the tripped state using linkedin_account_id only
     assert mock_supabase.table().upsert.call_count >= 1
+    call_args = mock_supabase.table().upsert.call_args
+    data = call_args[0][0]
+    kwargs = call_args[1]
+    assert data["linkedin_account_id"] == "test_account"
+    assert "account_id" not in data
+    assert kwargs.get("on_conflict") == "linkedin_account_id"
+
+
+def test_circuit_breaker_load_persisted_state(mock_supabase):
+    mock_supabase.table().select().eq().limit().execute.return_value = MagicMock(
+        data=[
+            {
+                "linkedin_account_id": "test_account",
+                "state": "open",
+                "tripped_at": datetime.now(UTC).isoformat(),
+                "trip_reason": "rate_limited",
+                "cooldown_hours": 3.0,
+            }
+        ]
+    )
+
+    cb = CircuitBreaker("test_account")
+    assert cb._state == CircuitState.OPEN
+    assert cb._trip_reason == "rate_limited"
+    assert cb._cooldown_hours == 3.0
+    mock_supabase.table().select().eq.assert_called_with("linkedin_account_id", "test_account")
 
 
 def test_circuit_breaker_half_open_transition(mock_supabase):

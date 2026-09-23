@@ -1,29 +1,31 @@
-"""LinkedIn Human Behavior Scheduler.
+"""LinkedIn Human Behavior Multi-Tenant Scheduler.
 
-Plans the day dynamically using HumanSchedule and spawns lightweight
-non-blocking session executors using APScheduler date triggers.
+Processes eligible brands independently with dedicated PostgreSQL session-level
+advisory locking (pg_try_advisory_lock / pg_advisory_unlock) and per-brand quotas.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from src.config.settings import settings
-from src.modules.linkedin.models import AutoPilotConfig, SessionWindow
-from src.modules.linkedin.worker.human_schedule import HumanSchedule
+from src.config.supabase import get_supabase_client
+from src.modules.linkedin.account_resolver import resolve_brand_linkedin_account
+from src.modules.linkedin.distributed_lock import BrandAdvisoryLock
+from src.modules.linkedin.models import SessionWindow
 from src.modules.linkedin.worker.post_publisher import publish_due_posts
 from src.modules.linkedin.worker.review_queue import ReviewQueue
 from src.modules.linkedin.worker.session_executor import SessionExecutor
+from src.modules.linkedin.worker.target_resolver import TargetResolver
 from src.modules.linkedin.worker.warmup_manager import WarmupManager
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
-_engagement_active = settings.linkedin_auto_engagement_enabled
 
 
 def get_scheduler() -> AsyncIOScheduler:
@@ -34,148 +36,185 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
-async def _trigger_session(
-    account_id: str,
-    timezone: str,
+async def _run_brand_session(
+    brand_id: str,
+    user_id: str,
+    account: dict[str, Any],
+    settings_row: dict[str, Any],
     session: SessionWindow,
     invite_limit: int,
     like_limit: int,
     comment_limit: int,
+    action_types: tuple[str, ...],
 ) -> None:
-    """Non-blocking trigger for a specific session burst."""
-    if not _engagement_active:
-        logger.info("LinkedIn engagement session skipped because autopilot is paused.")
+    """Execute a single burst for a brand within a dedicated session advisory lock."""
+    lock = BrandAdvisoryLock(brand_id)
+    acquired = await lock.acquire()
+    if not acquired:
+        logger.info(
+            "Brand %s engagement session skipped: advisory lock unavailable or failed closed; zero actions dispatched.",
+            brand_id,
+        )
         return
-    logger.info("Triggering session for %s at %s", account_id, session.start)
 
-    executor = SessionExecutor(account_id, timezone)
-
-    # Run in background without blocking the scheduler
-    asyncio.create_task(
-        executor.execute_session(
-            session,
+    try:
+        executor = SessionExecutor(
+            account_id=str(account["id"]),
+            unipile_account_id=str(account["unipile_account_id"]),
+            company_profile_id=brand_id,
+            user_id=user_id,
+            timezone=settings_row.get("timezone", "UTC"),
+            connection_note_template=settings_row.get("connection_note_template", ""),
+        )
+        await executor.execute_session(
+            session=session,
             daily_invite_limit=invite_limit,
             daily_like_limit=like_limit,
             daily_comment_limit=comment_limit,
+            allowed_action_types=action_types,
         )
-    )
-
-    # Also trigger cleanup of stale review queue drafts here since it's a good periodic spot
-    queue = ReviewQueue()
-    queue.expire_stale(hours=48)
+    except Exception as e:
+        logger.error("Error executing engagement session for brand %s: %s", brand_id, e)
+    finally:
+        await lock.release()
 
 
 async def _plan_and_schedule_day() -> None:
-    """Daily planner job run every morning (e.g., at 1:00 AM)."""
-    if not _engagement_active:
-        logger.info("LinkedIn engagement planning skipped because autopilot is paused.")
-        return
-    account_id = settings.unipile_account_id
-    if not account_id or account_id == "your_linked_linkedin_account_id":
-        logger.info("Human Scheduler skipped: UNIPILE_ACCOUNT_ID not configured.")
-        return
-
-    logger.info("Planning daily LinkedIn schedule for account %s...", account_id)
-
-    config = AutoPilotConfig(
-        daily_invite_limit=settings.linkedin_daily_invite_limit,
-        daily_like_limit=settings.linkedin_daily_like_limit,
-        daily_comment_limit=settings.linkedin_daily_comment_limit,
-        timezone=settings.linkedin_timezone,
-    )
-    warmup_manager = WarmupManager(account_id)
-
-    # 1. Evaluate limits
-    warmup_state = warmup_manager.evaluate_daily_limits(
-        config.daily_invite_limit, config.daily_like_limit + config.daily_comment_limit
-    )
-    configured_engagement_total = config.daily_like_limit + config.daily_comment_limit
-    session_like_limit = min(
-        config.daily_like_limit,
-        round(
-            warmup_state.current_daily_engage_limit
-            * config.daily_like_limit
-            / configured_engagement_total
-        ),
-    )
-    session_comment_limit = min(
-        config.daily_comment_limit,
-        warmup_state.current_daily_engage_limit - session_like_limit,
-    )
-
-    # 2. Build human schedule
-    planner = HumanSchedule()
-    schedule = planner.plan_and_schedule_day(config, warmup_state)
-
-    # 3. Queue APScheduler date triggers for today's sessions
-    sched = get_scheduler()
-    for session in schedule.sessions:
-        # Construct full datetime for session start
-        session_dt = datetime.combine(schedule.date, session.start)
-
-        # If the generated time is accidentally in the past (e.g. running planner late), adjust
-        if session_dt < datetime.now():
-            session_dt = datetime.now()
-
-        sched.add_job(
-            _trigger_session,
-            "date",
-            run_date=session_dt,
-            args=[
-                account_id,
-                config.timezone,
-                session,
-                warmup_state.current_daily_invite_limit,
-                session_like_limit,
-                session_comment_limit,
-            ],
-            id=f"session_{account_id}_{session_dt.strftime('%H%M%S')}",
-            replace_existing=True,
+    """Multi-tenant daily engagement loop: iterates through active brands."""
+    client = get_supabase_client()
+    try:
+        res = (
+            client.table("linkedin_engagement_settings")
+            .select("*")
+            .eq("engagement_enabled", True)
+            .execute()
         )
+        active_settings = res.data or []
+    except Exception as e:
+        logger.warning("Failed to query active engagement settings: %s", e)
+        return
 
-    logger.info("Successfully queued %d sessions for today.", len(schedule.sessions))
+    if not active_settings:
+        logger.debug("No brands with engagement_enabled=True found.")
+        return
+
+    logger.info("Found %d brand(s) with engagement enabled. Processing...", len(active_settings))
+
+    # Cap concurrency to 5 parallel brand tasks to prevent DB connection pool exhaustion
+    sem = asyncio.Semaphore(5)
+
+    async def _process_brand(s_row: dict[str, Any]) -> None:
+        async with sem:
+            brand_id = s_row.get("company_profile_id")
+            user_id = s_row.get("user_id")
+            if not brand_id or not user_id:
+                return
+
+            account, reason = await resolve_brand_linkedin_account(brand_id, user_id)
+            if not account:
+                logger.info("Brand %s engagement skipped: %s", brand_id, reason)
+                return
+
+            auto_like = s_row.get("auto_like_enabled", False)
+            auto_comment = s_row.get("auto_comment_generation_enabled", False)
+            auto_connect = s_row.get("auto_connect_enabled", False)
+
+            action_types = []
+            if auto_comment:
+                action_types.append("comment")
+            if auto_like:
+                action_types.append("like")
+            if auto_connect:
+                action_types.append("invite")
+
+            if not action_types:
+                logger.info("Brand %s has no engagement action types enabled; skipping.", brand_id)
+                return
+
+            account_id = str(account["id"])
+
+            # Check personas: zero personas = safe no-op
+            target_resolver = TargetResolver()
+            personas = await target_resolver.load_personas(
+                company_profile_id=str(brand_id)
+            )
+            if not personas:
+                logger.info("Brand %s has 0 active personas; skipping engagement (safe no-op).", brand_id)
+                return
+
+            warmup_manager = WarmupManager(account_id)
+            warmup_state = warmup_manager.evaluate_daily_limits(
+                s_row.get("invites_per_day", 10),
+                s_row.get("likes_per_day", 15) + s_row.get("comments_per_day", 5),
+            )
+
+            invite_limit = min(s_row.get("invites_per_day", 10), warmup_state.current_daily_invite_limit)
+            like_limit = min(s_row.get("likes_per_day", 15), warmup_state.current_daily_engage_limit)
+            comment_limit = min(s_row.get("comments_per_day", 5), warmup_state.current_daily_engage_limit)
+
+            session = SessionWindow(
+                start=datetime.now().time(),
+                end=(datetime.now() + timedelta(minutes=30)).time(),
+                max_actions=min(10, invite_limit + like_limit + comment_limit),
+                action_types=tuple(action_types),
+            )
+
+            await _run_brand_session(
+                brand_id=str(brand_id),
+                user_id=str(user_id),
+                account=account,
+                settings_row=s_row,
+                session=session,
+                invite_limit=invite_limit,
+                like_limit=like_limit,
+                comment_limit=comment_limit,
+                action_types=tuple(action_types),
+            )
+
+    # Periodic cleanup of stale review queue items
+    queue = ReviewQueue()
+    queue.expire_stale(hours=48)
+
+    await asyncio.gather(*[_process_brand(s) for s in active_settings], return_exceptions=True)
 
 
 def set_engagement_active(active: bool) -> None:
-    """Pause or resume real engagement jobs for the configured account."""
-    global _engagement_active
-    _engagement_active = active and settings.linkedin_auto_engagement_enabled
+    """Pause or resume real engagement jobs across the scheduler."""
+    pass  # In the multi-tenant model, activation is controlled per-brand in linkedin_engagement_settings
 
+
+def trigger_immediate_engagement_run() -> None:
+    """Trigger an immediate one-shot execution of the engagement planner when Master Automation turns ON.
+
+    Uses replace_existing=True to prevent duplicate queued triggers.
+    Advisory locking inside _run_brand_session guarantees mutual exclusion per brand.
+    """
     scheduler = get_scheduler()
-    if not scheduler.running:
-        return
-
-    for job in scheduler.get_jobs():
-        if job.id.startswith("session_") or job.id == "linkedin_daily_planner_resume":
-            job.remove()
-
-    if _engagement_active:
+    if scheduler.running:
         scheduler.add_job(
             _plan_and_schedule_day,
             "date",
             run_date=datetime.now(),
-            id="linkedin_daily_planner_resume",
+            id="linkedin_engagement_planner_immediate",
             replace_existing=True,
         )
+        logger.info("Immediate engagement run scheduled following Master Automation ON toggle.")
 
 
 def start_linkedin_scheduler() -> None:
     """Start the APScheduler background worker if not already running."""
     scheduler = get_scheduler()
     if not scheduler.running:
-        if settings.linkedin_auto_engagement_enabled:
-            scheduler.add_job(
-                _plan_and_schedule_day,
-                "cron",
-                hour=1,
-                minute=0,
-                id="linkedin_daily_planner",
-                replace_existing=True,
-            )
+        # Engagement Planner: runs every 30 minutes
+        scheduler.add_job(
+            _plan_and_schedule_day,
+            "interval",
+            minutes=30,
+            id="linkedin_engagement_planner",
+            replace_existing=True,
+        )
 
-        # Post Publisher: every 5 minutes
-        # Polls linkedin_posts for rows where status='scheduled' AND scheduled_at <= now()
-        # and dispatches them to Unipile. This is what makes campaign posts go live on time.
+        # Post Publisher: every 5 minutes (UNTOUCHED)
         scheduler.add_job(
             publish_due_posts,
             "interval",
@@ -184,7 +223,9 @@ def start_linkedin_scheduler() -> None:
             replace_existing=True,
         )
 
+        # Comment Sync: every 5 minutes (UNTOUCHED)
         from src.modules.linkedin.worker.comment_sync import start_comment_sync_job
+
         scheduler.add_job(
             start_comment_sync_job,
             "interval",
@@ -195,10 +236,7 @@ def start_linkedin_scheduler() -> None:
 
         scheduler.start()
 
-        if settings.linkedin_auto_engagement_enabled:
-            scheduler.add_job(_plan_and_schedule_day, "date", run_date=datetime.now())
-
-        # On startup: immediately check for any posts that became due while server was down
+        # On startup: check for due posts (UNTOUCHED)
         scheduler.add_job(
             publish_due_posts,
             "date",
@@ -208,7 +246,7 @@ def start_linkedin_scheduler() -> None:
 
         logger.info(
             "LinkedIn Scheduler started: post publisher runs every 5 min; "
-            "engagement planner is configuration-controlled."
+            "multi-tenant engagement planner runs every 30 min."
         )
 
 

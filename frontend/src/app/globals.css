@@ -111,15 +111,41 @@ body {
   animation: none;
 }
 
-[data-reveal-delay="50"] { transition-delay: 50ms; }
-[data-reveal-delay="100"] { transition-delay: 100ms; }
-[data-reveal-delay="150"] { transition-delay: 150ms; }
-[data-reveal-delay="200"] { transition-delay: 200ms; }
-[data-reveal-delay="250"] { transition-delay: 250ms; }
-[data-reveal-delay="300"] { transition-delay: 300ms; }
-[data-reveal-delay="350"] { transition-delay: 350ms; }
-[data-reveal-delay="400"] { transition-delay: 400ms; }
-[data-reveal-delay="500"] { transition-delay: 500ms; }
+[data-reveal-delay="50"] {
+  transition-delay: 50ms;
+}
+
+[data-reveal-delay="100"] {
+  transition-delay: 100ms;
+}
+
+[data-reveal-delay="150"] {
+  transition-delay: 150ms;
+}
+
+[data-reveal-delay="200"] {
+  transition-delay: 200ms;
+}
+
+[data-reveal-delay="250"] {
+  transition-delay: 250ms;
+}
+
+[data-reveal-delay="300"] {
+  transition-delay: 300ms;
+}
+
+[data-reveal-delay="350"] {
+  transition-delay: 350ms;
+}
+
+[data-reveal-delay="400"] {
+  transition-delay: 400ms;
+}
+
+[data-reveal-delay="500"] {
+  transition-delay: 500ms;
+}
 
 /* Signature Yalo Button with sliding text and rising gradient overlay */
 .yalo-btn {
@@ -227,6 +253,7 @@ body {
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(-50%);
   }

@@ -19,7 +19,7 @@ import {
   Layers,
   ArrowRight,
 } from "lucide-react";
-import { campaignApi, Campaign } from "@/lib/api";
+import { campaignApi, linkedinApi, Campaign } from "@/lib/api";
 
 interface PostItem {
   id: string;
@@ -32,6 +32,8 @@ interface PostItem {
   status?: string;
   scheduled_at?: string;
   created_at?: string;
+  media_url?: string;
+  media_type?: string;
 }
 
 interface Props {
@@ -39,6 +41,13 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   initialCampaignName?: string;
+}
+
+function toLocalDateTimeValue(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 export default function CampaignDetailsModal({
@@ -53,6 +62,7 @@ export default function CampaignDetailsModal({
   const [error, setError] = useState<string | null>(null);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [savingPostId, setSavingPostId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "content" | "schedule">("overview");
 
   // Close on Escape key
@@ -66,6 +76,8 @@ export default function CampaignDetailsModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  const [retry, setRetry] = useState(0);
+
   // Fetch campaign details and posts
   useEffect(() => {
     if (!isOpen || !campaignId) {
@@ -76,6 +88,8 @@ export default function CampaignDetailsModal({
     }
 
     let isMounted = true;
+    setCampaign(null);
+    setPosts([]);
     setLoading(true);
     setError(null);
 
@@ -83,68 +97,14 @@ export default function CampaignDetailsModal({
       try {
         // Attempt fetching real campaign
         const [campRes, postsRes] = await Promise.all([
-          campaignApi.get(campaignId!).catch(() => null),
-          campaignApi.getPosts(campaignId!).catch(() => []),
+          campaignApi.get(campaignId!),
+          campaignApi.getPosts(campaignId!),
         ]);
 
         if (!isMounted) return;
 
-        if (campRes) {
-          setCampaign(campRes);
-          setPosts(postsRes || []);
-        } else {
-          // Fallback mock campaign representation for demo IDs
-          setCampaign({
-            id: campaignId!,
-            name: initialCampaignName || `Campaign ${campaignId?.slice(0, 8)}`,
-            state: "Active",
-            goals: {
-              primary: "B2B Market Expansion & Autonomous Lead Qualification",
-              metrics: ["Reach", "Engagement Rate", "Direct Inquiries"],
-              targets: { target_leads: 50, target_reach: 12000 },
-            },
-            target_audience: {
-              segments: ["Supply Chain Directors", "Operations Heads", "Logistics Leads"],
-              interests: ["Autonomous Automation", "Route Optimization", "Inventory Velocity"],
-              demographics: { seniority: "Director / VP", location: "Global / Multi-region" },
-            },
-            platforms: ["linkedin", "twitter"],
-            schedule: {
-              start_date: new Date().toISOString(),
-              end_date: new Date(Date.now() + 14 * 86400000).toISOString(),
-              timezone: "UTC",
-            },
-            metadata: {
-              summary: "Autonomous outreach sprint optimized for targeted executive engagement.",
-              created_from: "autopilot-engine",
-            },
-            created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-
-          setPosts([
-            {
-              id: "demo-post-1",
-              campaign_id: campaignId!,
-              slot_id: "slot-day-1",
-              hook: "Most operations teams lose 18 hours a week to manual restocking friction.",
-              body: "When supply chains scale, manual oversight becomes a silent margin killer. Here is how modern enterprise teams use autonomous orchestration to cut cycle times by 40%.\n\n1. Automated inventory velocity monitoring\n2. Real-time trigger dispatch\n3. Zero-delay reconciliation",
-              cta_text: "Discover the autonomous framework here: https://example.com/automation",
-              status: "ready",
-              scheduled_at: "Tomorrow at 10:00 AM",
-            },
-            {
-              id: "demo-post-2",
-              campaign_id: campaignId!,
-              slot_id: "slot-day-2",
-              hook: "Why top supply chain leaders are ditching reactive planning in 2026.",
-              body: "Predictive routing and autonomous dispatch are no longer experiments—they are the baseline for market leadership. What is your team doing to adapt?",
-              cta_text: "Read the full industry breakdown: https://example.com/report",
-              status: "pending",
-              scheduled_at: "Friday at 10:00 AM",
-            },
-          ]);
-        }
+        setCampaign(campRes);
+        setPosts(postsRes || []);
       } catch (err: unknown) {
         if (!isMounted) return;
         const msg = err instanceof Error ? err.message : "Failed to load campaign details";
@@ -159,7 +119,7 @@ export default function CampaignDetailsModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, campaignId, initialCampaignName]);
+  }, [isOpen, campaignId, retry]);
 
   if (!isOpen) return null;
 
@@ -314,7 +274,7 @@ export default function CampaignDetailsModal({
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
               <div>
                 <span className="font-semibold block">Failed to load details</span>
-                <span className="text-zinc-400 mt-0.5 block">{error}</span>
+                <span className="text-zinc-400 mt-0.5 block">{error}<button onClick={() => setRetry((v) => v + 1)} className="ml-3 underline">Retry</button></span>
               </div>
             </div>
           ) : campaign ? (
@@ -452,6 +412,14 @@ export default function CampaignDetailsModal({
               {/* Tab 2: Content & Generated Posts */}
               {activeTab === "content" && (
                 <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Link
+                      href={`/video-generation?campaign=${campaign.id}`}
+                      className="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-500/20"
+                    >
+                      Generate campaign video
+                    </Link>
+                  </div>
                   {posts.length === 0 ? (
                     <div className="p-8 rounded-xl bg-zinc-950/60 border border-zinc-800 text-center space-y-3">
                       <FileText size={32} className="mx-auto text-zinc-600" />
@@ -516,6 +484,15 @@ export default function CampaignDetailsModal({
                         </div>
 
                         {/* Post Hook */}
+                        {post.media_type === "video" && post.media_url && (
+                          <video
+                            src={post.media_url}
+                            controls
+                            preload="metadata"
+                            className="max-h-[460px] w-full rounded-lg bg-black object-contain"
+                          />
+                        )}
+
                         {post.hook && (
                           <p className="text-xs font-semibold text-zinc-100 leading-snug">
                             &ldquo;{post.hook}&rdquo;
@@ -526,6 +503,51 @@ export default function CampaignDetailsModal({
                         {post.body && (
                           <div className="text-xs text-zinc-300 whitespace-pre-line leading-relaxed bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/60 font-sans">
                             {post.body}
+                          </div>
+                        )}
+
+                        {post.media_type === "video" && (
+                          <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                            <label className="grid gap-1 text-[11px] text-zinc-400">
+                              Caption
+                              <textarea
+                                defaultValue={post.body || post.full_content || ""}
+                                id={`caption-${post.id}`}
+                                className="min-h-24 rounded-md border border-zinc-700 bg-zinc-900 p-2 text-xs text-zinc-100"
+                              />
+                            </label>
+                            <label className="grid gap-1 text-[11px] text-zinc-400">
+                              Publication date and time
+                              <input
+                                type="datetime-local"
+                                id={`schedule-${post.id}`}
+                                defaultValue={toLocalDateTimeValue(post.scheduled_at)}
+                                className="rounded-md border border-zinc-700 bg-zinc-900 p-2 text-xs text-zinc-100"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              disabled={savingPostId === post.id}
+                              onClick={async () => {
+                                if (!campaignId) return;
+                                const caption = (document.getElementById(`caption-${post.id}`) as HTMLTextAreaElement | null)?.value ?? "";
+                                const localTime = (document.getElementById(`schedule-${post.id}`) as HTMLInputElement | null)?.value;
+                                setSavingPostId(post.id);
+                                try {
+                                  const updated = await linkedinApi.patchPost(campaignId, post.id, {
+                                    body: caption,
+                                    scheduled_at: localTime ? new Date(localTime).toISOString() : undefined,
+                                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+                                  });
+                                  setPosts((current) => current.map((item) => item.id === post.id ? { ...item, ...updated } : item));
+                                } finally {
+                                  setSavingPostId(null);
+                                }
+                              }}
+                              className="justify-self-start rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+                            >
+                              {savingPostId === post.id ? "Saving…" : "Save draft changes"}
+                            </button>
                           </div>
                         )}
 

@@ -17,17 +17,30 @@ class GapDetector:
         self.llm = llm_router or LLMRouterService()
 
     async def generate_initial_queries(
-        self, dimension: str, user_goal: str, company_name: str
+        self,
+        dimension: str,
+        user_goal: str,
+        company_name: str,
+        campaign_type: str = "",
+        audience: str = "",
+        category: str = "",
     ) -> list[str]:
         """Generate 3 targeted search queries for a dimension."""
         system_prompt = (
             "You are a Senior Research Analyst. Generate 2 specific, targeted web search queries "
-            "to gather hard facts, benchmarks, and real-world evidence for marketing strategy."
+            "to gather hard facts, benchmarks, and real-world evidence for marketing strategy. "
+            "Base queries strictly on the structured campaign context (category, campaign type, audience, company). "
+            "DO NOT concatenate long user prompts into search queries. "
+            "DO NOT make assumptions about bootcamps, courses, or workshops unless the category "
+            "or campaign type explicitly implies it."
         )
         user_prompt = f"""
 Dimension: {dimension}
 Campaign Goal: {user_goal}
 Company: {company_name}
+Campaign Type: {campaign_type}
+Target Audience: {audience}
+Category/Market: {category}
 
 Return ONLY valid JSON matching this schema:
 {{
@@ -44,10 +57,32 @@ Return ONLY valid JSON matching this schema:
                 "Query generation failed for %s (%s); using default fallback", dimension, e
             )
 
-        # Fallback queries if LLM fails
+        # Fallback queries based on structured campaign context if LLM fails
+        raw_subject = category or company_name or (user_goal.split()[:4] if user_goal else "")
+        subject = " ".join(raw_subject) if isinstance(raw_subject, list) else str(raw_subject)
+        subject = subject.strip() or "market"
+        target = f" {audience.strip()}" if audience else ""
+
+        if campaign_type == "app_launch":
+            if dimension in ("competitor", "market"):
+                return [
+                    f"{subject} competing apps services alternatives",
+                    f"{subject} app market trends{target}",
+                ]
+            elif dimension in ("audience", "channel"):
+                return [
+                    f"{subject} user acquisition channels strategy",
+                    f"{subject} target audience problems behavior{target}",
+                ]
+            else:
+                return [
+                    f"{subject} app launch marketing benchmarks",
+                    f"{subject} industry trends{target}",
+                ]
+
         return [
-            f"{user_goal} {dimension} market research",
-            f"{company_name} {user_goal} competitors {dimension}",
+            f"{subject} {dimension} benchmarks trends{target}",
+            f"{company_name or subject} competitors {dimension}",
         ]
 
     async def generate_followup_queries(

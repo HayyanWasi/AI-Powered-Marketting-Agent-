@@ -18,11 +18,15 @@ from pydantic import BaseModel
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.api.response import success_response
-from src.modules.planning.models.brief import PlanBrief
+from src.modules.planning.models.campaign_plan import ResearchStatus
 from src.modules.planning.repositories.plan_repository import PlanNotFoundError
 from src.modules.planning.services.plan_refinement_service import (
     PlanDraftError,
     PlanRefinementService,
+)
+from src.services.campaign_context_service import (
+    CampaignContextResolver,
+    check_plan_freshness,
 )
 
 router = APIRouter(prefix="/campaigns", tags=["Campaign Plans"])
@@ -83,77 +87,8 @@ async def draft_plan(
     This is an async operation — runs web research first then panel calls LLM
     5 times concurrently.
     """
-    guests_list = list(body.guests)
-    user_goal = body.user_goal
-    event_name = body.event_name
-
-    # Hydrate from saved intake checklist & campaign record in DB
-    category = ""
-    target_audience = ""
-    curriculum_breakdown = ""
-    outcome_deliverable = ""
-    ticket_price = "Free"
-    event_date = body.event_date
-    venue = body.venue
-    registration_link = body.registration_link
-
-    try:
-        from src.repositories.base import BaseRepository
-
-        repo = BaseRepository("intake_checklists")
-        res = (
-            repo.client.table("intake_checklists")
-            .select("*")
-            .eq("campaign_id", str(campaign_id))
-            .execute()
-        )
-        if res.data:
-            cdata = res.data[0]
-            if not event_name and cdata.get("event_name"):
-                event_name = cdata.get("event_name")
-            if not event_date and cdata.get("event_date"):
-                event_date = cdata.get("event_date")
-            if not venue and cdata.get("venue"):
-                venue = cdata.get("venue")
-            if not registration_link and cdata.get("registration_link"):
-                registration_link = cdata.get("registration_link")
-
-            category = cdata.get("category") or ""
-            target_audience = cdata.get("target_audience") or ""
-            curriculum_breakdown = cdata.get("curriculum_breakdown") or ""
-            outcome_deliverable = cdata.get("outcome_deliverable") or ""
-            ticket_price = cdata.get("is_free_or_paid") or "Free"
-
-            if cdata.get("has_guest") is True:
-                g_name = cdata.get("guest_name")
-                g_title = cdata.get("guest_title")
-                if g_name and not any(g_name.lower() in g.lower() for g in guests_list):
-                    g_str = f"{g_name} ({g_title})" if g_title else g_name
-                    guests_list.append(g_str)
-    except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Could not hydrate intake checklist details in draft_plan: %s", e
-        )
-
-    brief = PlanBrief(
-        user_goal=user_goal,
-        company_name=body.company_name,
-        brand_tone=body.brand_tone,
-        brand_guidelines=body.brand_guidelines,
-        event_name=event_name,
-        category=category,
-        target_audience=target_audience,
-        curriculum_breakdown=curriculum_breakdown,
-        outcome_deliverable=outcome_deliverable,
-        ticket_price=ticket_price,
-        event_date=event_date,
-        venue=venue,
-        registration_link=registration_link,
-        platforms=tuple(body.platforms),
-        guests=tuple(guests_list),
-    )
+    inputs = await CampaignContextResolver().resolve(campaign_id, user.id)
+    brief = inputs.to_brief(body.user_goal)
 
     try:
         plan = await svc.draft_plan(
@@ -170,6 +105,19 @@ async def draft_plan(
         ) from exc
 
     return success_response(data=plan.to_document(), message="Plan drafted successfully.")
+    doc = plan.to_document()
+    doc["research_status"] = plan.research_status.value
+    doc["research_status_reason"] = plan.research_status_reason
+
+    msg = "Plan drafted successfully."
+    if plan.research_status == ResearchStatus.DEGRADED:
+        msg = "Plan drafted, but live research was degraded or unavailable."
+    elif plan.research_status == ResearchStatus.NO_EVIDENCE:
+        msg = "Plan drafted, but web search returned no usable evidence."
+    elif plan.research_status == ResearchStatus.AVAILABLE:
+        msg = "Plan drafted successfully with live research evidence."
+
+    return success_response(data=doc, message=msg)
 
 
 @router.get("/{campaign_id}/plan")
@@ -180,10 +128,19 @@ async def get_plan(
 ):
     """Return the current plan document."""
     try:
+        inputs = await CampaignContextResolver().resolve(campaign_id, user.id)
         plan = await svc.get_plan(campaign_id)
     except PlanNotFoundError:
         raise _not_found(campaign_id)
-    return success_response(data=plan.to_document(), message="Plan retrieved.")
+
+    doc = plan.to_document()
+    is_stale, reason = check_plan_freshness(plan, inputs)
+    doc["is_stale"] = is_stale
+    doc["staleness_reason"] = reason
+    doc["research_status"] = plan.research_status.value
+    doc["research_status_reason"] = plan.research_status_reason
+
+    return success_response(data=doc, message="Plan retrieved.")
 
 
 @router.get("/{campaign_id}/plan/versions")
@@ -194,6 +151,7 @@ async def list_versions(
 ):
     """Return all plan versions, newest first."""
     try:
+        await CampaignContextResolver().resolve(campaign_id, user.id)
         versions = await svc.list_versions(campaign_id)
     except PlanNotFoundError:
         raise _not_found(campaign_id)
@@ -220,6 +178,7 @@ async def get_version(
 ):
     """Return a specific version of the plan."""
     try:
+        await CampaignContextResolver().resolve(campaign_id, user.id)
         plan_version = await svc.get_version(campaign_id, version)
     except PlanNotFoundError:
         raise _not_found(campaign_id)
@@ -228,8 +187,11 @@ async def get_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Version {version} not found for campaign {campaign_id}",
         )
+    doc = dict(plan_version.document)
+    if "research_status" not in doc:
+        doc["research_status"] = ResearchStatus.NOT_REQUESTED.value
     return success_response(
-        data=plan_version.document,
+        data=doc,
         message=f"Version {version} retrieved.",
     )
 
@@ -242,6 +204,7 @@ async def get_messages(
 ):
     """Return the full refinement conversation thread."""
     try:
+        await CampaignContextResolver().resolve(campaign_id, user.id)
         messages = await svc.get_messages(campaign_id)
     except PlanNotFoundError:
         raise _not_found(campaign_id)
@@ -281,19 +244,13 @@ async def refine_plan(
             detail="Critique content cannot be empty.",
         )
     try:
+        await CampaignContextResolver().resolve(campaign_id, user.id)
         plan_row = await svc._repo.get_plan_row(campaign_id)
         if not plan_row:
             raise PlanNotFoundError(f"No plan for campaign {campaign_id}")
 
-        # Re-build the brief from the latest plan's stored data so we don't
-        # require the caller to resend all fields on every message.
-        latest_plan = await svc.get_plan(campaign_id)
-        brief = PlanBrief(
-            user_goal="",
-            company_name="",
-            event_name=latest_plan.title,
-            platforms=tuple(p.platform for p in latest_plan.channel_plan.platforms),
-        )
+        inputs = await CampaignContextResolver().resolve(campaign_id, user.id)
+        brief = inputs.to_brief()
         revised_plan, reply = await svc.refine_plan(
             campaign_id=campaign_id,
             critique=body.content,
@@ -302,6 +259,8 @@ async def refine_plan(
         )
     except PlanNotFoundError:
         raise _not_found(campaign_id)
+    except PlanDraftError as exc:
+        raise HTTPException(502, "Plan refinement failed. Please retry.") from exc
 
     return success_response(
         data={
@@ -321,6 +280,7 @@ async def approve_plan(
 ):
     """Approve the plan. After this, content generation is unblocked."""
     try:
+        await CampaignContextResolver().resolve(campaign_id, user.id)
         approved_plan = await svc.approve_plan(
             campaign_id=campaign_id,
             approved_by=UUID(user.id),

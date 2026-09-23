@@ -2,7 +2,7 @@ export type VideoGenerationStatus = "idle" | "queued" | "generating" | "complete
 
 export interface VideoVariation {
   id: string;
-  label: string; // "Variation 1 (16:9)" | "Variation 2 (16:9)"
+  label: string;
   videoUrl?: string;
   posterUrl?: string;
   durationSeconds: number;
@@ -34,6 +34,8 @@ export interface VideoArtifact {
   videoUrl?: string;
   posterUrl?: string;
   variations: VideoVariation[];
+  campaignAssetId?: string;
+  schedulerPostId?: string;
   activeVariationIndex: number;
   createdAt: string;
   generationDuration?: number;

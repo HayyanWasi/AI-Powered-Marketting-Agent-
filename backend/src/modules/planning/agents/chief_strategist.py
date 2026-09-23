@@ -15,7 +15,11 @@ from typing import Any
 
 from src.modules.planning.agents.panel import ask_json
 from src.modules.planning.models.brief import PlanBrief
-from src.modules.planning.models.campaign_plan import CampaignPlan, PlanStatus
+from src.modules.planning.models.campaign_plan import (
+    CampaignPlan,
+    ChiefReconciliation,
+    PlanStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +55,42 @@ async def synthesize(
     panel: dict[str, dict[str, Any]],
     **kw: Any,
 ) -> CampaignPlan:
-    """Reconcile the panel's sections into a coherent plan.
+    """Assemble the plan deterministically, then apply the chief's deltas.
 
-    Falls back to deterministic assembly when the synthesis call fails or
-    returns something that will not validate.
+    The five specialist sections are the source of truth and are assembled in
+    code — the chief never re-emits them. Its compact reconciliation only
+    supplies a title, an executive summary, and (rarely) a few prose
+    corrections. If the reconciliation call fails or validates to nothing, the
+    deterministically assembled plan is returned unchanged.
     """
+    base = assemble(
+        panel,
+        title=brief.user_goal or "Campaign Plan",
+        executive_summary=brief.user_goal or "",
+    )
+
+    variables = _chief_variables(brief, panel)
+    try:
+        recon = ChiefReconciliation.model_validate(
+            await ask_json("plan_chief_strategist", variables, **kw)
+        )
+    except Exception as e:
+        logger.warning(
+            "Chief reconciliation failed (%s); using deterministic assembly", e
+        )
+        return base
+
+    return _apply_reconciliation(base, recon)
+
+
+def _chief_variables(brief: PlanBrief, panel: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Compact chief context: minimal identity + the five completed sections."""
     variables = brief.as_prompt_vars()
     variables.update(
         {
-            key: json.dumps(panel.get(key) or {}, ensure_ascii=False, indent=2)
+            key: json.dumps(
+                panel.get(key) or {}, ensure_ascii=False, separators=(",", ":")
+            )
             for key in (
                 "audience_research",
                 "positioning",
@@ -69,29 +100,33 @@ async def synthesize(
             )
         }
     )
+    return variables
 
-    try:
-        document = await ask_json("plan_chief_strategist", variables, **kw)
-        document["status"] = PlanStatus.DRAFT.value
-        plan = CampaignPlan.model_validate(document)
-    except Exception as e:
-        logger.warning("Chief strategist synthesis failed (%s); assembling directly", e)
-        return assemble(panel)
 
-    # A synthesis that dropped a section is worse than no synthesis for that
-    # section — backfill from the specialist's own output.
-    fallback = assemble(panel, title=plan.title, executive_summary=plan.executive_summary)
-    patches = {
-        name: getattr(fallback, name)
-        for name in ("core_strategy", "channel_plan", "measurement", "competitive")
-        if _is_empty(getattr(plan, name)) and not _is_empty(getattr(fallback, name))
+def _apply_reconciliation(base: CampaignPlan, recon: ChiefReconciliation) -> CampaignPlan:
+    """Overlay the chief's title/summary and allowlisted prose deltas.
+
+    Every specialist section is preserved: only the named prose fields may
+    change, and only when the chief supplied a non-empty value. Scheduler-owned
+    calendar identity/timing, KPIs, personas, and list contents are untouched.
+    """
+    updates: dict[str, Any] = {
+        "title": recon.title or base.title,
+        "executive_summary": recon.executive_summary or base.executive_summary,
     }
-    if patches:
-        logger.info("Backfilled synthesized sections from panel: %s", ", ".join(patches))
-        plan = plan.model_copy(update=patches)
-    return plan
 
+    adj = recon.adjustments
+    core_updates: dict[str, str] = {}
+    if adj.unique_selling_proposition:
+        core_updates["unique_selling_proposition"] = adj.unique_selling_proposition
+    if adj.tone_of_voice:
+        core_updates["tone_of_voice"] = adj.tone_of_voice
+    if core_updates:
+        updates["core_strategy"] = base.core_strategy.model_copy(update=core_updates)
 
-def _is_empty(section: Any) -> bool:
-    """True when a section model carries no content at all."""
-    return not any(section.model_dump(mode="json").values())
+    if adj.differentiation_angle:
+        updates["competitive"] = base.competitive.model_copy(
+            update={"differentiation_angle": adj.differentiation_angle}
+        )
+
+    return base.model_copy(update=updates)

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hipoclipse — Run your LinkedIn on autopilot</title>
+  <meta name="description" content="Hipoclipse is an AI marketing agent that plans, creates, schedules, and publishes your LinkedIn campaigns — then handles the replies — from a single brand setup." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
+  <script>document.documentElement.className += ' js';</script>
+
+  <style>
+    :root {
+      --serif: "Instrument Serif", Georgia, serif;
+      --sans: "Plus Jakarta Sans", system-ui, sans-serif;
+
+      --sky-top: #2a9fc9;
+      --sky-mid: #1d8fb8;
+      --sky-deep: #14688a;
+      --deep: #073345;        /* deep space blue */
+      --deep-2: #0a4966;
+      --ink: #0b3b52;
+      --alabaster: #eef4f5;
+      --white: #ffffff;
+      --muted: rgba(255,255,255,0.82);
+      --faint: rgba(255,255,255,0.60);
+      --hairline: rgba(255,255,255,0.22);
+      --ink-muted: #4a6c7a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--sans);
+      color: var(--white);
+      background: var(--sky-mid);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow-x: hidden;
+    }
+    a { color: inherit; }
+
+    /* ---------- Sticky nav ---------- */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px clamp(20px, 5vw, 88px);
+      transition: background 0.3s ease, backdrop-filter 0.3s ease, padding 0.3s ease;
+    }
+    .nav.scrolled {
+      background: rgba(7,51,69,0.78);
+      backdrop-filter: blur(10px);
+      padding-top: 12px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .nav .brand { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 1.25rem; color: #fff; text-decoration: none; }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { font-size: 0.88rem; font-weight: 500; color: #fff; text-decoration: none; transition: color .15s; text-shadow: 0 1px 6px rgba(7,51,69,.35); }
+    .nav-links a:hover { color: #eaffff; }
+    .nav-links a.nav-cta { background: #fff; color: var(--ink); padding: 8px 16px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; text-decoration: none; text-shadow: none; transition: transform .18s, box-shadow .18s; }
+    .nav-links a.nav-cta:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(3,20,30,0.3); color: var(--ink); }
+    @media (max-width: 720px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+    /* ---------- Hero ---------- */
+    .hero { position: relative; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; overflow: hidden; isolation: isolate; background: var(--sky-deep); }
+    .hero-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-3; }
+    .hero-overlay { position:absolute; inset:0; z-index:-2;
+      background:
+        linear-gradient(180deg, rgba(7,51,69,0.55) 0%, rgba(7,51,69,0.42) 38%, rgba(7,51,69,0.88) 100%),
+        radial-gradient(120% 90% at 75% 6%, rgba(128,206,215,0.18), transparent 55%);
+    }
+
+    .hero-inner { flex:1; display:flex; align-items:center; padding: 96px clamp(20px,5vw,88px) 40px; }
+    .eyebrow { font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:18px; }
+    h1 { font-family:var(--serif); font-weight:400; font-size:clamp(2.8rem,6.5vw,5rem); line-height:1.02; letter-spacing:.005em; max-width:16ch; margin-bottom:20px; }
+    h1 em { font-style: italic; }
+    .lede { font-size:clamp(.98rem,1.2vw,1.12rem); font-weight:450; line-height:1.55; color:var(--muted); max-width:38ch; margin-bottom:30px; }
+    .hero-actions { display:flex; gap:14px; flex-wrap:wrap; }
+    .btn { display:inline-flex; align-items:center; gap:8px; font-family:var(--sans); font-size:.95rem; font-weight:600; text-decoration:none; padding:12px 22px; border-radius:4px; transition:transform .18s, box-shadow .18s, background .18s; }
+    .btn-primary { background:#fff; color:var(--ink); box-shadow:0 8px 24px rgba(3,20,30,.25); }
+    .btn-primary:hover { transform:translateY(-2px); box-shadow:0 14px 30px rgba(3,20,30,.32); }
+    .btn-ghost { background:rgba(255,255,255,.08); color:#fff; border:1px solid var(--hairline); }
+    .btn-ghost:hover { background:rgba(255,255,255,.16); transform:translateY(-2px); }
+    .btn .arrow { transition:transform .18s; } .btn:hover .arrow { transform:translateX(3px); }
+
+    /* ---------- Reveal utility (progressive: only hides when JS is on) ---------- */
+    .js [data-reveal] { opacity:0; transform:translateY(22px); transition:opacity .7s ease, transform .7s ease; }
+    .js [data-reveal].in { opacity:1; transform:none; }
+    [data-reveal].d1 { transition-delay:.08s; } [data-reveal].d2 { transition-delay:.16s; }
+    [data-reveal].d3 { transition-delay:.24s; } [data-reveal].d4 { transition-delay:.32s; }
+
+    /* ---------- Section scaffolding ---------- */
+    section { padding: clamp(72px,10vh,128px) clamp(20px,5vw,88px); }
+    .wrap { max-width: 1180px; margin: 0 auto; }
+    .kicker { font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; margin-bottom:16px; }
+    .section-title { font-family:var(--serif); font-weight:400; font-size:clamp(2rem,4vw,3.2rem); line-height:1.08; margin-bottom:18px; max-width:20ch; }
+    .section-sub { font-size:1.02rem; font-weight:450; line-height:1.6; max-width:52ch; }
+
+    /* Light section */
+    .s-light { background:var(--alabaster); color:var(--ink); }
+    .s-light .kicker { color:#0b7ea7; }
+    .s-light .section-sub { color:var(--ink-muted); }
+
+    /* Deep section */
+    .s-deep { background: linear-gradient(180deg, var(--deep) 0%, var(--deep-2) 100%); color:#fff; }
+    .s-deep .kicker { color:#80ced7; }
+    .s-deep .section-sub { color:var(--muted); }
+
+    /* ---------- How it works: pipeline ---------- */
+    .steps { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-top:56px; }
+    .step { position:relative; padding:24px 18px; border-radius:14px; background:#fff; border:1px solid #dbe6e8; box-shadow:0 6px 20px rgba(11,59,82,.05); }
+    .step .num { font-family:var(--serif); font-size:1.6rem; color:#0b7ea7; line-height:1; }
+    .step h3 { font-size:1rem; font-weight:600; margin:12px 0 6px; }
+    .step p { font-size:.86rem; line-height:1.5; color:var(--ink-muted); }
+    .step .connector { position:absolute; right:-9px; top:50%; width:18px; height:2px; background:#9ad1d4; z-index:2; }
+    .step:last-child .connector { display:none; }
+    @media (max-width: 900px) { .steps { grid-template-columns:1fr 1fr; } .step .connector { display:none; } }
+    @media (max-width: 520px) { .steps { grid-template-columns:1fr; } }
+
+    /* status pill demo */
+    .pipeline-demo { margin-top:56px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; }
+    .pill { font-size:.8rem; font-weight:600; padding:7px 14px; border-radius:999px; border:1px solid #cdd; color:#7d94a0; background:#fff; transition:all .4s ease; }
+    .pill.active { color:#fff; background:#0b7ea7; border-color:#0b7ea7; transform:scale(1.06); box-shadow:0 6px 16px rgba(11,126,167,.3); }
+    .pipeline-demo .sep { color:#9ad1d4; font-weight:700; }
+
+    /* ---------- Features grid ---------- */
+    .features { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:56px; }
+    /* Flip / swap card */
+    .card { position:relative; min-height:236px; perspective:1300px; }
+    .card-inner { position:absolute; inset:0; transition:transform .6s cubic-bezier(.2,.75,.2,1); transform-style:preserve-3d; }
+    .card:hover .card-inner, .card:focus-within .card-inner { transform:rotateY(180deg); }
+    .card-face { position:absolute; inset:0; border-radius:16px; padding:28px 24px; border:1px solid var(--hairline);
+      backface-visibility:hidden; -webkit-backface-visibility:hidden; display:flex; flex-direction:column; overflow:hidden; }
+    .card-face.front { background:rgba(255,255,255,.04); }
+    .card-face.back { background:linear-gradient(155deg, rgba(128,206,215,.18), rgba(0,126,167,.16)); border-color:#80ced7; transform:rotateY(180deg); justify-content:center; }
+    .card .ic { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:rgba(128,206,215,.14); color:#80ced7; margin-bottom:18px; }
+    .card h3 { font-size:1.12rem; font-weight:600; margin-bottom:8px; color:#fff; }
+    .card-face.front h3 { margin-top:auto; }
+    .card-face.front .hint { font-size:.76rem; font-weight:500; color:#80ced7; display:inline-flex; align-items:center; gap:6px; margin-top:4px; opacity:.85; }
+    .card-face.back p { font-size:.92rem; line-height:1.55; color:var(--muted); }
+    @media (max-width: 900px) { .features { grid-template-columns:1fr 1fr; } }
+    @media (max-width: 560px) { .features { grid-template-columns:1fr; } .card { min-height:210px; } }
+    @media (prefers-reduced-motion: reduce) { .card-inner { transition:none; } }
+
+    /* ---------- Showcase (generated post) ---------- */
+    .showcase { display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center; }
+    @media (max-width: 860px) { .showcase { grid-template-columns:1fr; gap:40px; } }
+    .post-card { background:#fff; border-radius:16px; padding:22px; color:var(--ink); box-shadow:0 20px 50px rgba(7,51,69,.25); max-width:440px; }
+    .post-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .avatar { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#80ced7,#007ea7); flex:none; }
+    .post-head .meta strong { font-size:.92rem; display:block; }
+    .post-head .meta span { font-size:.78rem; color:var(--ink-muted); }
+    .post-body { font-size:.92rem; line-height:1.6; min-height:96px; }
+    .cursor { display:inline-block; width:2px; height:1em; background:#0b7ea7; vertical-align:-2px; animation:blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity:0; } }
+    .post-foot { margin-top:16px; padding-top:12px; border-top:1px solid #e3ecee; display:flex; gap:22px; font-size:.82rem; color:var(--ink-muted); }
+    .gen-badge { display:inline-flex; align-items:center; gap:8px; font-size:.78rem; font-weight:600; color:#0b7ea7; margin-bottom:14px; }
+    .gen-dot { width:8px; height:8px; border-radius:50%; background:#0b7ea7; animation:pulse 1.3s ease infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1);} 50% { opacity:.4; transform:scale(1.5);} }
+
+    /* image collage in showcase */
+    .collage { position:relative; margin-top:8px; }
+    .collage img { display:block; border-radius:16px; box-shadow:0 20px 50px rgba(7,51,69,.22); }
+    .collage .big { width:100%; }
+    .collage .small { position:absolute; right:-16px; bottom:-26px; width:46%; border:5px solid #fff; }
+    @media (max-width: 860px) { .collage .small { right:0; bottom:-16px; width:40%; } }
+
+    /* full-bleed image band */
+    .image-band { position:relative; min-height:56vh; display:grid; place-items:center; text-align:center; overflow:hidden; padding:clamp(72px,10vh,120px) clamp(20px,5vw,88px); }
+    .image-band img.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; transform:scale(1.05); }
+    .image-band .veil { position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg, rgba(7,51,69,.78) 0%, rgba(11,80,110,.62) 100%); }
+    .image-band h2 { font-family:var(--serif); font-weight:400; color:#fff; font-size:clamp(2rem,4.6vw,3.4rem); max-width:22ch; line-height:1.12; }
+    .image-band p { color:var(--muted); max-width:48ch; margin:18px auto 0; font-size:1.02rem; line-height:1.6; }
+
+    /* ---------- Big CTA ---------- */
+    .cta-band { text-align:center; position:relative; overflow:hidden; }
+    .cta-band img.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; opacity:.28; }
+    .cta-band::before { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(7,51,69,.72), rgba(7,51,69,.9)), radial-gradient(60% 80% at 50% 0%, rgba(128,206,215,.22), transparent 70%); z-index:-1; }
+    .cta-band .wrap { position:relative; z-index:1; }
+    .cta-band h2 { font-family:var(--serif); font-weight:400; font-size:clamp(2.4rem,5vw,4rem); line-height:1.05; margin-bottom:20px; }
+    .cta-band p { color:var(--muted); font-size:1.05rem; margin:0 auto 32px; max-width:46ch; }
+
+    /* ---------- Footer ---------- */
+    .footer { background:var(--deep); padding: clamp(48px,7vh,80px) clamp(20px,5vw,88px) clamp(40px,6vh,64px); display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:40px; }
+    .brand-f { display:flex; align-items:center; gap:10px; font-family:var(--serif); font-size:1.5rem; margin-bottom:12px; }
+    .brand-blurb { font-size:.82rem; line-height:1.5; color:var(--faint); max-width:30ch; }
+    .col h4 { font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin-bottom:14px; }
+    .col ul { list-style:none; } .col li { margin-bottom:9px; }
+    .col a { color:var(--muted); text-decoration:none; font-size:.9rem; font-weight:450; transition:color .15s; }
+    .col a:hover { color:#fff; }
+    .footer-base { background:var(--deep); display:flex; align-items:center; justify-content:space-between; padding:20px clamp(20px,5vw,88px) 30px; border-top:1px solid var(--hairline); }
+    .copyright { font-size:.78rem; color:var(--faint); }
+    .socials { display:flex; gap:16px; }
+    .socials a { color:var(--muted); display:inline-grid; place-items:center; transition:color .15s, transform .15s; }
+    .socials a:hover { color:#fff; transform:translateY(-2px); }
+    @media (max-width: 860px) { .footer { grid-template-columns:1fr 1fr; gap:28px 24px; } .footer .brand-col { grid-column:1/-1; } }
+    @media (max-width: 520px) { .footer-base { flex-direction:column; gap:14px; align-items:flex-start; } }
+
+    a:focus-visible, .btn:focus-visible, .nav-cta:focus-visible { outline:2px solid #80ced7; outline-offset:3px; border-radius:4px; }
+    @media (prefers-reduced-motion: reduce) {
+      .cloud, .gen-dot, .cursor { animation:none; }
+      [data-reveal] { opacity:1; transform:none; transition:none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="nav" id="nav">
+    <a class="brand" href="#top">✦ Hipoclipse</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#autopilot">Autopilot</a>
+      <a class="nav-cta" href="get-started.html">Get started →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero" id="top">
+    <video class="hero-video" autoplay muted loop playsinline preload="auto" poster="assets/video/hero-poster.jpg" aria-hidden="true">
+      <source src="assets/video/hero.mp4" type="video/mp4" />
+    </video>
+    <div class="hero-overlay" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <div>
+        <p class="eyebrow" data-reveal>Your AI marketing agent</p>
+        <h1 data-reveal class="d1">Run your LinkedIn <em>on autopilot</em></h1>
+        <p class="lede d2" data-reveal>From your brand voice to published posts and replies — Hipoclipse plans, creates, schedules, and runs your LinkedIn campaigns end to end.</p>
+        <div class="hero-actions d3" data-reveal>
+          <a class="btn btn-primary" href="get-started.html">Get started <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="#how">See how it works</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- HOW IT WORKS -->
+  <section class="s-light" id="how">
+    <div class="wrap">
+      <p class="kicker" data-reveal>How it works</p>
+      <h2 class="section-title d1" data-reveal>One brand setup. A full campaign, handled.</h2>
+      <p class="section-sub d2" data-reveal>You define your brand once. Hipoclipse takes it from an empty calendar to published posts and answered comments — without you touching each step.</p>
+
+      <div class="steps">
+        <div class="step" data-reveal><span class="num">01</span><h3>Set your brand</h3><p>Company, audience, mission, track record, and voice — captured in one form.</p><span class="connector"></span></div>
+        <div class="step d1" data-reveal><span class="num">02</span><h3>AI plans</h3><p>The agent builds a campaign plan aligned to your themes and pillars.</p><span class="connector"></span></div>
+        <div class="step d2" data-reveal><span class="num">03</span><h3>Content is created</h3><p>On-brand posts, images, and video generated for each slot.</p><span class="connector"></span></div>
+        <div class="step d3" data-reveal><span class="num">04</span><h3>Scheduled &amp; published</h3><p>Posts are scheduled and auto-published to your connected LinkedIn account.</p><span class="connector"></span></div>
+        <div class="step d4" data-reveal><span class="num">05</span><h3>Replies handled</h3><p>Inbound comments are synced so you can respond from one place.</p></div>
+      </div>
+
+      <div class="pipeline-demo" id="pipeline" aria-label="Post status pipeline">
+        <span class="pill" data-stage="0">Draft</span><span class="sep">→</span>
+        <span class="pill" data-stage="1">Scheduled</span><span class="sep">→</span>
+        <span class="pill" data-stage="2">Publishing</span><span class="sep">→</span>
+        <span class="pill" data-stage="3">Published</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="s-deep" id="features">
+    <div class="wrap">
+      <p class="kicker" data-reveal>What's inside</p>
+      <h2 class="section-title d1" data-reveal>Everything the agent does for you</h2>
+      <p class="section-sub d2" data-reveal>Real capabilities, working end to end — not a checklist of promises.</p>
+
+      <div class="features">
+        <div class="card" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8l7-5 7 5"/></svg></div>
+              <h3>AI campaign planning</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>AI campaign planning</h3><p>Turns your brand profile into a structured campaign plan, themed slot by slot.</p></div>
+          </div>
+        </div>
+        <div class="card d1" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg></div>
+              <h3>Text, image &amp; video</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>Text, image &amp; video</h3><p>Generates on-brand copy plus imagery and campaign video for each post.</p></div>
+          </div>
+        </div>
+        <div class="card d2" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l6 6L20 6"/></svg></div>
+              <h3>LinkedIn publishing</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>LinkedIn publishing</h3><p>Publishes to your own verified, connected LinkedIn account — no shared fallback.</p></div>
+          </div>
+        </div>
+        <div class="card" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></div>
+              <h3>Smart scheduling</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>Smart scheduling</h3><p>Queues posts and publishes them on time, with safe recovery if something stalls.</p></div>
+          </div>
+        </div>
+        <div class="card d1" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+              <h3>Comment sync &amp; replies</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>Comment sync &amp; replies</h3><p>Pulls in inbound comments and lets you reply — engagement in one place.</p></div>
+          </div>
+        </div>
+        <div class="card d2" data-reveal tabindex="0">
+          <div class="card-inner">
+            <div class="card-face front">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+              <h3>Autopilot</h3>
+              <span class="hint">Hover to learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="card-face back"><h3>Autopilot</h3><p>Let the whole loop run hands-off — plan, create, schedule, publish, repeat.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- IMAGE BAND -->
+  <section class="image-band">
+    <img class="bg" src="assets/img/team.jpg" alt="A marketing team collaborating" loading="lazy" />
+    <div class="veil" aria-hidden="true"></div>
+    <div>
+      <h2 data-reveal>Your brand, always on — <em>even when you're not</em></h2>
+      <p class="d1" data-reveal>Set the direction once. Hipoclipse keeps the campaign moving, so your team spends time on strategy, not scheduling.</p>
+    </div>
+  </section>
+
+  <!-- SHOWCASE -->
+  <section class="s-light" id="showcase">
+    <div class="wrap showcase">
+      <div>
+        <p class="kicker" data-reveal>On-brand, every time</p>
+        <h2 class="section-title d1" data-reveal>Content that sounds like <em>you</em></h2>
+        <p class="section-sub d2" data-reveal>Your voice message and track record steer every generation, so posts read like your brand — then go straight into the schedule. (Illustration of the generation flow.)</p>
+        <div class="collage d3" data-reveal>
+          <img class="big" src="assets/img/marketing.jpg" alt="Marketing team planning a campaign" loading="lazy" />
+          <img class="small" src="assets/img/content.jpg" alt="Reviewing content on a laptop" loading="lazy" />
+        </div>
+      </div>
+      <div data-reveal class="d1">
+        <div class="post-card">
+          <div class="gen-badge"><span class="gen-dot"></span> Generating on-brand post</div>
+          <div class="post-head">
+            <div class="avatar"></div>
+            <div class="meta"><strong>Your Company</strong><span>Sponsored · LinkedIn</span></div>
+          </div>
+          <div class="post-body"><span id="typed"></span><span class="cursor"></span></div>
+          <div class="post-foot"><span>👍 Like</span><span>💬 Comment</span><span>↗ Share</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AUTOPILOT / CTA -->
+  <section class="s-deep cta-band" id="get-started">
+    <img class="bg" src="assets/img/ai.jpg" alt="" aria-hidden="true" loading="lazy" />
+    <div class="wrap">
+      <p class="kicker" data-reveal>Autopilot</p>
+      <h2 data-reveal class="d1">Set your brand. <em>Let it run.</em></h2>
+      <p data-reveal class="d2">Connect LinkedIn once, define your voice, and let Hipoclipse keep your feed moving — planned, created, scheduled, published, and answered.</p>
+      <div data-reveal class="d3" style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+        <a class="btn btn-primary" href="get-started.html">Get started <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="#features">Explore features</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer" id="autopilot">
+    <div class="col brand-col">
+      <div class="brand-f">✦ Hipoclipse</div>
+      <p class="brand-blurb">One brand setup. A full LinkedIn campaign — planned, created, scheduled, published, and answered by AI.</p>
+    </div>
+    <nav class="col" aria-label="Product"><h4>Product</h4><ul><li><a href="#">Brand Setup</a></li><li><a href="#">New Campaign</a></li><li><a href="#">Video Generation</a></li><li><a href="#">Dashboard</a></li></ul></nav>
+    <nav class="col" aria-label="Automation"><h4>Automation</h4><ul><li><a href="#">LinkedIn Publishing</a></li><li><a href="#">Auto-Scheduling</a></li><li><a href="#">Comment Replies</a></li><li><a href="#">Autopilot</a></li></ul></nav>
+    <nav class="col" aria-label="Company"><h4>Company</h4><ul><li><a href="#">About</a></li><li><a href="#">Prospects</a></li><li><a href="#">Contact</a></li></ul></nav>
+  </footer>
+  <div class="footer-base">
+    <span class="copyright">© 2026 Hipoclipse. All rights reserved.</span>
+    <div class="socials">
+      <a href="#" aria-label="LinkedIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3A2 2 0 0121 5v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h14zM8.34 18.34V9.9H5.67v8.44h2.67zM7 8.73a1.55 1.55 0 100-3.1 1.55 1.55 0 000 3.1zm11.34 9.61v-4.63c0-2.47-1.32-3.62-3.08-3.62a2.66 2.66 0 00-2.41 1.33h-.04V9.9h-2.56c.03.72 0 8.44 0 8.44h2.56v-4.71c0-.25.02-.5.09-.68.2-.5.66-1.02 1.42-1.02 1 0 1.4.76 1.4 1.88v4.53h2.62z"/></svg></a>
+      <a href="#" aria-label="Email"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></a>
+    </div>
+  </div>
+
+  <script>
+    // Nav background on scroll
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 40);
+    onScroll(); window.addEventListener('scroll', onScroll, { passive: true });
+
+    // Scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+    // Status pipeline animation (loops)
+    const pills = [...document.querySelectorAll('#pipeline .pill')];
+    let stage = 0;
+    setInterval(() => {
+      pills.forEach((p, i) => p.classList.toggle('active', i === stage));
+      stage = (stage + 1) % pills.length;
+    }, 1100);
+
+    // Typewriter for the sample post (illustration only)
+    const typedEl = document.getElementById('typed');
+    const sample = "New quarter, same promise: helping our customers grow. Here's what we shipped this month — and why it matters for your team. 👇";
+    let ti = 0, started = false;
+    const typeIt = () => {
+      if (ti <= sample.length) { typedEl.textContent = sample.slice(0, ti); ti++; setTimeout(typeIt, 28); }
+    };
+    const tObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting && !started) { started = true; typeIt(); } });
+    }, { threshold: 0.4 });
+    tObs.observe(document.querySelector('.post-card'));
+  </script>
+</body>
+</html>

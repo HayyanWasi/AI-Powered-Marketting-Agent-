@@ -50,7 +50,9 @@ export default function CampaignSidebar({
       {/* Top Header & New Campaign Action */}
       <div className="p-3.5 space-y-3">
         <div className="flex items-center justify-between px-2 py-1">
-          <Link href="/" className="flex items-center space-x-2 group">
+          <Link href="/" className="flex items-center space-x-2 group" title="Hipoclipse Landing Page">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Hipoclipse" className="w-6 h-6 rounded-md object-contain" />
             <span className="text-lg font-bold tracking-tight text-[#F5F7FA] lowercase">
               hipoclipse <span className="text-[#20B8E5] text-xs font-semibold uppercase tracking-wider ml-1">AI</span>
             </span>

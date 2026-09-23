@@ -83,6 +83,7 @@ class CompanyRepository:
             brand_guidelines=row.get("brand_guidelines", ""),
             brand_tone=row.get("brand_tone"),
             reference_image_urls=row.get("reference_image_urls", []),
+            default_linkedin_account_id=row.get("default_linkedin_account_id"),
             created_at=row.get("created_at", ""),
             updated_at=row.get("updated_at", ""),
         )

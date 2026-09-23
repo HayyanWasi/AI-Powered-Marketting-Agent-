@@ -7,6 +7,8 @@ Creates and configures the FastAPI application with:
 - Versioned API route registration
 """
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
@@ -39,9 +41,6 @@ def _register_versioned_routers(app: FastAPI) -> None:
     app.include_router(latest_router)
 
 
-from contextlib import asynccontextmanager
-
-
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     """Lifecycle manager for the FastAPI application."""
@@ -54,6 +53,38 @@ async def app_lifespan(app: FastAPI):
     # Initialize observability telemetry buffers on startup
     operations = get_operations_service()
     await operations.initialize()
+
+    # Validate configured LLM providers independently on startup
+    from src.config.settings import settings
+
+    _startup_logger = logging.getLogger("startup")
+    _startup_logger.info("=== Validating LLM Provider Configuration ===")
+    provider_status = settings.validate_providers()
+    for p_name, p_info in provider_status.items():
+        if p_info["eligible"]:
+            _startup_logger.info(
+                "Provider [%s]: ELIGIBLE (model=%s, keys_configured=%d)",
+                p_name,
+                p_info["model"],
+                p_info["keys_configured"],
+            )
+        else:
+            _startup_logger.warning(
+                "Provider [%s]: UNAVAILABLE / SKIPPED (missing credentials or model)",
+                p_name,
+            )
+
+    # Proactively warm the planning-only Ollama GPUs so the first CampaignPlan
+    # does not pay cold-start latency. Best-effort: failures are logged inside
+    # and never block startup; planning also re-ensures warmth per draft.
+    try:
+        from src.modules.planning import warmup
+
+        warm_status = await warmup.ensure_planning_endpoints_warm()
+        if warm_status:
+            _startup_logger.info("Planning Ollama warm-up: %s", warm_status)
+    except Exception as exc:  # noqa: BLE001 — warm-up must never break startup
+        _startup_logger.warning("Planning Ollama warm-up skipped: %s", type(exc).__name__)
 
     # Start background scheduler for LinkedIn AutoPilot
     start_linkedin_scheduler()

@@ -29,8 +29,11 @@ class CreateCompanyService:
         if errors:
             raise ValueError("; ".join(errors))
 
+        from src.models.brand_context import BrandGuidelinesSchema
+        migrated_guidelines = BrandGuidelinesSchema.parse_and_migrate(brand_guidelines).model_dump_json()
+
         try:
-            profile = self._repository.create(company_name, brand_guidelines, brand_tone)
+            profile = self._repository.create(company_name, migrated_guidelines, brand_tone)
             logger.info("Created company profile: %s (%s)", profile.company_name, profile.id)
             return profile
         except CompanyDuplicateError as e:

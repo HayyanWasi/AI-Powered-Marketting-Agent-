@@ -20,7 +20,7 @@ def test_warmup_manager_baseline_no_increase(mock_supabase):
         data=[
             {
                 "id": "11111111-1111-1111-1111-111111111111",
-                "account_id": "test",
+                "linkedin_account_id": "test",
                 "activation_date": (datetime.now(UTC) - timedelta(days=10)).date().isoformat(),
                 "days_active": 5,
                 "current_daily_invite_limit": 5,
@@ -47,7 +47,7 @@ def test_warmup_manager_ramp_up_increase(mock_supabase):
         data=[
             {
                 "id": "22222222-2222-2222-2222-222222222222",
-                "account_id": "test2",
+                "linkedin_account_id": "test2",
                 "activation_date": (datetime.now(UTC) - timedelta(days=15)).date().isoformat(),
                 "days_active": 10,
                 "current_daily_invite_limit": 5,
@@ -69,6 +69,10 @@ def test_warmup_manager_ramp_up_increase(mock_supabase):
     assert state.current_daily_engage_limit == 10
     assert state.phase == WarmupPhase.RAMP_UP
     assert mock_supabase.table().upsert.called
+    call_args, call_kwargs = mock_supabase.table().upsert.call_args
+    assert call_kwargs.get("on_conflict") == "linkedin_account_id"
+    assert "linkedin_account_id" in call_args[0]
+    assert "account_id" not in call_args[0]
 
 
 def test_warmup_manager_transition_to_operating(mock_supabase):
@@ -76,7 +80,7 @@ def test_warmup_manager_transition_to_operating(mock_supabase):
         data=[
             {
                 "id": "33333333-3333-3333-3333-333333333333",
-                "account_id": "test3",
+                "linkedin_account_id": "test3",
                 "activation_date": (datetime.now(UTC) - timedelta(days=30)).date().isoformat(),
                 "days_active": 25,
                 "current_daily_invite_limit": 18,

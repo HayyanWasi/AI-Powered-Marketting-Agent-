@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Set up your campaign — Hipoclipse</title>
+  <meta name="description" content="A simple, guided setup to launch your first campaign." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
+  <script>document.documentElement.className += ' js';</script>
+  <style>
+    :root {
+      --serif: "Instrument Serif", Georgia, serif;
+      --sans: "Plus Jakarta Sans", system-ui, sans-serif;
+
+      --bg: #f6f7f8;
+      --surface: #ffffff;
+      --surface-2: #fbfcfc;
+      --text: #16242c;
+      --text-2: #566670;
+      --text-3: #8a99a1;
+      --border: #e7ebed;
+      --border-strong: #d5dcdf;
+      --accent: #007ea7;
+      --accent-ink: #016189;
+      --accent-soft: #eaf4f8;
+      --accent-line: #b8dfec;
+      --danger: #b3392b;
+      --danger-soft: #fdecea;
+      --ok: #1f8a5b;
+      --radius: 12px;
+      --radius-sm: 9px;
+      --shadow-sm: 0 1px 2px rgba(16,36,44,.05);
+      --shadow-md: 0 8px 24px rgba(16,36,44,.08);
+      --ring: 0 0 0 3px rgba(0,126,167,.22);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    button { font: inherit; cursor: pointer; }
+    input, textarea { font: inherit; color: inherit; }
+    a { color: var(--accent); }
+
+    /* ---------- Header ---------- */
+    .top {
+      position: sticky; top: 0; z-index: 20;
+      background: rgba(246,247,248,.86);
+      backdrop-filter: saturate(1.2) blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    .top-row {
+      max-width: 900px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px clamp(16px, 4vw, 28px);
+    }
+    .logo { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 1.35rem; color: var(--text); text-decoration: none; }
+    .logo .spark { color: var(--accent); }
+    .top-right { display: flex; align-items: center; gap: 14px; }
+    .saved { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--ok); opacity: 0; transition: opacity .25s ease; }
+    .saved.show { opacity: 1; }
+    .saved .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+    .link-btn { background: none; border: none; color: var(--text-2); font-size: .88rem; font-weight: 500; padding: 6px 8px; border-radius: 8px; }
+    .link-btn:hover { color: var(--text); background: rgba(16,36,44,.05); }
+
+    /* ---------- Progress ---------- */
+    .progress-wrap { max-width: 900px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 28px); }
+    .progress-meta { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; }
+    .progress-step { font-size: .82rem; font-weight: 600; color: var(--text-2); letter-spacing: .01em; }
+    .progress-label { font-size: .82rem; color: var(--text-3); }
+    .progress-bar { height: 4px; background: var(--border); border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 16.66%; background: var(--accent); border-radius: 999px; transition: width .35s cubic-bezier(.3,.7,.3,1); }
+
+    /* ---------- Main / step container ---------- */
+    main { flex: 1; }
+    .container { max-width: 760px; margin: 0 auto; padding: clamp(28px, 5vh, 52px) clamp(16px, 4vw, 28px) 120px; }
+    .step { display: none; }
+    .step.active { display: block; animation: stepIn .28s cubic-bezier(.2,.7,.2,1); }
+    @keyframes stepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    .eyebrow { font-size: .74rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .step h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(1.9rem, 4.4vw, 2.7rem); line-height: 1.08; letter-spacing: .005em; margin-bottom: 10px; }
+    .step .sub { font-size: 1rem; color: var(--text-2); max-width: 46ch; margin-bottom: 30px; }
+
+    /* ---------- Form fields ---------- */
+    .field { margin-bottom: 20px; }
+    .field > label { display: block; font-size: .88rem; font-weight: 600; margin-bottom: 7px; }
+    .field .opt { font-weight: 500; color: var(--text-3); }
+    .control {
+      width: 100%; background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm); padding: 12px 14px; font-size: .96rem;
+      transition: border-color .15s ease, box-shadow .15s ease; box-shadow: var(--shadow-sm);
+    }
+    .control::placeholder { color: var(--text-3); }
+    .control:hover { border-color: #c3ccd0; }
+    .control:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+    textarea.control { resize: vertical; min-height: 120px; line-height: 1.55; }
+    .help { font-size: .82rem; color: var(--text-3); margin-top: 7px; }
+    .err { display: none; font-size: .82rem; color: var(--danger); margin-top: 7px; align-items: center; gap: 6px; }
+    .field.invalid .err { display: flex; }
+    .field.invalid .control { border-color: var(--danger); }
+    .field.invalid .control:focus { box-shadow: 0 0 0 3px rgba(179,57,43,.16); }
+
+    /* URL smart field */
+    .url-row { display: flex; gap: 10px; align-items: stretch; }
+    .url-row .control { flex: 1; }
+    .analyze-btn {
+      white-space: nowrap; background: var(--text); color: #fff; border: none;
+      border-radius: var(--radius-sm); padding: 0 16px; font-size: .9rem; font-weight: 600;
+      transition: background .15s ease, transform .12s ease;
+    }
+    .analyze-btn:hover { background: #23343d; }
+    .analyze-btn:active { transform: translateY(1px); }
+    .analyze-btn:disabled { opacity: .55; cursor: default; }
+
+    /* Analysis status */
+    .analysis-status { display: none; align-items: center; gap: 10px; margin: 6px 0 22px; padding: 12px 14px; background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); color: var(--accent-ink); font-size: .9rem; }
+    .analysis-status.show { display: flex; }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--accent-line); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Detected cards */
+    .detected { display: none; margin: 0 0 26px; }
+    .detected.show { display: block; }
+    .detected-head { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--text-2); margin-bottom: 12px; }
+    .detected-head .badge { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; padding: 3px 9px; border-radius: 999px; font-size: .74rem; }
+    .dcards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .dcard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; box-shadow: var(--shadow-sm); }
+    .dcard.wide { grid-column: 1 / -1; }
+    .dcard .k { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .dcard .edit-mini { background: none; border: none; color: var(--accent); font-size: .74rem; font-weight: 600; padding: 2px 4px; border-radius: 6px; }
+    .dcard .edit-mini:hover { background: var(--accent-soft); }
+    .dcard .v { font-size: .95rem; font-weight: 500; }
+    .dcard .v-edit { width: 100%; border: 1px solid var(--border-strong); border-radius: 7px; padding: 7px 9px; font-size: .92rem; margin-top: 2px; }
+    .dcard .v-edit:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+    .swatches { display: flex; gap: 8px; }
+    .swatch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(0,0,0,.08); }
+    .logo-chip { display: inline-flex; align-items: center; gap: 8px; }
+    .logo-mark { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-family: var(--serif); font-size: 1.1rem; }
+
+    /* ---------- Selection cards (goal / audience mode) ---------- */
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .cards.one { grid-template-columns: 1fr; }
+    .scard {
+      text-align: left; background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); padding: 16px; display: flex; gap: 14px; align-items: flex-start;
+      transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
+      box-shadow: var(--shadow-sm);
+    }
+    .scard:hover { border-color: #bcc6ca; transform: translateY(-1px); }
+    .scard:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+    .scard .sic { flex: none; width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; color: var(--text-2); transition: all .18s ease; }
+    .scard .st { display: block; font-size: .98rem; font-weight: 600; margin-bottom: 3px; }
+    .scard .sd { display: block; font-size: .84rem; color: var(--text-2); line-height: 1.4; }
+    .scard .check { margin-left: auto; align-self: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border-strong); display: grid; place-items: center; color: #fff; flex: none; transition: all .18s ease; }
+    .scard .check svg { opacity: 0; transform: scale(.6); transition: all .18s ease; }
+    .scard[aria-pressed="true"], .scard[aria-checked="true"] {
+      border-color: var(--accent); background: var(--accent-soft);
+      box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow-sm);
+    }
+    .scard[aria-pressed="true"] .sic, .scard[aria-checked="true"] .sic { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .scard[aria-pressed="true"] .check, .scard[aria-checked="true"] .check { background: var(--accent); border-color: var(--accent); }
+    .scard[aria-pressed="true"] .check svg, .scard[aria-checked="true"] .check svg { opacity: 1; transform: none; }
+
+    /* ---------- Tone cards (compact multi) ---------- */
+    .tones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .tone {
+      text-align: center; background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm); padding: 14px 10px; font-size: .92rem; font-weight: 600;
+      transition: all .16s ease; box-shadow: var(--shadow-sm); position: relative;
+    }
+    .tone:hover { border-color: #bcc6ca; }
+    .tone:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+    .tone[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); box-shadow: 0 0 0 1px var(--accent) inset; }
+    .tone.recommended { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .tone .rec-tag { font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); background: #fff; border: 1px solid var(--accent-line); padding: 2px 7px; border-radius: 999px; }
+
+    /* Tone example */
+    .tone-example { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); }
+    .tone-example .te-label { font-size: .78rem; color: var(--text-3); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .tone-example .te-text { font-family: var(--serif); font-size: 1.25rem; line-height: 1.35; color: var(--text); }
+    .regen { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--accent); font-size: .8rem; font-weight: 600; padding: 4px 6px; border-radius: 7px; }
+    .regen:hover { background: var(--accent-soft); }
+
+    /* ---------- Audience chips ---------- */
+    .aud-panel { display: none; margin-top: 22px; }
+    .aud-panel.show { display: block; animation: stepIn .25s ease; }
+    .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 999px; padding: 8px 8px 8px 14px; font-size: .9rem; font-weight: 500; box-shadow: var(--shadow-sm); }
+    .chip .x { width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--surface-2); color: var(--text-3); display: grid; place-items: center; }
+    .chip .x:hover { background: var(--danger-soft); color: var(--danger); }
+    .chip-input { border: 1px dashed var(--border-strong); background: none; border-radius: 999px; padding: 8px 14px; font-size: .9rem; color: var(--text-2); }
+    .chip-input:focus { outline: none; border-color: var(--accent); border-style: solid; box-shadow: var(--ring); }
+    .aud-note { font-size: .82rem; color: var(--text-3); margin-top: 12px; }
+
+    /* ---------- Advanced disclosure ---------- */
+    .advanced { margin-top: 8px; }
+    .adv-toggle { display: inline-flex; align-items: center; gap: 7px; background: none; border: none; color: var(--text-2); font-size: .86rem; font-weight: 600; padding: 8px 0; }
+    .adv-toggle:hover { color: var(--text); }
+    .adv-toggle .chev { transition: transform .2s ease; }
+    .adv-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+    .adv-body { display: none; padding-top: 8px; }
+    .adv-body.show { display: block; animation: stepIn .22s ease; }
+    .upload {
+      display: flex; align-items: center; gap: 12px; border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm); padding: 14px; color: var(--text-2); font-size: .9rem; background: var(--surface-2);
+    }
+    .upload .u-ic { width: 36px; height: 36px; border-radius: 8px; background: #fff; border: 1px solid var(--border); display: grid; place-items: center; color: var(--text-3); flex: none; }
+
+    /* ---------- Summary ---------- */
+    .sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sum { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
+    .sum.wide { grid-column: 1 / -1; }
+    .sum-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .sum-k { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+    .sum-edit { background: none; border: none; color: var(--accent); font-size: .8rem; font-weight: 600; padding: 3px 7px; border-radius: 7px; }
+    .sum-edit:hover { background: var(--accent-soft); }
+    .sum-v { font-size: .96rem; font-weight: 500; }
+    .sum-v .muted { color: var(--text-3); font-weight: 400; }
+    .sum-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .sum-tag { font-size: .8rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+
+    /* ---------- Footer nav ---------- */
+    .footnav {
+      position: sticky; bottom: 0; z-index: 15; background: linear-gradient(180deg, rgba(246,247,248,0), var(--bg) 34%);
+      padding: 16px clamp(16px,4vw,28px) 20px;
+    }
+    .footnav-inner { max-width: 760px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius-sm); font-weight: 600; font-size: .95rem; padding: 12px 22px; border: 1px solid transparent; transition: background .15s ease, border-color .15s ease, transform .12s ease, box-shadow .15s ease; }
+    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(0,126,167,.25); }
+    .btn-primary:hover { background: var(--accent-ink); }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-primary:disabled { background: #a9c6d2; box-shadow: none; cursor: default; }
+    .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+    .btn-secondary:hover { border-color: #bcc6ca; background: var(--surface-2); }
+    .btn-ghost { background: none; color: var(--text-2); }
+    .btn-ghost:hover { color: var(--text); background: rgba(16,36,44,.05); }
+    .foot-left { display: flex; align-items: center; gap: 8px; }
+    .foot-right { display: flex; align-items: center; gap: 10px; }
+
+    /* ---------- Success overlay ---------- */
+    .done { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: none; place-items: center; text-align: center; padding: 24px; }
+    .done.show { display: grid; animation: stepIn .3s ease; }
+    .done .ring { width: 76px; height: 76px; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--accent-line); display: grid; place-items: center; color: var(--accent); margin: 0 auto 22px; }
+    .done h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(2rem,5vw,2.8rem); margin-bottom: 10px; }
+    .done p { color: var(--text-2); max-width: 40ch; margin: 0 auto 26px; }
+    .creating { display: none; align-items: center; gap: 12px; color: var(--accent-ink); font-size: .95rem; }
+    .creating.show { display: inline-flex; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 620px) {
+      .dcards, .cards, .sum-grid { grid-template-columns: 1fr; }
+      .tones { grid-template-columns: 1fr 1fr; }
+      .dcard.wide, .sum.wide { grid-column: auto; }
+      .step .sub { margin-bottom: 24px; }
+      .url-row { flex-direction: column; }
+      .analyze-btn { padding: 12px 16px; }
+      .btn { padding: 13px 18px; flex: 1; }
+      .foot-right { flex: 1; }
+      .foot-right .btn { flex: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="top">
+    <div class="top-row">
+      <a class="logo" href="index.html"><span class="spark">✦</span> Hipoclipse</a>
+      <div class="top-right">
+        <span class="saved" id="saved" role="status" aria-live="polite"><span class="dot"></span> Saved</span>
+        <button class="link-btn" id="saveExit">Save &amp; exit</button>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-meta">
+        <span class="progress-step" id="progStep">Step 1 of 6</span>
+        <span class="progress-label" id="progLabel">Brand</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progFill"></div></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+
+      <!-- ===== STEP 1 · BRAND ===== -->
+      <section class="step active" id="step-1" aria-labelledby="t1">
+        <p class="eyebrow">Brand</p>
+        <h1 id="t1">Let's set up your brand</h1>
+        <p class="sub">Add a few details so we can personalize your campaigns. The fastest way is to drop in your website — we'll do the rest.</p>
+
+        <div class="field" id="f-website">
+          <label for="website">Website <span class="opt">— the smart way to start</span></label>
+          <div class="url-row">
+            <input class="control" type="url" id="website" inputmode="url" autocomplete="url" placeholder="yourbrand.com" />
+            <button class="analyze-btn" id="analyzeBtn" type="button">Analyze site</button>
+          </div>
+          <p class="help">We'll read your public site to detect your brand name, description, industry, colors, and tone. Nothing is posted anywhere.</p>
+          <p class="err" id="e-website"><span aria-hidden="true">⚠</span> <span></span></p>
+        </div>
+
+        <div class="analysis-status" id="analysisStatus" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="analysisText">Analyzing your website…</span>
+        </div>
+
+        <div class="detected" id="detected" aria-live="polite">
+          <div class="detected-head">
+            <span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Detected</span>
+            Review and edit anything before continuing.
+          </div>
+          <div class="dcards">
+            <div class="dcard" data-d="brand">
+              <div class="k">Brand name <button class="edit-mini" type="button" data-edit>Edit</button></div>
+              <div class="v" data-view></div>
+              <input class="v-edit" data-input hidden />
+            </div>
+            <div class="dcard" data-d="industry">
+              <div class="k">Industry <button class="edit-mini" type="button" data-edit>Edit</button></div>
+              <div class="v" data-view></div>
+              <input class="v-edit" data-input hidden />
+            </div>
+            <div class="dcard wide" data-d="description">
+              <div class="k">What you do <button class="edit-mini" type="button" data-edit>Edit</button></div>
+              <div class="v" data-view></div>
+              <textarea class="v-edit" data-input rows="2" hidden></textarea>
+            </div>
+            <div class="dcard" data-d="colors">
+              <div class="k">Brand colors</div>
+              <div class="swatches" id="dColors"></div>
+            </div>
+            <div class="dcard" data-d="logo">
+              <div class="k">Logo &amp; tone</div>
+              <div class="logo-chip"><span class="logo-mark" id="dLogo"></span><span class="v" id="dTone" style="font-weight:500"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" id="f-brand">
+          <label for="brandName">Brand or business name</label>
+          <input class="control" type="text" id="brandName" autocomplete="organization" placeholder="e.g. Hipoclipse" />
+          <p class="err" id="e-brand"><span aria-hidden="true">⚠</span> <span></span></p>
+        </div>
+
+        <div class="field" id="f-industry">
+          <label for="industry">Industry <span class="opt">(optional)</span></label>
+          <input class="control" type="text" id="industry" placeholder="e.g. Marketing software" />
+        </div>
+
+        <div class="field" id="f-desc">
+          <label for="brandDesc">What does your business do? <span class="opt">(optional)</span></label>
+          <textarea class="control" id="brandDesc" rows="3" placeholder="One or two lines is plenty — what you offer and who it's for."></textarea>
+        </div>
+      </section>
+
+      <!-- ===== STEP 2 · GOAL ===== -->
+      <section class="step" id="step-2" aria-labelledby="t2">
+        <p class="eyebrow">Goal</p>
+        <h1 id="t2">What do you want this campaign to achieve?</h1>
+        <p class="sub">Pick the one that matters most right now. We'll shape everything around it — you can change it later.</p>
+        <div class="cards" id="goalCards" role="radiogroup" aria-labelledby="t2"></div>
+        <p class="err" id="e-goal" style="margin-top:14px"><span aria-hidden="true">⚠</span> <span></span></p>
+      </section>
+
+      <!-- ===== STEP 3 · CAMPAIGN ===== -->
+      <section class="step" id="step-3" aria-labelledby="t3">
+        <p class="eyebrow">Campaign</p>
+        <h1 id="t3">Tell us about your campaign</h1>
+        <p class="sub">Keep it simple. Write like you're explaining it to a colleague — we handle the rest.</p>
+
+        <div class="field" id="f-cname">
+          <label for="campaignName">Campaign name</label>
+          <input class="control" type="text" id="campaignName" placeholder="Summer Product Launch" />
+          <p class="err" id="e-cname"><span aria-hidden="true">⚠</span> <span></span></p>
+        </div>
+
+        <div class="field" id="f-promo">
+          <label for="promo">What are you promoting?</label>
+          <textarea class="control" id="promo" rows="5" placeholder="Tell us what you want to promote. A product, service, offer, event, or anything else."></textarea>
+          <p class="help">Write naturally. You don't need to create a perfect prompt.</p>
+          <p class="err" id="e-promo"><span aria-hidden="true">⚠</span> <span></span></p>
+        </div>
+
+        <div class="advanced">
+          <button class="adv-toggle" type="button" id="advToggle3" aria-expanded="false" aria-controls="advBody3">
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>
+            Add links or an image <span class="opt" style="font-weight:500;color:var(--text-3)">(optional)</span>
+          </button>
+          <div class="adv-body" id="advBody3">
+            <div class="field">
+              <label for="productUrl">Product URL <span class="opt">(optional)</span></label>
+              <input class="control" type="url" id="productUrl" placeholder="yourbrand.com/product" />
+            </div>
+            <div class="field">
+              <label for="landingUrl">Landing page URL <span class="opt">(optional)</span></label>
+              <input class="control" type="url" id="landingUrl" placeholder="yourbrand.com/summer" />
+            </div>
+            <div class="field">
+              <label>Product image <span class="opt">(optional)</span></label>
+              <div class="upload">
+                <span class="u-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15l-5-5L5 21"/><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/></svg></span>
+                <span>Drag an image here, or <a href="#" onclick="return false">browse</a>. PNG or JPG.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== STEP 4 · AUDIENCE ===== -->
+      <section class="step" id="step-4" aria-labelledby="t4">
+        <p class="eyebrow">Audience</p>
+        <h1 id="t4">Who are you trying to reach?</h1>
+        <p class="sub">Not sure? Let us suggest a starting point based on your brand and goal — you can fine-tune it.</p>
+
+        <div class="cards" id="audModeCards" role="radiogroup" aria-labelledby="t4"></div>
+
+        <div class="aud-panel" id="audHelp">
+          <div class="detected-head" style="margin-bottom:12px">
+            <span class="badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg> Suggested</span>
+            A starting audience — remove, edit, or add your own.
+          </div>
+          <div class="chips" id="audChips"></div>
+          <p class="aud-note">Tip: keep 3–5 traits for a focused audience.</p>
+        </div>
+
+        <div class="aud-panel" id="audKnow">
+          <div class="field" style="margin-top:4px">
+            <label for="audText">Describe your audience</label>
+            <textarea class="control" id="audText" rows="4" placeholder="e.g. Small business owners in the US, 30–50, who run online stores and want to grow sales."></textarea>
+            <p class="help">Plain language is perfect — roles, interests, age, or location.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== STEP 5 · VOICE ===== -->
+      <section class="step" id="step-5" aria-labelledby="t5">
+        <p class="eyebrow">Voice</p>
+        <h1 id="t5">How should your brand sound?</h1>
+        <p class="sub">Choose one or a few. This shapes the wording in every post we create for you.</p>
+        <div class="tones" id="toneCards"></div>
+        <p class="err" id="e-tone" style="margin-top:14px"><span aria-hidden="true">⚠</span> <span></span></p>
+
+        <div class="tone-example" id="toneExample">
+          <div class="te-label">Here's how your brand might sound
+            <button class="regen" type="button" id="regenBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg> Regenerate</button>
+          </div>
+          <p class="te-text" id="teText">Pick a voice above to preview a sample line.</p>
+        </div>
+      </section>
+
+      <!-- ===== STEP 6 · REVIEW ===== -->
+      <section class="step" id="step-6" aria-labelledby="t6">
+        <p class="eyebrow">Review</p>
+        <h1 id="t6">Everything looks good</h1>
+        <p class="sub">Here's your campaign at a glance. Edit anything, or create it now — you can change these settings anytime.</p>
+        <div class="sum-grid" id="summary"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer nav -->
+  <div class="footnav">
+    <div class="footnav-inner">
+      <div class="foot-left">
+        <button class="btn btn-ghost" id="backBtn" style="visibility:hidden">← Back</button>
+      </div>
+      <div class="foot-right">
+        <button class="btn btn-ghost" id="skipBtn" style="display:none">Skip for now</button>
+        <button class="btn btn-primary" id="nextBtn">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success -->
+  <div class="done" id="done">
+    <div>
+      <div class="ring"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>
+      <h2 id="doneTitle">Your campaign is ready</h2>
+      <p id="doneText">We've set everything up. You can review and launch it from your dashboard whenever you're ready.</p>
+      <div class="foot-right" style="justify-content:center">
+        <a class="btn btn-secondary" href="index.html">Back to home</a>
+        <button class="btn btn-primary" id="doneCta">Go to dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+    var STORE = "hipoclipse_onboarding_v1";
+    var TOTAL = 6;
+    var LABELS = ["Brand", "Goal", "Campaign", "Audience", "Voice", "Review"];
+
+    // ---------- State ----------
+    var state = {
+      step: 1,
+      website: "", brandName: "", industry: "", brandDesc: "",
+      analyzed: false, detected: null,
+      goal: "",
+      campaignName: "", promo: "", productUrl: "", landingUrl: "",
+      audMode: "help", audChips: [], audText: "",
+      tones: [], exampleIdx: 0
+    };
+    try { var saved = JSON.parse(localStorage.getItem(STORE) || "null"); if (saved) state = Object.assign(state, saved); } catch (e) {}
+
+    var savedEl = document.getElementById("saved"), saveTimer;
+    function persist() {
+      try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+      savedEl.classList.add("show");
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () { savedEl.classList.remove("show"); }, 1400);
+    }
+
+    // ---------- Data ----------
+    var GOALS = [
+      ["leads", "Get more leads", "Capture people interested in what you offer.", "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M19 8v6M22 11h-6"],
+      ["sales", "Increase sales", "Turn interest into purchases.", "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 5h12M9 21a1 1 0 100-2 1 1 0 000 2m8 0a1 1 0 100-2 1 1 0 000 2"],
+      ["traffic", "Drive website traffic", "Send more visitors to your site.", "M13 2L3 14h7l-1 8 10-12h-7l1-8z"],
+      ["awareness", "Build brand awareness", "Help more people discover you.", "M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 11-5.8-1.6"],
+      ["product", "Promote a product", "Put a specific product in the spotlight.", "M21 16V8a2 2 0 00-1-1.7l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.7l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.3 7L12 12l8.7-5M12 22V12"],
+      ["offer", "Promote an offer", "Push a limited deal or discount.", "M20.6 13.4L11 3.8A2 2 0 009.6 3H4a1 1 0 00-1 1v5.6a2 2 0 00.6 1.4l9.6 9.6a2 2 0 002.8 0l4.6-4.6a2 2 0 000-2.6zM7.5 7.5h.01"],
+      ["other", "Something else", "You have a different goal in mind.", "M5 12h.01M12 12h.01M19 12h.01"]
+    ];
+    var AUD_MODES = [
+      ["help", "Help me choose", "We'll suggest an audience from your brand and goal.", "M12 2a7 7 0 00-4 12.7V17a1 1 0 001 1h6a1 1 0 001-1v-2.3A7 7 0 0012 2zM9 21h6"],
+      ["know", "I know my audience", "Describe exactly who you want to reach.", "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.9"]
+    ];
+    var TONES = ["Professional", "Friendly", "Bold", "Premium", "Playful", "Minimal", "Conversational"];
+    var PALETTES = [["#007ea7","#80ced7","#003249"],["#2f6f4f","#a7d7a0","#123524"],["#5b3fa8","#c9b6f2","#221046"],["#b8532a","#f0c38e","#3a1d10"],["#0f5f8a","#7ec8e3","#04243a"]];
+    var IND_GUESS = ["Marketing software","Consumer products","Professional services","E-commerce","SaaS platform","Health & wellness","Education","Finance"];
+
+    function titleCaseDomain(url) {
+      var d = (url || "").trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[\/?#]/)[0].split(".")[0] || "your brand";
+      return d.replace(/[-_]+/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    // ---------- Element refs ----------
+    var $ = function (id) { return document.getElementById(id); };
+    var steps = [].slice.call(document.querySelectorAll(".step"));
+    var backBtn = $("backBtn"), nextBtn = $("nextBtn"), skipBtn = $("skipBtn");
+
+    // ---------- Navigation / progress ----------
+    function render() {
+      steps.forEach(function (s, i) { s.classList.toggle("active", i === state.step - 1); });
+      $("progStep").textContent = "Step " + state.step + " of " + TOTAL;
+      $("progLabel").textContent = LABELS[state.step - 1];
+      $("progFill").style.width = (state.step / TOTAL * 100) + "%";
+      backBtn.style.visibility = state.step === 1 ? "hidden" : "visible";
+      skipBtn.style.display = state.step === 1 ? "inline-flex" : "none";
+      nextBtn.textContent = state.step === TOTAL ? "Create campaign" : "Continue";
+      if (state.step === 6) renderSummary();
+      if (state.step === 4) syncAudPanels();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      persist();
+    }
+    function goto(n) { state.step = Math.min(TOTAL, Math.max(1, n)); render(); }
+
+    backBtn.onclick = function () { clearErrors(); goto(state.step - 1); };
+    skipBtn.onclick = function () { clearErrors(); goto(state.step + 1); };
+    nextBtn.onclick = function () { if (validateStep(state.step)) { if (state.step === TOTAL) createCampaign(); else goto(state.step + 1); } };
+    $("saveExit").onclick = function () { persist(); window.location.href = "index.html"; };
+
+    // ---------- Errors ----------
+    function setErr(fieldId, msg) {
+      var f = $("f-" + fieldId); if (!f) return;
+      f.classList.add("invalid");
+      var e = $("e-" + fieldId); if (e) e.querySelector("span:last-child").textContent = msg;
+    }
+    function clearErr(fieldId) { var f = $("f-" + fieldId); if (f) f.classList.remove("invalid"); }
+    function inlineErr(id, msg) { var e = $(id); if (e) { e.style.display = "flex"; e.querySelector("span:last-child").textContent = msg; } }
+    function clearErrors() {
+      [].slice.call(document.querySelectorAll(".field.invalid")).forEach(function (f) { f.classList.remove("invalid"); });
+      ["e-goal","e-tone"].forEach(function (id) { var e = $(id); if (e) e.style.display = "none"; });
+    }
+
+    function looksLikeUrl(v) { return /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(v.trim()); }
+
+    function validateStep(n) {
+      clearErrors();
+      if (n === 1) {
+        if (state.website && !looksLikeUrl(state.website)) { setErr("website", "Enter a complete website address, like yourbrand.com"); $("website").focus(); return false; }
+        if (!state.brandName.trim()) { setErr("brand", "Add your brand name to continue."); $("brandName").focus(); return false; }
+      }
+      if (n === 2 && !state.goal) { inlineErr("e-goal", "Choose a goal to continue."); return false; }
+      if (n === 3) {
+        var ok = true;
+        if (!state.campaignName.trim()) { setErr("cname", "Give your campaign a name so you can find it later."); ok = false; }
+        if (!state.promo.trim()) { setErr("promo", "Tell us what you're promoting — a sentence is enough."); ok = false; }
+        if (!ok) return false;
+      }
+      if (n === 4 && state.audMode === "know" && !state.audText.trim()) { setErr("promo","" ); /* noop */ }
+      if (n === 5 && state.tones.length === 0) { inlineErr("e-tone", "Pick at least one voice — or a few."); return false; }
+      return true;
+    }
+
+    // ---------- Step 1: brand + website analysis ----------
+    var website = $("website"), brandName = $("brandName"), industry = $("industry"), brandDesc = $("brandDesc");
+    website.value = state.website; brandName.value = state.brandName; industry.value = state.industry; brandDesc.value = state.brandDesc;
+    website.oninput = function () { state.website = website.value; clearErr("website"); persist(); };
+    brandName.oninput = function () { state.brandName = brandName.value; clearErr("brand"); persist(); };
+    industry.oninput = function () { state.industry = industry.value; persist(); };
+    brandDesc.oninput = function () { state.brandDesc = brandDesc.value; persist(); };
+
+    var ANALYSIS_STEPS = ["Analyzing your website…", "Understanding your brand…", "Reading your tone of voice…", "Almost there…"];
+    $("analyzeBtn").onclick = function () {
+      var v = website.value.trim();
+      if (!v) { setErr("website", "Add your website address first, like yourbrand.com"); website.focus(); return; }
+      if (!looksLikeUrl(v)) { setErr("website", "Enter a complete website address, like yourbrand.com"); website.focus(); return; }
+      clearErr("website");
+      state.website = v; persist();
+      runAnalysis(v);
+    };
+
+    function runAnalysis(url) {
+      var statusEl = $("analysisStatus"), textEl = $("analysisText"), detEl = $("detected"), btn = $("analyzeBtn");
+      detEl.classList.remove("show"); statusEl.classList.add("show"); btn.disabled = true;
+      var i = 0; textEl.textContent = ANALYSIS_STEPS[0];
+      var t = setInterval(function () {
+        i++;
+        if (i < ANALYSIS_STEPS.length) { textEl.textContent = ANALYSIS_STEPS[i]; }
+        else {
+          clearInterval(t); statusEl.classList.remove("show"); btn.disabled = false;
+          var name = titleCaseDomain(url);
+          var d = {
+            brand: name,
+            industry: IND_GUESS[name.length % IND_GUESS.length],
+            description: name + " helps its customers get more done with a simple, modern product — built for teams that value clarity over complexity.",
+            colors: PALETTES[name.length % PALETTES.length],
+            tone: ["Professional", "Confident", "Friendly"][name.length % 3],
+            logoLetter: name.charAt(0).toUpperCase()
+          };
+          state.detected = d; state.analyzed = true;
+          if (!state.brandName) { state.brandName = d.brand; brandName.value = d.brand; }
+          if (!state.industry) { state.industry = d.industry; industry.value = d.industry; }
+          if (!state.brandDesc) { state.brandDesc = d.description; brandDesc.value = d.description; }
+          paintDetected(); persist();
+        }
+      }, 750);
+    }
+
+    function paintDetected() {
+      var d = state.detected; if (!d) return;
+      var detEl = $("detected");
+      detEl.classList.add("show");
+      setDCard("brand", d.brand);
+      setDCard("industry", d.industry);
+      setDCard("description", d.description);
+      var col = $("dColors"); col.innerHTML = "";
+      d.colors.forEach(function (c) { var s = document.createElement("span"); s.className = "swatch"; s.style.background = c; s.title = c; col.appendChild(s); });
+      var lm = $("dLogo"); lm.textContent = d.logoLetter; lm.style.background = d.colors[0];
+      $("dTone").textContent = d.tone + " tone";
+    }
+    function setDCard(key, val) {
+      var card = document.querySelector('.dcard[data-d="' + key + '"]'); if (!card) return;
+      card.querySelector("[data-view]").textContent = val;
+      var input = card.querySelector("[data-input]"); if (input) input.value = val;
+    }
+    // detected inline edit
+    [].slice.call(document.querySelectorAll(".dcard [data-edit]")).forEach(function (btn) {
+      btn.onclick = function () {
+        var card = btn.closest(".dcard"), view = card.querySelector("[data-view]"), input = card.querySelector("[data-input]");
+        if (input.hidden) { input.hidden = false; view.style.display = "none"; input.focus(); btn.textContent = "Done"; }
+        else {
+          input.hidden = true; view.style.display = ""; btn.textContent = "Edit";
+          view.textContent = input.value;
+          var key = card.getAttribute("data-d");
+          if (state.detected) {
+            if (key === "brand") { state.detected.brand = input.value; state.brandName = input.value; brandName.value = input.value; }
+            if (key === "industry") { state.detected.industry = input.value; state.industry = input.value; industry.value = input.value; }
+            if (key === "description") { state.detected.description = input.value; state.brandDesc = input.value; brandDesc.value = input.value; }
+          }
+          persist();
+        }
+      };
+    });
+    if (state.analyzed && state.detected) paintDetected();
+
+    // ---------- Step 2: goal cards ----------
+    var goalWrap = $("goalCards");
+    GOALS.forEach(function (g) {
+      var b = document.createElement("button");
+      b.className = "scard"; b.type = "button"; b.setAttribute("role", "radio"); b.setAttribute("aria-checked", state.goal === g[0] ? "true" : "false");
+      b.dataset.val = g[0];
+      b.innerHTML =
+        '<span class="sic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + g[3] + '"/></svg></span>' +
+        '<span><span class="st">' + g[1] + '</span><span class="sd">' + g[2] + '</span></span>' +
+        '<span class="check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>';
+      b.onclick = function () {
+        state.goal = g[0];
+        [].slice.call(goalWrap.children).forEach(function (c) { c.setAttribute("aria-checked", c === b ? "true" : "false"); });
+        $("e-goal").style.display = "none"; persist();
+      };
+      goalWrap.appendChild(b);
+    });
+
+    // ---------- Step 3: campaign ----------
+    var cname = $("campaignName"), promo = $("promo"), pUrl = $("productUrl"), lUrl = $("landingUrl");
+    cname.value = state.campaignName; promo.value = state.promo; pUrl.value = state.productUrl; lUrl.value = state.landingUrl;
+    cname.oninput = function () { state.campaignName = cname.value; clearErr("cname"); persist(); };
+    promo.oninput = function () { state.promo = promo.value; clearErr("promo"); persist(); };
+    pUrl.oninput = function () { state.productUrl = pUrl.value; persist(); };
+    lUrl.oninput = function () { state.landingUrl = lUrl.value; persist(); };
+    var adv3 = $("advToggle3");
+    adv3.onclick = function () {
+      var open = adv3.getAttribute("aria-expanded") === "true";
+      adv3.setAttribute("aria-expanded", String(!open));
+      $("advBody3").classList.toggle("show", !open);
+    };
+    if (state.productUrl || state.landingUrl) { adv3.setAttribute("aria-expanded","true"); $("advBody3").classList.add("show"); }
+
+    // ---------- Step 4: audience ----------
+    var audWrap = $("audModeCards");
+    AUD_MODES.forEach(function (m) {
+      var b = document.createElement("button");
+      b.className = "scard"; b.type = "button"; b.setAttribute("role", "radio"); b.setAttribute("aria-checked", state.audMode === m[0] ? "true" : "false");
+      b.innerHTML =
+        '<span class="sic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + m[3] + '"/></svg></span>' +
+        '<span><span class="st">' + m[1] + '</span><span class="sd">' + m[2] + '</span></span>' +
+        '<span class="check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>';
+      b.onclick = function () {
+        state.audMode = m[0];
+        [].slice.call(audWrap.children).forEach(function (c) { c.setAttribute("aria-checked", c === b ? "true" : "false"); });
+        if (m[0] === "help" && state.audChips.length === 0) generateAudience();
+        syncAudPanels(); persist();
+      };
+      audWrap.appendChild(b);
+    });
+    var audText = $("audText"); audText.value = state.audText;
+    audText.oninput = function () { state.audText = audText.value; persist(); };
+
+    function generateAudience() {
+      var byGoal = {
+        leads: ["Decision-makers at growing companies", "Age 28–45", "Actively looking for solutions"],
+        sales: ["Ready-to-buy shoppers", "Value quality and trust", "Comparing options now"],
+        traffic: ["Curious first-time visitors", "Discover brands online", "Mobile-first browsers"],
+        awareness: ["People new to your space", "Age 25–40", "Active on social platforms"],
+        product: ["Fans of your product category", "Early adopters", "Willing to try something new"],
+        offer: ["Deal-seekers", "Price-conscious buyers", "Follow brands for offers"],
+        other: ["Your ideal customers", "Age 25–45", "Interested in what you do"]
+      };
+      var base = (byGoal[state.goal] || byGoal.other).slice();
+      base.push("Based in major cities");
+      state.audChips = base;
+    }
+    function syncAudPanels() {
+      $("audHelp").classList.toggle("show", state.audMode === "help");
+      $("audKnow").classList.toggle("show", state.audMode === "know");
+      if (state.audMode === "help") { if (state.audChips.length === 0) generateAudience(); paintChips(); }
+    }
+    function paintChips() {
+      var wrap = $("audChips"); wrap.innerHTML = "";
+      state.audChips.forEach(function (txt, idx) {
+        var c = document.createElement("span"); c.className = "chip";
+        var label = document.createElement("span"); label.textContent = txt; label.tabIndex = 0; label.setAttribute("role","textbox"); label.setAttribute("aria-label", "Audience trait: " + txt + ". Press Enter to edit.");
+        label.onclick = function () { editChip(idx, label); };
+        label.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); editChip(idx, label); } };
+        var x = document.createElement("button"); x.className = "x"; x.type = "button"; x.setAttribute("aria-label", "Remove " + txt);
+        x.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+        x.onclick = function () { state.audChips.splice(idx, 1); paintChips(); persist(); };
+        c.appendChild(label); c.appendChild(x); wrap.appendChild(c);
+      });
+      var add = document.createElement("input"); add.className = "chip-input"; add.placeholder = "+ Add a trait"; add.setAttribute("aria-label", "Add an audience trait");
+      add.onkeydown = function (e) { if (e.key === "Enter" && add.value.trim()) { state.audChips.push(add.value.trim()); paintChips(); persist(); wrap.querySelector(".chip-input").focus(); } };
+      wrap.appendChild(add);
+    }
+    function editChip(idx, label) {
+      var inp = document.createElement("input"); inp.className = "chip-input"; inp.value = state.audChips[idx]; inp.style.minWidth = "160px";
+      label.replaceWith(inp); inp.focus(); inp.select();
+      function commit() { var v = inp.value.trim(); if (v) { state.audChips[idx] = v; } paintChips(); persist(); }
+      inp.onblur = commit; inp.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); commit(); } };
+    }
+
+    // ---------- Step 5: voice ----------
+    var toneWrap = $("toneCards");
+    function buildTones() {
+      toneWrap.innerHTML = "";
+      if (state.analyzed) {
+        var rec = document.createElement("button");
+        rec.className = "tone recommended"; rec.type = "button"; rec.setAttribute("aria-pressed", state.tones.indexOf("__site") > -1 ? "true" : "false");
+        rec.innerHTML = 'Use my website tone <span class="rec-tag">Recommended</span>';
+        rec.onclick = function () { toggleTone("__site", rec); };
+        toneWrap.appendChild(rec);
+      }
+      TONES.forEach(function (t) {
+        var b = document.createElement("button");
+        b.className = "tone"; b.type = "button"; b.textContent = t; b.setAttribute("aria-pressed", state.tones.indexOf(t) > -1 ? "true" : "false");
+        b.onclick = function () { toggleTone(t, b); };
+        toneWrap.appendChild(b);
+      });
+    }
+    function toggleTone(val, el) {
+      var i = state.tones.indexOf(val);
+      if (i > -1) state.tones.splice(i, 1); else state.tones.push(val);
+      el.setAttribute("aria-pressed", state.tones.indexOf(val) > -1 ? "true" : "false");
+      $("e-tone").style.display = "none";
+      renderExample(); persist();
+    }
+    var EXAMPLES = {
+      Professional: ["We help teams work smarter, not harder — with tools built for real results.", "Clear strategy, measurable outcomes. That's how we help your business grow.", "Trusted by teams who value precision, reliability, and results that last."],
+      Friendly: ["Hey! We're here to make growing your business feel a whole lot easier.", "Think of us as the teammate who's always got your back. Let's grow together!", "Big goals, friendly help. We'll be with you every step of the way."],
+      Bold: ["Stop waiting. Start winning. Your breakthrough begins today.", "Ordinary won't cut it. We build campaigns that demand attention.", "Go big or go home — and we're not going home."],
+      Premium: ["Crafted for those who expect more. Refined, considered, exceptional.", "Excellence isn't an accident. It's a standard we hold with every detail.", "Where quality meets intention — an experience worthy of your brand."],
+      Playful: ["Marketing that's actually fun? Believe it. Let's make some magic. ✨", "Less boring meetings, more big wins. Ready to play?", "We put the 'yay' in campaigns. Come see what we mean!"],
+      Minimal: ["Do more. Say less. Grow faster.", "Simple tools. Real results.", "Everything you need. Nothing you don't."],
+      Conversational: ["So here's the thing — growing your brand shouldn't feel this hard. Let's fix that.", "You've got a great business. We'll help more people find it. Simple as that.", "Let's be honest: you'd rather be building than posting. We've got the posting covered."],
+      __site: ["In your own voice — warm, clear, and unmistakably you. Here's a line that sounds just right.", "Straight from your brand's tone: confident, approachable, and true to who you are.", "This reads like you wrote it yourself — because it's built on your site's voice."]
+    };
+    function renderExample() {
+      var el = $("teText");
+      if (state.tones.length === 0) { el.textContent = "Pick a voice above to preview a sample line."; return; }
+      var primary = state.tones[0];
+      var arr = EXAMPLES[primary] || EXAMPLES.Professional;
+      el.textContent = '"' + arr[state.exampleIdx % arr.length] + '"';
+    }
+    $("regenBtn").onclick = function () { state.exampleIdx++; renderExample(); persist(); };
+    buildTones(); renderExample();
+
+    // ---------- Step 6: summary ----------
+    function chipRow(arr) { return '<div class="sum-tags">' + arr.map(function (t) { return '<span class="sum-tag">' + esc(t) + '</span>'; }).join("") + '</div>'; }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" })[c]; }); }
+    function goalLabel(v) { var g = GOALS.filter(function (x) { return x[0] === v; })[0]; return g ? g[1] : "—"; }
+    function toneLabels() { return state.tones.map(function (t) { return t === "__site" ? "Website tone" : t; }); }
+
+    function renderSummary() {
+      var s = $("summary");
+      var promoText = state.promo ? (state.promo.length > 120 ? state.promo.slice(0, 120) + "…" : state.promo) : "—";
+      var audText = state.audMode === "help" ? (state.audChips.length ? "" : "—") : (state.audText || "—");
+      s.innerHTML =
+        card("Brand", 1, '<div class="sum-v">' + esc(state.brandName || "—") + (state.industry ? ' <span class="muted">· ' + esc(state.industry) + '</span>' : "") + '</div>') +
+        card("Goal", 2, '<div class="sum-v">' + esc(goalLabel(state.goal)) + '</div>') +
+        card("Campaign", 3, '<div class="sum-v">' + esc(state.campaignName || "—") + '</div>', true) +
+        card("Promoting", 3, '<div class="sum-v muted" style="font-weight:400">' + esc(promoText) + '</div>', true) +
+        card("Audience", 4, state.audMode === "help" ? chipRow(state.audChips) : '<div class="sum-v" style="font-weight:400">' + esc(audText) + '</div>', true) +
+        card("Voice", 5, toneLabels().length ? chipRow(toneLabels()) : '<div class="sum-v">—</div>', true);
+      [].slice.call(s.querySelectorAll("[data-goto]")).forEach(function (b) { b.onclick = function () { goto(+b.getAttribute("data-goto")); }; });
+    }
+    function card(k, step, body, wide) {
+      return '<div class="sum' + (wide ? " wide" : "") + '"><div class="sum-top"><span class="sum-k">' + k + '</span>' +
+        '<button class="sum-edit" type="button" data-goto="' + step + '">Edit</button></div>' + body + '</div>';
+    }
+
+    // ---------- Create ----------
+    function createCampaign() {
+      nextBtn.disabled = true; backBtn.disabled = true;
+      var done = $("done"), title = $("doneTitle"), text = $("doneText");
+      // brief contextual creating state on the button
+      nextBtn.innerHTML = '<span class="spinner" aria-hidden="true" style="border-top-color:#fff;border-color:rgba(255,255,255,.5)"></span> Creating your campaign…';
+      setTimeout(function () {
+        title.textContent = (state.campaignName || "Your campaign") + " is ready";
+        done.classList.add("show");
+        try { localStorage.removeItem(STORE); } catch (e) {}
+      }, 1400);
+    }
+    $("doneCta").onclick = function () { window.location.href = "index.html"; };
+
+    // ---------- Keyboard: Enter advances (except in textareas) ----------
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target.tagName !== "TEXTAREA" && !e.target.classList.contains("chip-input") && e.target.tagName !== "BUTTON") {
+        if (state.step < TOTAL || state.step === TOTAL) { /* let primary handle */ }
+      }
+    });
+
+    // ---------- Init ----------
+    render();
+  })();
+  </script>
+</body>
+</html>

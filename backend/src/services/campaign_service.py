@@ -111,6 +111,7 @@ class CampaignService:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         owner_id: UUID | None = None,
+        company_profile_id: UUID | None = None,
     ) -> tuple[list[Campaign], int]:
         """List campaigns with filters."""
         return await self.campaign_repository.list(
@@ -121,6 +122,7 @@ class CampaignService:
             start_date=start_date,
             end_date=end_date,
             owner_id=owner_id,
+            company_profile_id=company_profile_id,
         )
 
     async def update_campaign(

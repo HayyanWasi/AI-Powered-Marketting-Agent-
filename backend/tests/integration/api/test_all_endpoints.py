@@ -74,6 +74,7 @@ def _assert_json_content_type(response):
 def _make_campaign_request(**overrides) -> dict:
     defaults = {
         "name": "Test Campaign",
+        "company_profile_id": "00000000-0000-0000-0000-000000000000",
         "goals": {"primary": "Brand awareness", "metrics": ["impressions"], "targets": {}},
         "target_audience": {
             "segments": ["tech professionals"],
@@ -397,6 +398,9 @@ class TestCampaignCRUD:
         mock_svc_cls.return_value = mock_svc
 
         response = client.post("/api/campaigns", json=_make_campaign_request())
+        
+        if response.status_code != 201:
+            print("RESPONSE:", response.json())
 
         assert response.status_code == 201
         data = response.json()
@@ -867,47 +871,6 @@ class TestValidation:
 
 # ===========================================================================
 # 6. Workflow Engine
-# ===========================================================================
-
-
-class TestWorkflow:
-    """POST /api/workflows, GET /api/workflows/{id} — v1 workflow stubs."""
-
-    def test_execute_workflow_success(self):
-        response = client.post(
-            "/api/workflows",
-            params={"workflow_type": "campaign_generation", "campaign_id": VALID_CAMPAIGN_ID},
-            json={},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        _assert_json_content_type(response)
-
-    def test_get_workflow_status_success(self):
-        response = client.get(f"/api/workflows/{VALID_CAMPAIGN_ID}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        _assert_json_content_type(response)
-
-    def test_approve_workflow_success(self):
-        response = client.post(f"/api/workflows/{VALID_CAMPAIGN_ID}/approve", json={})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        _assert_json_content_type(response)
-
-    def test_reject_workflow_success(self):
-        response = client.post(f"/api/workflows/{VALID_CAMPAIGN_ID}/reject", json={})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        _assert_json_content_type(response)
-
-
-# ===========================================================================
-# 7. Performance assertions
 # ===========================================================================
 
 

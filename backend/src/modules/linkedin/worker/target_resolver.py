@@ -21,15 +21,20 @@ logger = logging.getLogger(__name__)
 class TargetResolver:
     """Resolves target personas into actionable posts for engagement."""
 
-    async def load_personas(self, account_id: str) -> list[TargetPersona]:
-        """Load active target personas from the database for the given account."""
+    async def load_personas(
+        self, company_profile_id: str
+    ) -> list[TargetPersona]:
+        """Load active target personas from the database for the given brand."""
+        if not company_profile_id:
+            return []
         try:
             client = get_supabase_client()
             res = (
                 client.table("linkedin_target_personas")
                 .select("*")
-                .eq("account_id", account_id)
+                .eq("company_profile_id", str(company_profile_id))
                 .eq("is_active", True)
+                .order("created_at", desc=False)
                 .execute()
             )
             personas = []
@@ -37,16 +42,20 @@ class TargetResolver:
                 personas.append(TargetPersona(**row))
             return personas
         except Exception as e:
-            logger.error("Failed to load personas for account %s: %s", account_id, e)
+            logger.error("Failed to load personas for brand %s: %s", company_profile_id, e)
             return []
 
     async def resolve_personas(
-        self, account_id: str, personas: list[TargetPersona]
+        self,
+        account_id: str,
+        personas: list[TargetPersona],
+        unipile_account_id: str | None = None,
     ) -> list[ResolvedTarget]:
         """Step 1: Search people and cache the profiles as resolved targets."""
         client = get_supabase_client()
         gateway = get_unipile_gateway()
         resolved_targets = []
+        provider_account_id = unipile_account_id or account_id
 
         for persona in personas:
             try:
@@ -86,10 +95,13 @@ class TargetResolver:
 
                 # Refresh needed: call Gateway
                 logger.info(
-                    "Refreshing targets for persona '%s' (account %s)", persona.label, account_id
+                    "Refreshing targets for persona '%s' (account %s, provider %s)",
+                    persona.label,
+                    account_id,
+                    provider_account_id,
                 )
                 profiles = await gateway.search_people(
-                    account_id, persona.search_keywords, persona.max_profiles
+                    provider_account_id, persona.search_keywords, persona.max_profiles
                 )
 
                 for prof in profiles:
@@ -126,11 +138,16 @@ class TargetResolver:
         return resolved_targets
 
     async def fetch_target_posts(
-        self, account_id: str, resolved_targets: list[ResolvedTarget], limit_per_profile: int = 3
+        self,
+        account_id: str,
+        resolved_targets: list[ResolvedTarget],
+        limit_per_profile: int = 3,
+        unipile_account_id: str | None = None,
     ) -> list[TargetPost]:
         """Step 2: Fetch recent posts from resolved target profiles."""
         gateway = get_unipile_gateway()
         target_posts = []
+        provider_account_id = unipile_account_id or account_id
 
         # Don't fetch for everyone every time, sample a few to avoid spamming the API
         sample_size = min(20, len(resolved_targets))
@@ -139,7 +156,7 @@ class TargetResolver:
         for rt in sampled_targets:
             try:
                 posts_data = await gateway.get_user_posts(
-                    account_id, rt.profile_id, limit_per_profile
+                    provider_account_id, rt.profile_id, limit_per_profile
                 )
 
                 seven_days_ago = datetime.now(UTC) - timedelta(days=7)
@@ -183,51 +200,121 @@ class TargetResolver:
         return target_posts
 
     async def get_engagement_targets(
-        self, account_id: str, personas: list[TargetPersona], count: int = 5
+        self,
+        account_id: str,
+        personas: list[TargetPersona],
+        count: int = 5,
+        unipile_account_id: str | None = None,
     ) -> list[TargetPost]:
         """High level method to get deduped engagement targets."""
-        resolved = await self.resolve_personas(account_id, personas)
-        posts = await self.fetch_target_posts(account_id, resolved)
+        resolved = await self.resolve_personas(
+            account_id, personas, unipile_account_id=unipile_account_id
+        )
+        posts = await self.fetch_target_posts(
+            account_id, resolved, unipile_account_id=unipile_account_id
+        )
 
         if not posts:
             return []
 
-        # Deduplication
+        # Deduplication against both linkedin_engaged_posts and linkedin_engagement_log
         try:
             client = get_supabase_client()
-            res = (
-                client.table("linkedin_engaged_posts")
-                .select("post_id")
-                .eq("account_id", account_id)
-                .execute()
-            )
-            engaged_ids = {row["post_id"] for row in res.data or []}
+            engaged_ids = set()
+
+            # 1. From linkedin_engaged_posts
+            try:
+                res1 = (
+                    client.table("linkedin_engaged_posts")
+                    .select("post_id")
+                    .eq("account_id", account_id)
+                    .execute()
+                )
+                engaged_ids.update(row["post_id"] for row in res1.data or [])
+            except Exception:
+                try:
+                    res1 = (
+                        client.table("linkedin_engaged_posts")
+                        .select("post_id")
+                        .eq("linkedin_account_id", account_id)
+                        .execute()
+                    )
+                    engaged_ids.update(row["post_id"] for row in res1.data or [])
+                except Exception:
+                    pass
+
+            # 2. From linkedin_engagement_log (claimed, succeeded, failed, needs_review)
+            try:
+                res2 = (
+                    client.table("linkedin_engagement_log")
+                    .select("target_post_id")
+                    .eq("linkedin_account_id", account_id)
+                    .execute()
+                )
+                engaged_ids.update(row["target_post_id"] for row in res2.data or [] if row.get("target_post_id"))
+            except Exception:
+                pass
 
             unengaged_posts = [p for p in posts if p.post_id not in engaged_ids and p.post_id]
-
             return random.sample(unengaged_posts, min(count, len(unengaged_posts)))
         except Exception as e:
             logger.error("Error during engagement deduplication: %s", e)
             return posts[:count]
 
     async def get_invite_targets(
-        self, account_id: str, personas: list[TargetPersona], count: int = 5
+        self,
+        account_id: str,
+        personas: list[TargetPersona],
+        count: int = 5,
+        unipile_account_id: str | None = None,
     ) -> list[ResolvedTarget]:
         """Return resolved profiles that have not already received an invitation."""
-        resolved = await self.resolve_personas(account_id, personas)
+        resolved = await self.resolve_personas(
+            account_id, personas, unipile_account_id=unipile_account_id
+        )
         if not resolved:
             return []
 
         try:
             client = get_supabase_client()
-            res = (
-                client.table("linkedin_engaged_posts")
-                .select("post_id")
-                .eq("account_id", account_id)
-                .eq("action_type", "invite")
-                .execute()
-            )
-            invited_profile_ids = {row["post_id"] for row in res.data or []}
+            invited_profile_ids = set()
+
+            # 1. From linkedin_engaged_posts
+            try:
+                res1 = (
+                    client.table("linkedin_engaged_posts")
+                    .select("post_id")
+                    .eq("account_id", account_id)
+                    .eq("action_type", "invite")
+                    .execute()
+                )
+                invited_profile_ids.update(row["post_id"] for row in res1.data or [])
+            except Exception:
+                try:
+                    res1 = (
+                        client.table("linkedin_engaged_posts")
+                        .select("post_id")
+                        .eq("linkedin_account_id", account_id)
+                        .eq("action_type", "invite")
+                        .execute()
+                    )
+                    invited_profile_ids.update(row["post_id"] for row in res1.data or [])
+                except Exception:
+                    pass
+
+            # 2. From linkedin_engagement_log
+            try:
+                res2 = (
+                    client.table("linkedin_engagement_log")
+                    .select("target_profile_id")
+                    .eq("linkedin_account_id", account_id)
+                    .eq("action_type", "connection_request")
+                    .execute()
+                )
+                invited_profile_ids.update(row["target_profile_id"] for row in res2.data or [] if row.get("target_profile_id"))
+            except Exception:
+                pass
+
             available = [
                 target for target in resolved if target.profile_id not in invited_profile_ids
             ]
@@ -238,16 +325,29 @@ class TargetResolver:
 
     async def record_engagement(self, account_id: str, post_id: str, action_type: str) -> None:
         """Record an engagement to prevent future duplicates."""
+        client = get_supabase_client()
         try:
-            client = get_supabase_client()
+            # Try with canonical linkedin_account_id
             client.table("linkedin_engaged_posts").upsert(
                 {
-                    "account_id": account_id,
+                    "linkedin_account_id": account_id,
                     "post_id": post_id,
                     "action_type": action_type,
                     "engaged_at": datetime.now(UTC).isoformat(),
                 },
-                on_conflict="account_id, post_id, action_type",
+                on_conflict="linkedin_account_id, post_id, action_type",
             ).execute()
-        except Exception as e:
-            logger.error("Failed to record engagement %s on post %s: %s", action_type, post_id, e)
+        except Exception:
+            # Fall back to legacy account_id
+            try:
+                client.table("linkedin_engaged_posts").upsert(
+                    {
+                        "account_id": account_id,
+                        "post_id": post_id,
+                        "action_type": action_type,
+                        "engaged_at": datetime.now(UTC).isoformat(),
+                    },
+                    on_conflict="account_id, post_id, action_type",
+                ).execute()
+            except Exception as e:
+                logger.error("Failed to record engagement %s on post %s: %s", action_type, post_id, e)

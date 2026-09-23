@@ -25,6 +25,7 @@ class GetCompanyService:
                 "brand_guidelines": profile.brand_guidelines,
                 "brand_tone": profile.brand_tone,
                 "reference_image_urls": profile.reference_image_urls,
+                "default_linkedin_account_id": profile.default_linkedin_account_id,
                 "created_at": profile.created_at,
                 "updated_at": profile.updated_at,
                 "is_complete": profile.is_complete,

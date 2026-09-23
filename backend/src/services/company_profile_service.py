@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from src.models.campaign_image import CompanyProfile
+from src.models.company import CompanyProfile
 from src.models.errors import ErrorCode
 from src.services.supabase import NotFoundError, SupabaseService, SupabaseServiceError
 

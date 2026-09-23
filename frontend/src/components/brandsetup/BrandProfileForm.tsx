@@ -7,6 +7,7 @@ interface Props {
   setFormData: React.Dispatch<React.SetStateAction<BrandProfileData>>;
   onSave: () => void;
   isSaved: boolean;
+  isSaving?: boolean;
 }
 
 export default function BrandProfileForm({
@@ -14,6 +15,7 @@ export default function BrandProfileForm({
   setFormData,
   onSave,
   isSaved,
+  isSaving = false,
 }: Props) {
   return (
     <div className="rounded-lg bg-[#111820] border border-[#25303B] divide-y divide-[#25303B] shadow-sm">
@@ -167,7 +169,7 @@ export default function BrandProfileForm({
       {/* Save Confirmation Notification Banner */}
       {isSaved && (
         <div className="px-6 py-3.5 bg-emerald-500/10 border-t border-emerald-500/20 text-emerald-400 text-xs sm:text-sm font-medium flex items-center justify-between">
-          <span>Changes saved successfully. Brand voice signature updated in vector memory.</span>
+          <span>Brand Setup saved successfully.</span>
         </div>
       )}
 
@@ -186,9 +188,10 @@ export default function BrandProfileForm({
         <button
           type="button"
           onClick={onSave}
+          disabled={isSaving}
           className="px-5 py-2 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs sm:text-sm font-medium transition-colors shadow-sm cursor-pointer"
         >
-          Save changes
+          {isSaving ? "Saving..." : "Save changes"}
         </button>
       </div>
     </div>

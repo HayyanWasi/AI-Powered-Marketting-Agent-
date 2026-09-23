@@ -1,7 +1,7 @@
 export interface AutopilotSettings {
-  daily_connections: number; // e.g. 15 (min: 1, max: 25)
-  daily_likes: number;       // e.g. 20 (min: 1, max: 40)
-  daily_comments: number;    // e.g. 10 (min: 1, max: 15)
+  daily_connections: number; // default/cap: 25
+  daily_likes: number;       // default/cap: 40
+  daily_comments: number;    // default/cap: 15
   post_time_slot: string;    // e.g. "10:00 AM"
   video_time_slot: string;   // e.g. "04:00 PM"
 }

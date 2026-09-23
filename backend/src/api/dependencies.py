@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from src.modules.operations.services.platform_operations import PlatformOperationsService
 
@@ -101,6 +101,14 @@ async def get_authenticated_user(
         except HTTPException:
             raise
         except Exception as e:
+            import httpx
+            if isinstance(e, httpx.RequestError):
+                logger.error("Supabase auth network error: %s", e)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Authentication service unreachable."
+                ) from e
+            
             logger.warning("Supabase token verification failed: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -108,7 +116,9 @@ async def get_authenticated_user(
                 headers={"WWW-Authenticate": "Bearer"},
             ) from e
 
-    if x_user_id:
+    from src.config.settings import settings
+
+    if x_user_id and not settings.REQUIRE_AUTH:
         try:
             UUID(x_user_id)
         except ValueError as err:
@@ -136,6 +146,11 @@ async def get_authenticated_user(
         roles=["admin"],
         permissions=["read", "write", "delete"],
     )
+
+
+async def require_user(user: AuthenticatedUser = Depends(get_authenticated_user)) -> str:
+    """Convenience dependency returning the authenticated user ID."""
+    return user.id
 
 
 async def require_permission(resource: str, action: str) -> None:

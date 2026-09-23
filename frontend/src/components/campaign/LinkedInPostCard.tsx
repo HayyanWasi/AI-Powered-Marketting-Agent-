@@ -11,6 +11,16 @@ interface Props {
 }
 
 export default function LinkedInPostCard({ post, index }: Props) {
+  const scheduledLabel = post.scheduledAt
+    ? new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: post.timezone || "UTC",
+      timeZoneName: "short",
+    }).format(new Date(post.scheduledAt))
+    : null;
   const [editedContent, setEditedContent] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -61,8 +71,8 @@ export default function LinkedInPostCard({ post, index }: Props) {
       } else {
         alert("Could not publish to LinkedIn. Please check backend connection.");
       }
-    } catch (err: any) {
-      alert(err.message || "Failed to publish post to LinkedIn.");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to publish post to LinkedIn.");
     } finally {
       setIsPublishing(false);
     }
@@ -116,8 +126,8 @@ export default function LinkedInPostCard({ post, index }: Props) {
             type="button"
             onClick={handleCopy}
             className={`px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${copied
-                ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30"
-                : "bg-white/[0.06] text-[#F5F7FA] hover:bg-white/[0.1] border border-white/[0.08]"
+              ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30"
+              : "bg-white/[0.06] text-[#F5F7FA] hover:bg-white/[0.1] border border-white/[0.08]"
               }`}
           >
             {copied ? (
@@ -139,10 +149,10 @@ export default function LinkedInPostCard({ post, index }: Props) {
             disabled={isPublishing || published}
             onClick={handlePublish}
             className={`px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${published
-                ? "bg-[#10B981] text-[#0E141B]"
-                : isPublishing
-                  ? "bg-[#20B8E5]/50 text-[#0E141B] cursor-wait"
-                  : "bg-[#20B8E5] hover:bg-[#1BA1CA] text-[#0E141B]"
+              ? "bg-[#10B981] text-[#0E141B]"
+              : isPublishing
+                ? "bg-[#20B8E5]/50 text-[#0E141B] cursor-wait"
+                : "bg-[#20B8E5] hover:bg-[#1BA1CA] text-[#0E141B]"
               }`}
           >
             {published ? (
@@ -185,6 +195,14 @@ export default function LinkedInPostCard({ post, index }: Props) {
 
       {/* Post Content Body */}
       <div className="mb-4">
+        {post.mediaType === "video" && post.mediaUrl && (
+          <video
+            src={post.mediaUrl}
+            controls
+            preload="metadata"
+            className="mb-4 max-h-[520px] w-full rounded-lg bg-black object-contain"
+          />
+        )}
         {isEditing ? (
           <textarea
             ref={textareaRef}
@@ -207,7 +225,10 @@ export default function LinkedInPostCard({ post, index }: Props) {
       {/* Bottom Metrics Bar */}
       <div className="pt-3 border-t border-white/[0.04] flex items-center justify-between text-[11px] text-[#6B7785] font-mono">
         <span>{charCount} chars • {wordCount} words</span>
-        <span>{charCount > 3000 ? "Over LinkedIn limit" : "Optimal feed length"}</span>
+        <span>
+          {charCount > 3000 ? "Over LinkedIn limit" : "Optimal feed length"}
+          {scheduledLabel ? ` • Scheduled ${scheduledLabel}` : ""}
+        </span>
       </div>
     </div>
   );

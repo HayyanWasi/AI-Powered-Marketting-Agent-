@@ -25,14 +25,15 @@ export default function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 px-3 sm:px-6 lg:px-[45.6px] pt-2.5 transition-all duration-300">
       <nav
-        className={`max-w-[1429.57px] mx-auto h-[80px] rounded-[16px] px-6 sm:px-8 lg:px-[45.6px] transition-all duration-300 flex items-center justify-between bg-[#0e151c] border border-[#272f38]/60 ${
-          scrolled
+        className={`max-w-[1429.57px] mx-auto h-[80px] rounded-[16px] px-6 sm:px-8 lg:px-[45.6px] transition-all duration-300 flex items-center justify-between bg-[#0e151c] border border-[#272f38]/60 ${scrolled
             ? "shadow-2xl shadow-black/60 border-[#363b42]"
             : "shadow-xl shadow-black/30"
-        }`}
+          }`}
       >
         {/* Logo: hipoclipse */}
-        <Link href="/" className="flex items-center space-x-2 flex-shrink-0 group">
+        <Link href="/" className="flex items-center space-x-2.5 flex-shrink-0 group">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Hipoclipse" className="w-8 h-8 rounded-lg object-contain transition-transform group-hover:scale-105 duration-200" />
           <span className="text-[25px] sm:text-[27px] font-black tracking-tight text-white lowercase select-none transition-transform group-hover:scale-105 duration-200">
             hipoclipse
           </span>

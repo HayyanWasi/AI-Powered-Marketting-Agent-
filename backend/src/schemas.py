@@ -57,7 +57,7 @@ class CreateCampaignRequest(BaseModel):
     platforms: list[str] = Field(..., min_items=1)
     schedule: ScheduleBase
     metadata: dict[str, Any] | None = None
-    company_profile_id: UUID | None = None
+    company_profile_id: UUID
 
 
 class UpdateCampaignRequest(BaseModel):
@@ -101,9 +101,10 @@ class CampaignSummary(BaseModel):
 
     id: UUID
     name: str
+    company_profile_id: UUID | None = None
     state: CampaignState
-    platforms: list[str]
-    schedule: dict[str, Any]
+    platforms: list[str] = Field(default_factory=list)
+    schedule: dict[str, Any] | None = None
     updated_at: datetime
     created_at: datetime
 
@@ -113,6 +114,7 @@ class CampaignSummary(BaseModel):
 class CampaignListParams(BaseModel):
     """Query parameters for listing campaigns."""
 
+    company_profile_id: UUID | None = None
     state: CampaignState | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None

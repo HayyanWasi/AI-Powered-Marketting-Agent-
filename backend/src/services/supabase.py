@@ -56,11 +56,17 @@ def _retry(func: Any) -> Any:
 
 
 class SupabaseService:
-    def __init__(self, client: Client | None = None):
+    def __init__(self, client: Client | None = None, user_id: str | None = None):
+        self.user_id = user_id
         if client is not None:
             self.client = client
         else:
-            self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            self.client = create_client(
+                settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY or settings.SUPABASE_KEY
+            )
+
+    def _owned(self, query: Any) -> Any:
+        return query.eq("user_id", self.user_id) if self.user_id else query
 
     def _table(self) -> Any:
         return self.client.table("company_profiles")
@@ -72,10 +78,12 @@ class SupabaseService:
     def create_profile(
         self, company_name: str, brand_guidelines: str, brand_tone: str | None = None
     ) -> dict[str, Any]:
-        existing = self._table().select("id").eq("company_name", company_name).execute()
+        existing = self._owned(self._table().select("id")).eq("company_name", company_name).execute()
         if existing.data:
             raise DuplicateCompanyError(f"Company name '{company_name}' already exists")
         record = {"company_name": company_name, "brand_guidelines": brand_guidelines}
+        if self.user_id:
+            record["user_id"] = self.user_id
         if brand_tone:
             record["brand_tone"] = brand_tone
         result = self._table().insert(record).execute()
@@ -85,7 +93,7 @@ class SupabaseService:
 
     @_retry
     def get_profile(self, profile_id: str) -> dict[str, Any]:
-        result = self._table().select("*").eq("id", profile_id).execute()
+        result = self._owned(self._table().select("*")).eq("id", profile_id).execute()
         if not result.data:
             raise NotFoundError("Profile not found")
         return dict(result.data[0])
@@ -94,28 +102,27 @@ class SupabaseService:
     def update_profile(self, profile_id: str, data: dict[str, Any]) -> dict[str, Any]:
         if "company_name" in data:
             dup = (
-                self._table()
-                .select("id")
+                self._owned(self._table().select("id"))
                 .eq("company_name", data["company_name"])
                 .neq("id", profile_id)
                 .execute()
             )
             if dup.data:
                 raise DuplicateCompanyError(f"Company name '{data['company_name']}' already exists")
-        result = self._table().update(data).eq("id", profile_id).execute()
+        result = self._owned(self._table().update(data)).eq("id", profile_id).execute()
         if not result.data:
             raise NotFoundError("Profile not found")
         return dict(result.data[0])
 
     @_retry
     def delete_profile(self, profile_id: str) -> None:
-        result = self._table().delete().eq("id", profile_id).execute()
+        result = self._owned(self._table().delete()).eq("id", profile_id).execute()
         if not result.data:
             raise NotFoundError("Profile not found")
 
     @_retry
     def list_profiles(self) -> list[dict[str, Any]]:
-        result = self._table().select("*").order("updated_at", desc=True).execute()
+        result = self._owned(self._table().select("*")).order("updated_at", desc=True).execute()
         return [dict(row) for row in (result.data or [])]
 
     @_retry

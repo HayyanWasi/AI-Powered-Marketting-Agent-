@@ -12,12 +12,14 @@ that the plan round-trips to JSONB, can pin an LLM's output shape via
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from src.modules.linkedin.scheduling.models import SchedulePlan
 
 # The four top-level sections. These are the unit of refinement: a critique is
 # routed to one or more of these names, and only those are regenerated.
@@ -55,6 +57,15 @@ class PlanStatus(str, Enum):
     SUPERSEDED = "Superseded"
 
 
+class ResearchStatus(str, Enum):
+    """Provenance and availability status of external research grounding."""
+
+    AVAILABLE = "available"
+    NO_EVIDENCE = "no_evidence"
+    DEGRADED = "degraded"
+    NOT_REQUESTED = "not_requested"
+
+
 class CampaignPhase(str, Enum):
     """Phases a campaign moves through over its lifetime."""
 
@@ -78,6 +89,47 @@ class _Section(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_loose_llm_scalars(cls, data: Any) -> Any:
+        """Absorb the type-loose JSON small/local models routinely emit.
+
+        Weak models return a scalar ``str`` field as a number, boolean, or
+        one-element list, and return "nothing" as an explicit ``null`` rather
+        than omitting the key. Under strict Pydantic these each raise and fail
+        the whole specialist (→ a 502 with no data at fault). This runs before
+        field validation and, for the raw payload only:
+
+        * drops any explicit ``None`` so the field's declared default applies
+          (never crash on ``"field": null``);
+        * coerces a declared ``str`` field to text — ``str(value)`` for a
+          number/bool, comma-joined for a list of scalars.
+
+        It only coerces unambiguous scalar-to-text cases. A ``dict`` (or a
+        list containing one) in a text field is genuinely malformed
+        structured output, not mere type-looseness: it is left untouched so
+        validation still rejects it, rather than fabricating a plausible
+        string from garbage. Enums, nested models, tuples, and datetimes keep
+        their own coercers and still surface real shape errors.
+        """
+        if not isinstance(data, dict):
+            return data
+        out: dict[str, Any] = {}
+        for key, value in data.items():
+            if value is None:
+                continue
+            field = cls.model_fields.get(key)
+            if field is not None and field.annotation is str and not isinstance(value, str):
+                if isinstance(value, (int, float, bool)):
+                    value = str(value)
+                elif isinstance(value, (list, tuple)) and all(
+                    isinstance(x, (str, int, float, bool)) for x in value
+                ):
+                    value = ", ".join(str(x) for x in value if x not in (None, ""))
+                # dict / structured list: leave as-is so validation rejects it
+            out[key] = value
+        return out
+
 
 # ── Core strategy ────────────────────────────────────────────────────────
 
@@ -87,8 +139,13 @@ class SmartGoal(_Section):
 
     goal: str = ""
     metric: str = ""
-    target: str | int = ""
+    target: str | int | float = ""
     deadline: str = ""
+
+    @field_validator("target", mode="before")
+    @classmethod
+    def coerce_target(cls, v: Any) -> str:
+        return str(v) if v is not None else ""
 
 
 class Persona(_Section):
@@ -150,6 +207,13 @@ class PlatformStrategy(_Section):
     tone_adjustment: str = ""
     hashtag_strategy: str = ""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_str(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"platform": data}
+        return data
+
     @field_validator("content_formats", mode="before")
     @classmethod
     def coerce_formats(cls, v: Any) -> tuple[str, ...]:
@@ -168,6 +232,8 @@ class PhasePlan(_Section):
     @model_validator(mode="before")
     @classmethod
     def _remap_phase_keys(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"phase": data}
         if isinstance(data, dict) and "phase" not in data:
             for k in ("phase_name", "name", "title", "stage"):
                 if k in data:
@@ -216,11 +282,27 @@ class CalendarSlot(_Section):
     slot_id: str = Field(default_factory=lambda: str(uuid4()))
     date: str = ""
     platform: str = ""
+    scheduled_at_utc: datetime | None = None
+    local_time: time | None = None
+    timezone: str = ""
     phase: CampaignPhase = CampaignPhase.LAUNCH
     theme: str = ""
     format_type: str = ""
     messaging_pillar: str = ""
     cta: str = ""
+
+    @field_validator("slot_id", mode="before")
+    @classmethod
+    def coerce_slot_id(cls, v: Any) -> Any:  # noqa: N805
+        # The planner references each fixed slot by its ordinal position (1, 2,
+        # 3, …), which small/local models emit as a JSON integer rather than a
+        # string. Without this the value is rejected before
+        # ``_resolve_calendar_slot_ids`` can map that ordinal back to the
+        # canonical slot_id. Coercing to str lets the ordinal survive
+        # validation; identity is still checked strictly downstream.
+        if v is None or v == "":
+            return str(uuid4())
+        return str(v)
 
     @field_validator("phase", mode="before")
     @classmethod
@@ -251,7 +333,20 @@ class Kpi(_Section):
     name: str = ""
     funnel_stage: FunnelStage = FunnelStage.AWARENESS
     target: str = ""
+    target: str | int = ""
     measurement_method: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_str(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"name": data}
+        return data
+
+    @field_validator("target", mode="before")
+    @classmethod
+    def coerce_target(cls, v: Any) -> str:
+        return str(v) if v is not None else ""
 
     @field_validator("funnel_stage", mode="before")
     @classmethod
@@ -311,6 +406,13 @@ class Competitor(_Section):
     weaknesses: tuple[str, ...] = ()
     source_url: str = ""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_str(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"name": data}
+        return data
+
     @field_validator("strengths", "weaknesses", mode="before")
     @classmethod
     def coerce_strings(cls, v: Any) -> tuple[str, ...]:
@@ -335,8 +437,56 @@ class Competitive(_Section):
         return _coerce_tuple_dict(v)
 
 
-# ── The plan ─────────────────────────────────────────────────────────────
+# ── Chief reconciliation (delta-only synthesis) ──────────────────────────
 
+
+class ChiefAdjustments(_Section):
+    """Targeted prose corrections the chief may make to resolve conflicts.
+
+    Deliberately narrow: only cross-section prose fields, never scheduler-owned
+    identity/timing, counts, or list contents. An empty string means "no
+    change — keep the specialist's own value".
+    """
+
+    unique_selling_proposition: str = ""
+    differentiation_angle: str = ""
+    tone_of_voice: str = ""
+
+
+class ChiefReconciliation(_Section):
+    """Compact cross-section reconciliation from the chief strategist.
+
+    The chief no longer re-emits the full plan (that duplication is what pushed
+    it past the provider timeout). It names conflicts and supplies at most a few
+    targeted prose adjustments; the final CampaignPlan is assembled
+    deterministically from the five validated specialist sections.
+    """
+
+    title: str = ""
+    executive_summary: str = ""
+    consistency_notes: tuple[str, ...] = ()
+    adjustments: ChiefAdjustments = Field(default_factory=ChiefAdjustments)
+
+    @field_validator("consistency_notes", mode="before")
+    @classmethod
+    def coerce_notes(cls, v: Any) -> tuple[str, ...]:
+        return _coerce_tuple_str(v)
+
+
+# ── Identity Tracking ────────────────────────────────────────────────────
+
+class InputIdentity(BaseModel):
+    """Authoritative snapshot of the exact inputs used to generate this plan."""
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    campaign_id: UUID | None = None
+    company_profile_id: UUID | None = None
+    brand_version: str = ""
+    intake_hash: str = ""
+    user_goal: str = ""
+    generated_at: str = ""
+
+# ── The plan ─────────────────────────────────────────────────────────────
 
 class CampaignPlan(BaseModel):
     """A complete, reviewable marketing plan for one campaign."""
@@ -344,11 +494,16 @@ class CampaignPlan(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     plan_id: UUID = Field(default_factory=uuid4)
+    source_brief: dict = Field(default_factory=dict)
+    input_identity: InputIdentity | None = None
     campaign_id: UUID | None = None
     version: int = 1
     language: str = "en"
     status: PlanStatus = PlanStatus.DRAFT
     approved: bool = False
+    research_status: ResearchStatus = ResearchStatus.NOT_REQUESTED
+    research_status_reason: str = ""
+    schedule_plan: SchedulePlan | None = None
 
     title: str = ""
     executive_summary: str = ""
@@ -381,24 +536,6 @@ class CampaignPlan(BaseModel):
                 doc[k] = v
         return self.model_validate(doc)
 
-    def to_strategy_data(self):
-        """Project the plan onto the legacy StrategyData shape.
-
-        Keeps the existing generation pipeline working while it reads the
-        richer plan through ``GenerationContext.plan``.
-        """
-        from src.agents.context import StrategyData
-
-        ctas = tuple(p.primary_cta for p in self.channel_plan.phases if p.primary_cta)
-        return StrategyData(
-            usp_hook=self.core_strategy.unique_selling_proposition,
-            messaging_pillars=self.core_strategy.messaging_pillars,
-            objection_handling=tuple(
-                f"{o.objection} — {o.response}" for o in self.core_strategy.objection_handling
-            ),
-            cta_hierarchy=ctas,
-            approved=self.approved,
-        )
 
 
 class PlanMessage(BaseModel):

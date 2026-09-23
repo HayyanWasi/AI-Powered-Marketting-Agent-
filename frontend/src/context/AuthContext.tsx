@@ -4,6 +4,29 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { User, Session, AuthError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
+export interface SignUpResult {
+  error: AuthError | null;
+  data?: {
+    user: User | null;
+    session: Session | null;
+  } | null;
+  isExistingUser: boolean;
+  message?: string;
+}
+
+export function sanitizeNext(param?: string | null, fallback = "/dashboard"): string {
+  if (!param) return fallback;
+  try {
+    const decoded = decodeURIComponent(param).trim();
+    if (decoded.startsWith("/") && !decoded.startsWith("//") && !decoded.includes(":")) {
+      return decoded;
+    }
+  } catch {
+    // Decoding error fallback
+  }
+  return fallback;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -13,7 +36,9 @@ interface AuthContextType {
   setIsAuthModalOpen: (open: boolean) => void;
   signInWithOAuth: (provider: "google" | "github") => Promise<{ error: AuthError | null }>;
   signInWithPassword: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string) => Promise<SignUpResult>;
+  resetPassword: (email: string, next?: string) => Promise<{ error: AuthError | null }>;
+  updatePassword: (password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -88,20 +113,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string): Promise<SignUpResult> => {
     const redirectUrl =
       typeof window !== "undefined"
         ? `${window.location.origin}/auth/callback`
         : "http://localhost:3000/auth/callback";
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
       },
     });
-    return { error };
+
+    if (error) {
+      return { data: null, error, isExistingUser: false, message: error.message };
+    }
+
+    // Masked response detection: Supabase returns identities: [] when user already exists
+    const isExisting = Boolean(
+      data.user && (!data.user.identities || data.user.identities.length === 0)
+    );
+
+    if (isExisting) {
+      return {
+        data,
+        error: null,
+        isExistingUser: true,
+        message: "An account with this email already exists. Sign in or reset your password.",
+      };
+    }
+
+    const message = !data.session
+      ? "Check your email to confirm your account before signing in."
+      : undefined;
+
+    return {
+      data,
+      error: null,
+      isExistingUser: false,
+      message,
+    };
+  }, []);
+
+  const resetPassword = useCallback(
+    async (email: string, next?: string): Promise<{ error: AuthError | null }> => {
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "http://localhost:3000";
+      const safeNext = sanitizeNext(next, "/dashboard");
+      const redirectUrl = `${origin}/auth/reset-password?type=recovery&next=${encodeURIComponent(safeNext)}`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
+      return { error };
+    },
+    []
+  );
+
+  const updatePassword = useCallback(async (password: string) => {
+    return await supabase.auth.updateUser({ password });
   }, []);
 
   const signOut = useCallback(async () => {
@@ -124,6 +198,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithOAuth,
         signInWithPassword,
         signUp,
+        resetPassword,
+        updatePassword,
         signOut,
       }}
     >

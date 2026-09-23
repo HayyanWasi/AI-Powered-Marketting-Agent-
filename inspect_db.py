@@ -1,8 +1,14 @@
 import json
 from supabase import create_client
 
+import os
+
 url = "https://jmlreuqfwxymugglrsxu.supabase.co"
-service_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptbHJldXFmd3h5bXVnZ2xyc3h1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDEyOTQxMCwiZXhwIjoyMDk5NzA1NDEwfQ.7iCoNcGOuOhp5GWkyxRQVEOZpItIlW-F4GXv6l7Pqq8"
+service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not service_key:
+    print("Error: SUPABASE_SERVICE_ROLE_KEY not set")
+    exit(1)
 
 client = create_client(url, service_key)
 

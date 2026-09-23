@@ -14,7 +14,7 @@ def test_human_schedule_generation_bounds():
     )
     # A warmup state indicating the account is allowed 10 invites and 15 engages (likes+comments)
     warmup = WarmupState(
-        account_id="test", current_daily_invite_limit=10, current_daily_engage_limit=15
+        linkedin_account_id="test", current_daily_invite_limit=10, current_daily_engage_limit=15
     )
 
     schedule = planner.plan_and_schedule_day(config, warmup, datetime.now(UTC))
@@ -27,7 +27,8 @@ def test_human_schedule_generation_bounds():
     assert total_actions == 25
 
     # Verify sessions don't overlap with lunch
-    lunch_start = schedule.lunch_start
+    assert schedule.lunch_start is not None
+    assert schedule.lunch_duration_minutes > 0
     # Rough check that sessions start after work_start and end before work_end
     for session in schedule.sessions:
         assert session.start >= schedule.work_start

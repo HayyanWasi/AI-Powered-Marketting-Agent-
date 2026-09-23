@@ -138,11 +138,10 @@ export default function ReviewQueueCard() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-              filter === f
+            className={`flex-1 py-2 text-[11px] font-medium transition-colors ${filter === f
                 ? "text-zinc-100 border-b-2 border-amber-500"
                 : "text-zinc-500 hover:text-zinc-300"
-            }`}
+              }`}
           >
             {f === "pending_review" ? "Pending Review" : "All Comments"}
           </button>

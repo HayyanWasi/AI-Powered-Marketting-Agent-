@@ -5,8 +5,14 @@ Create the database schema for Company Profile Service.
 import httpx
 from supabase import create_client
 
+import os
+
 SUPABASE_URL = "https://jmlreuqfwxymugglrsxu.supabase.co"
-SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptbHJldXFmd3h5bXVnZ2xyc3h1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDEyOTQxMCwiZXhwIjoyMDk5NzA1NDEwfQ.7iCoNcGOuOhp5GWkyxRQVEOZpItIlW-F4GXv6l7Pqq8"
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SERVICE_KEY:
+    print("Error: SUPABASE_SERVICE_ROLE_KEY not set")
+    exit(1)
 
 client = create_client(SUPABASE_URL, SERVICE_KEY)
 

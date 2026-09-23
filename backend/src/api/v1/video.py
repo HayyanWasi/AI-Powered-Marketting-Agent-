@@ -1,10 +1,16 @@
 import logging
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel
 
 from src.agents.video_script_agent import VideoScene, VideoScriptAgent
-from src.services.campaign_service import CampaignService
+from src.api.dependencies import AuthenticatedUser, get_authenticated_user
+from src.models.video_generation_context import VideoGenerationContext
+from src.modules.planning.repositories.plan_repository import PlanNotFoundError
+from src.modules.planning.services.plan_refinement_service import PlanRefinementService
+from src.services.campaign_context_service import CampaignContextResolver, check_plan_freshness
+from src.services.video_asset_service import VideoAssetPersistenceError, VideoAssetService
 from src.services.video_generation_service import VideoGenerationError, VideoGenerationService
 
 logger = logging.getLogger(__name__)
@@ -23,6 +29,8 @@ class VideoGenerationRequest(BaseModel):
 class VideoGenerationResponse(BaseModel):
     video_url: str
     scenes: list[VideoScene]
+    asset: dict
+    draft_post: dict
 
 
 @router.post(
@@ -33,6 +41,7 @@ class VideoGenerationResponse(BaseModel):
 async def generate_campaign_video(
     campaign_id: str = Path(..., description="The ID of the campaign"),
     request_data: VideoGenerationRequest | None = None,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> VideoGenerationResponse:
     """
     On-demand endpoint to generate a short-form video (TikTok/Reels/Shorts).
@@ -41,6 +50,28 @@ async def generate_campaign_video(
     3. Renders video with MoviePy and Edge-TTS.
     4. Uploads to Supabase.
     """
+    try:
+        campaign_uuid = UUID(campaign_id)
+    except ValueError as exc:
+        raise HTTPException(422, "A real campaign must be selected before generating video.") from exc
+    inputs = await CampaignContextResolver().resolve(campaign_uuid, user.id)
+    campaign = inputs.campaign
+    try:
+        plan = await PlanRefinementService().get_plan(campaign_uuid)
+    except PlanNotFoundError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Generate the campaign strategy before generating a campaign video.",
+        ) from exc
+    if plan.campaign_id != campaign_uuid:
+        raise HTTPException(409, "The stored campaign strategy does not match this campaign.")
+    is_stale, _ = check_plan_freshness(plan, inputs)
+    if is_stale:
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign strategy is outdated because campaign or brand details changed. Regenerate the campaign strategy before generating a video.",
+        )
+
     # 1. Rate Limiting Check
     current_count = _campaign_generation_counts.get(campaign_id, 0)
     if current_count >= MAX_GENERATIONS_PER_CAMPAIGN:
@@ -58,17 +89,13 @@ async def generate_campaign_video(
 
     logger.info("Starting on-demand video generation for campaign: %s", campaign_id)
 
-    # 2. Get Campaign Context
-    if request_data and request_data.prompt:
-        context_str = request_data.prompt
-    else:
-        try:
-            service = CampaignService()
-            campaign = await service.get_campaign(campaign_id)
-            context_str = f"Campaign Name: {campaign.get('name', 'Unknown')}\nGoal: {campaign.get('goal', 'Unknown')}"
-        except Exception as e:
-            logger.warning("Could not fetch full campaign context, using fallback context: %s", e)
-            context_str = "High-energy promotional video for our latest marketing event."
+    instruction = request_data.prompt if request_data and request_data.prompt else "Create a campaign video."
+    video_context = VideoGenerationContext.from_sources(
+        inputs=inputs,
+        plan=plan,
+        owner_id=UUID(user.id),
+        user_instruction=instruction,
+    )
 
     # Increment counter early to prevent concurrent spam
     _campaign_generation_counts[campaign_id] = current_count + 1
@@ -80,7 +107,7 @@ async def generate_campaign_video(
             flush=True,
         )
         script_agent = VideoScriptAgent()
-        scenes = await script_agent.generate_script(context_str)
+        scenes = await script_agent.generate_script(video_context)
         print(
             "\n[VIDEO PIPELINE] ==================== GENERATED STORY SCRIPT ====================",
             flush=True,
@@ -96,10 +123,26 @@ async def generate_campaign_video(
 
         # 4. Generate Video File and Upload
         gen_service = VideoGenerationService()
-        video_url = await gen_service.generate_campaign_video(campaign_id, scenes)
-        print(f"[VIDEO PIPELINE] Step 4: SUCCESS! Video URL: {video_url}\n", flush=True)
+        generated = await gen_service.generate_campaign_video(campaign_id, scenes, video_context)
+        persisted = VideoAssetService().persist(
+            campaign=campaign,
+            user_id=UUID(user.id),
+            media_url=generated.video_url,
+            storage_path=generated.storage_path,
+            prompt=instruction,
+            scenes=[scene.model_dump(mode="json") for scene in scenes],
+        )
+        print(
+            f"[VIDEO PIPELINE] Step 5: SUCCESS! Video attached to scheduler: {generated.video_url}\n",
+            flush=True,
+        )
 
-        return VideoGenerationResponse(video_url=video_url, scenes=scenes)
+        return VideoGenerationResponse(
+            video_url=generated.video_url,
+            scenes=scenes,
+            asset=persisted["asset"],
+            draft_post=persisted["post"],
+        )
 
     except ValueError as ve:
         # Rollback counter on failure
@@ -107,7 +150,7 @@ async def generate_campaign_video(
             0, _campaign_generation_counts[campaign_id] - 1
         )
         logger.error("Script generation failed: %s", ve)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve)) from ve
 
     except VideoGenerationError as vge:
         _campaign_generation_counts[campaign_id] = max(
@@ -116,16 +159,21 @@ async def generate_campaign_video(
         logger.error("Video rendering failed: %s", vge)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Rendering failed: {vge}"
+        ) from vge
+
+    except VideoAssetPersistenceError as exc:
+        _campaign_generation_counts[campaign_id] = max(
+            0, _campaign_generation_counts[campaign_id] - 1
         )
+        logger.exception("Video scheduler attachment failed for campaign %s", campaign_id)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     except Exception as e:
         _campaign_generation_counts[campaign_id] = max(
             0, _campaign_generation_counts[campaign_id] - 1
         )
-        import traceback
-
-        tb = traceback.format_exc()
-        logger.error("Unexpected error during video generation: %s\n%s", e, tb)
+        logger.exception("Unexpected error during video generation for campaign %s", campaign_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error: {e}\n{tb}"
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Video generation failed. Please retry.",
+        ) from e

@@ -1,62 +1,18 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import Navbar from "@/components/Navbar";
-import VideoChatInput from "@/components/video/VideoChatInput";
-import VideoStudioPanel from "@/components/video/VideoStudioPanel";
-import ThoughtContainer from "@/components/campaign/ThoughtContainer";
+import { useState, useEffect } from "react";
+import Sidebar from "@/components/shell/Sidebar";
 import { useVideoGeneration } from "@/components/video/useVideoGeneration";
-import { ThoughtStep } from "@/components/campaign/types";
-import {
-  Camera,
-  Film,
-  BarChart3,
-  Sparkles,
-} from "lucide-react";
+import { campaignApi, autopilotApi, Campaign } from "@/lib/api";
+import { Film, Loader2, Download, Share2, Sparkles, RotateCcw } from "lucide-react";
 
-interface VideoChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-  thoughts?: ThoughtStep[];
-}
-
-const promptStarters = [
-  {
-    title: "Retail replenishment drone shot",
-    desc: "Cinematic overhead view of automated stores.",
-    icon: Camera,
-    prompt:
-      "Cinematic landscape drone shot over 1M+ retail stores automated by autonomous AI agents with physical depth of field.",
-  },
-  {
-    title: "Product commercial",
-    desc: "High-energy 16:9 commercial showing rapid ordering.",
-    icon: Film,
-    prompt:
-      "High-energy 16:9 commercial showing FMCG mobile ordering in under 4 minutes with seamless motion interpolation.",
-  },
-  {
-    title: "Enterprise sales analytics",
-    desc: "Photorealistic scene of directors analyzing sales velocity.",
-    icon: BarChart3,
-    prompt:
-      "Photorealistic commercial showcasing enterprise sales directors analyzing real-time order velocity across global distribution channels.",
-  },
-  {
-    title: "Brand story teaser",
-    desc: "Atmospheric cinematic lighting with slow camera pan.",
-    icon: Sparkles,
-    prompt:
-      "Atmospheric cinematic lighting with slow landscape camera pan highlighting autonomous sales orchestration for Fortune 500 brands.",
-  },
-];
-
-export default function VideoGenerationPage() {
-  const [messages, setMessages] = useState<VideoChatMessage[]>([]);
-  // Container-scoped scroll reference (never scrolls the entire window or jumps to footer)
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+export default function VideoStudioPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [campaignsLoading, setCampaignsLoading] = useState(true);
+  const [prompt, setPrompt] = useState("");
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [uploadMsg, setUploadMsg] = useState("");
 
   const {
     status,
@@ -65,233 +21,251 @@ export default function VideoGenerationPage() {
     error,
     artifact,
     startGeneration,
-    selectVariation,
-    updatePrompt,
     retry,
-  } = useVideoGeneration();
-
-  const scrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTo({
-        top: messagesContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  };
+  } = useVideoGeneration(campaignId);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom();
-    }
-  }, [messages, status]);
-
-  const messageIdRef = useRef(0);
-
-  const handleSendMessage = (promptText: string) => {
-    if (status === "queued" || status === "generating") return;
-
-    messageIdRef.current += 1;
-    const userMsgId = `user-${messageIdRef.current}`;
-    messageIdRef.current += 1;
-    const assistantMsgId = `assistant-${messageIdRef.current}`;
-
-    const userTimestamp = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    const userMessage: VideoChatMessage = {
-      id: userMsgId,
-      role: "user",
-      content: promptText,
-      timestamp: userTimestamp,
+    let active = true;
+    campaignApi
+      .list({ page_size: 100 })
+      .then((result) => {
+        if (!active) return;
+        setCampaigns(result.campaigns);
+        const requested = new URLSearchParams(window.location.search).get("campaign");
+        const selected =
+          result.campaigns.find((c) => c.id === requested) ||
+          (result.campaigns.length >= 1 ? result.campaigns[0] : undefined);
+        setCampaignId(selected?.id ?? null);
+      })
+      .catch(() => active && setCampaigns([]))
+      .finally(() => active && setCampaignsLoading(false));
+    return () => {
+      active = false;
     };
-
-    const initialThoughts: ThoughtStep[] = [
-      {
-        id: "v-step-1",
-        title: "Analyzing prompt & scene dynamics...",
-        detail: "16:9 Landscape aspect ratio locked at 1080p 60 FPS.",
-        timestamp: userTimestamp,
-      },
-      {
-        id: "v-step-2",
-        title: "Synthesizing 16:9 neural keyframes...",
-        detail: "Evaluating camera trajectory & foreground lighting passes.",
-        timestamp: userTimestamp,
-      },
-      {
-        id: "v-step-3",
-        title: "Interpolating temporal motion & lighting...",
-        detail: "Synthesizing optical physics and frame continuity.",
-        timestamp: userTimestamp,
-      },
-    ];
-
-    const assistantMessage: VideoChatMessage = {
-      id: assistantMsgId,
-      role: "assistant",
-      content: `Rendering your 9:16 vertical Reel commercial for: "${promptText}". Live inference progress and previews are active in the Video Studio.`,
-      timestamp: userTimestamp,
-      thoughts: initialThoughts,
-    };
-
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
-    startGeneration(promptText);
-  };
+  }, []);
 
   const isGenerating = status === "queued" || status === "generating";
+  const isCompleted = status === "completed" && !!artifact?.videoUrl;
+
+  const handleGenerate = () => {
+    const p = prompt.trim();
+    if (!p || isGenerating || !campaignId) return;
+    setUploadState("idle");
+    setUploadMsg("");
+    startGeneration(p);
+  };
+
+  const handleUpload = async () => {
+    const postId = artifact?.schedulerPostId;
+    if (!postId) {
+      setUploadState("error");
+      setUploadMsg("No draft post is linked to this video yet.");
+      return;
+    }
+    setUploadState("uploading");
+    setUploadMsg("");
+    try {
+      const res = await autopilotApi.publishNow(postId);
+      if (res.success) {
+        setUploadState("done");
+        setUploadMsg(res.message || "Published to LinkedIn.");
+      } else {
+        setUploadState("error");
+        setUploadMsg(res.error || "Upload failed. Please retry.");
+      }
+    } catch (e) {
+      setUploadState("error");
+      setUploadMsg(e instanceof Error ? e.message : "Upload failed. Please retry.");
+    }
+  };
 
   return (
-    <div className="page-wrapper h-screen max-h-screen overflow-hidden selection:bg-[#20B8E5]/30 selection:text-white flex flex-col bg-[#0E141B] font-sans">
-      {/* Top Navbar */}
-      <Navbar />
+    <div className="flex h-screen bg-[#f6f7f8] text-[#1f2a30] overflow-hidden">
+      <Sidebar active="video" />
 
-      {/* STATE 1: Initial Empty Hero State (No sidebar, no split-screen, perfectly centered) */}
-      {messages.length === 0 ? (
-        <main className="pt-20 pb-4 px-4 flex-1 flex flex-col items-center justify-center relative overflow-hidden h-[calc(100vh-5rem)]">
-          <div className="max-w-3xl w-full mx-auto px-4 flex-1 flex flex-col justify-center items-center">
-            <div className="flex flex-col items-center justify-center w-full max-w-2xl mx-auto text-center space-y-6 sm:space-y-8">
-              {/* Heading Block */}
-              <div className="space-y-2">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#F5F7FA] tracking-tight leading-tight">
-                  What Reel commercial are we creating today?
-                </h1>
-                <p className="text-xs sm:text-sm text-[#9AA6B2] max-w-md mx-auto leading-relaxed">
-                  Describe your scene, camera angle, and style. Hipoclipse AI will render a 9:16 vertical Reel for Instagram, TikTok, and Shorts.
-                </p>
-              </div>
-
-              {/* 2x2 Grid of Video Prompt Starters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 w-full text-left">
-                {promptStarters.map((card) => {
-                  const IconComp = card.icon;
-                  return (
-                    <button
-                      key={card.title}
-                      type="button"
-                      onClick={() => handleSendMessage(card.prompt)}
-                      className="p-3.5 rounded-[10px] bg-[#151D26] hover:bg-[#1B2530] border border-white/[0.08] hover:border-white/[0.18] transition-all flex items-start space-x-3 text-left group cursor-pointer shadow-sm"
-                    >
-                      <div className="w-8 h-8 rounded-md bg-[#1B2530] group-hover:bg-[#20B8E5]/10 group-hover:text-[#20B8E5] text-[#9AA6B2] flex items-center justify-center flex-shrink-0 transition-colors mt-0.5">
-                        <IconComp size={15} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs sm:text-sm font-semibold text-[#F5F7FA] block leading-snug">
-                          {card.title}
-                        </span>
-                        <span className="text-[11px] text-[#6B7785] block mt-0.5 leading-normal line-clamp-2">
-                          {card.desc}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Chat Input Box: Visible & properly positioned below 2x2 grid */}
-              <div className="w-full max-w-2xl mx-auto pt-1">
-                <VideoChatInput
-                  onSend={handleSendMessage}
-                  disabled={isGenerating}
-                  placeholder="Describe your Reel commercial scene..."
-                />
-              </div>
+      <main className="flex-1 flex flex-col min-w-0">
+        {/* Top bar */}
+        <header className="h-16 shrink-0 border-b border-[#e6e9ec] bg-white flex items-center justify-between px-4 sm:px-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-[16px] font-semibold text-[#1f2a30]">Video Studio</h1>
+              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-[#1174b8] bg-[#e9f2fa] rounded px-1.5 py-0.5">
+                Prompt engine
+              </span>
             </div>
+            <p className="text-[12.5px] text-[#8a949c] mt-0.5">
+              Generate vertical LinkedIn Reels from a prompt
+            </p>
           </div>
-        </main>
-      ) : (
-        /* STATE 2: Active 50/50 Split Screen on Submit */
-        <main className="pt-20 pb-2 px-2 sm:px-4 flex-1 flex flex-col lg:flex-row overflow-hidden h-[calc(100vh-5rem)]">
-          {/* Left Column (50% Desktop): Chat & Agent Reasoning */}
-          <div className="w-full lg:w-1/2 h-full flex flex-col relative bg-[#0E141B] border-r border-white/[0.08] overflow-hidden">
-            {/* Scrollable Conversation Stream - Scrolled internally via ref, NEVER scrolling the window */}
-            <div
-              ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto pb-32 pt-4 px-4 sm:px-6"
+
+          {/* Campaign is required by the backend, so it is selectable here. */}
+          <label className="flex items-center gap-2 text-[12.5px] text-[#5a6771]">
+            <span className="hidden sm:inline">Campaign</span>
+            <select
+              value={campaignId ?? ""}
+              onChange={(e) => setCampaignId(e.target.value || null)}
+              disabled={campaignsLoading || isGenerating}
+              className="max-w-[220px] rounded-[8px] border border-[#dfe4e7] bg-white px-2.5 py-1.5 text-[13px] text-[#1f2a30] focus:outline-none focus:border-[#1174b8] focus:ring-2 focus:ring-[#1174b8]/15"
             >
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`py-4 border-b border-white/[0.04] ${
-                    message.role === "assistant" ? "bg-white/[0.01]" : ""
-                  }`}
-                >
-                  <div className="max-w-2xl mx-auto flex items-start space-x-3.5">
-                    {message.role === "user" ? (
-                      <div className="w-7 h-7 rounded-full bg-[#1B2530] border border-white/[0.1] text-[#F5F7FA] text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
-                        U
-                      </div>
-                    ) : (
-                      <div className="w-7 h-7 rounded-lg bg-[#20B8E5]/10 border border-[#20B8E5]/20 text-[#20B8E5] flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Sparkles size={14} />
-                      </div>
-                    )}
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2 mb-1.5">
-                        <span className="text-xs font-semibold text-[#F5F7FA]">
-                          {message.role === "user" ? "You" : "Hipoclipse AI"}
-                        </span>
-                        <span className="text-[11px] text-[#6B7785]">
-                          {message.timestamp}
-                        </span>
-                      </div>
-
-                      {/* Step-by-step progress checklist with pulsing dot & badge */}
-                      {message.thoughts && message.thoughts.length > 0 && (
-                        <ThoughtContainer
-                          thoughts={message.thoughts}
-                          isThinking={isGenerating}
-                          duration={
-                            status === "completed"
-                              ? artifact?.generationDuration ?? 11.8
-                              : undefined
-                          }
-                        />
-                      )}
-
-                      <div className="text-sm text-[#F5F7FA] leading-relaxed whitespace-pre-wrap">
-                        {message.content}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <option value="">{campaignsLoading ? "Loading…" : "Select campaign"}</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
-            </div>
+            </select>
+          </label>
+        </header>
 
-            {/* Bottom Input Area in Active Chat */}
-            <div className="p-3 border-t border-white/[0.08] bg-[#0E141B] z-20">
-              <div className="max-w-2xl mx-auto">
-                <VideoChatInput
-                  onSend={handleSendMessage}
-                  disabled={isGenerating}
-                  placeholder="Follow up or refine scene prompt..."
-                />
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-8">
+          <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+            {/* Left: prompt card */}
+            <section className="rounded-[14px] border border-[#e6e9ec] bg-white p-5 sm:p-6 shadow-sm">
+              <h2 className="text-[16px] font-semibold text-[#1f2a30]">Describe your Reel</h2>
+              <p className="text-[13px] text-[#8a949c] mt-1 mb-4 leading-relaxed">
+                AI writes the script, generates visuals, voiceover, and captions automatically.
+              </p>
+
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={5}
+                disabled={isGenerating}
+                aria-label="Describe your Reel"
+                placeholder="Create a 30-second punchy Reel explaining why cloud infrastructure teams are switching to eBPF observability. Start with a bold hook about wasted compute costs."
+                className="w-full rounded-[10px] border border-[#dfe4e7] bg-[#fbfcfc] px-3.5 py-3 text-[13.5px] leading-relaxed text-[#26333b] placeholder-[#a6afb5] resize-y focus:outline-none focus:border-[#1174b8] focus:ring-2 focus:ring-[#1174b8]/15"
+              />
+
+              {!campaignId && !campaignsLoading && (
+                <p className="text-[12.5px] text-[#9a6212] mt-2">
+                  Select a campaign above to generate a Reel.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating || !campaignId}
+                className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-[9px] bg-[#1174b8] hover:bg-[#0e5f99] disabled:bg-[#b7cfe2] disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1174b8]/40"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} /> Generate Reel
+                  </>
+                )}
+              </button>
+            </section>
+
+            {/* Right: phone preview */}
+            <section className="flex flex-col items-center">
+              <div className="w-full max-w-[320px]">
+                <div className="relative rounded-[26px] bg-[#0c1622] border border-[#1c2836] shadow-xl overflow-hidden aspect-[9/16]">
+                  {isCompleted ? (
+                    <video
+                      key={artifact!.videoUrl}
+                      src={artifact!.videoUrl}
+                      controls
+                      playsInline
+                      className="w-full h-full object-cover bg-black"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+                      {isGenerating ? (
+                        <>
+                          <Loader2 size={26} className="animate-spin text-[#4aa3dd]" />
+                          <p className="text-[12.5px] text-[#c6d3de] mt-4 leading-snug">
+                            {currentStage}
+                          </p>
+                          <div className="w-40 h-1.5 rounded-full bg-white/10 mt-4 overflow-hidden">
+                            <div
+                              className="h-full bg-[#1e8fe0] rounded-full transition-[width] duration-300"
+                              style={{ width: `${Math.round(displayProgress)}%` }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-[#7f93a4] mt-2">
+                            {Math.round(displayProgress)}%
+                          </p>
+                        </>
+                      ) : status === "error" ? (
+                        <>
+                          <p className="text-[13px] text-[#ff9a8f] leading-snug">
+                            {error || "Generation failed."}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={retry}
+                            className="mt-4 inline-flex items-center gap-1.5 rounded-[8px] border border-white/20 text-white text-[12.5px] font-medium px-3 py-1.5 hover:bg-white/10"
+                          >
+                            <RotateCcw size={13} /> Retry
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 rounded-full bg-white/[0.06] grid place-items-center text-[#5f7386]">
+                            <Film size={20} />
+                          </div>
+                          <p className="text-[12.5px] text-[#8b9db0] mt-3 leading-snug">
+                            Your Reel preview will appear here
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions (only once a real video exists) */}
+                {isCompleted && (
+                  <div className="mt-4 space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleUpload}
+                      disabled={uploadState === "uploading" || uploadState === "done"}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-[9px] bg-[#1174b8] hover:bg-[#0e5f99] disabled:opacity-70 text-white text-[13.5px] font-semibold px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1174b8]/40"
+                    >
+                      {uploadState === "uploading" ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin" /> Uploading…
+                        </>
+                      ) : uploadState === "done" ? (
+                        <>Uploaded to LinkedIn</>
+                      ) : (
+                        <>
+                          <Share2 size={15} /> Upload to LinkedIn
+                        </>
+                      )}
+                    </button>
+
+                    <a
+                      href={artifact!.videoUrl}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-[9px] border border-[#dfe4e7] bg-white text-[#5a6771] hover:text-[#1f2a30] hover:bg-[#f4f6f7] text-[13.5px] font-medium px-4 py-2.5 transition-colors"
+                    >
+                      <Download size={15} /> Download MP4
+                    </a>
+
+                    {uploadMsg && (
+                      <p
+                        className={`text-[12px] text-center ${
+                          uploadState === "error" ? "text-[#b3392b]" : "text-[#3a8f6b]"
+                        }`}
+                      >
+                        {uploadMsg}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
+            </section>
           </div>
-
-          {/* Right Column (50% Desktop): Video Studio Panel */}
-          <div className="w-full lg:w-1/2 h-full flex-shrink-0">
-            <VideoStudioPanel
-              artifact={artifact}
-              status={status}
-              displayProgress={displayProgress}
-              currentStage={currentStage}
-              error={error}
-              isOpen={true}
-              onClose={() => {}}
-              onSelectVariation={selectVariation}
-              onUpdatePrompt={updatePrompt}
-              onRegenerate={() => {
-                if (artifact?.prompt) startGeneration(artifact.prompt);
-              }}
-              onRetry={retry}
-            />
-          </div>
-        </main>
-      )}
+        </div>
+      </main>
     </div>
   );
 }

@@ -137,11 +137,10 @@ export default function RecentCampaignsTable() {
                 key={status}
                 type="button"
                 onClick={() => setFilterStatus(status)}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                  filterStatus === status
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${filterStatus === status
                     ? "bg-[#252C35] text-[#F3F4F6]"
                     : "text-[#9CA3AF] hover:text-[#F3F4F6]"
-                }`}
+                  }`}
               >
                 {status}
               </button>

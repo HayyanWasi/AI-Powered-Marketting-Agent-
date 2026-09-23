@@ -114,11 +114,10 @@ class TestPanelGraph:
         }
 
     @pytest.mark.asyncio
-    async def test_one_failing_specialist_does_not_sink_the_plan(self):
-        plan = await _run(fail={"plan_competitive"})
-
-        assert isinstance(plan, CampaignPlan)
-        assert plan.core_strategy.unique_selling_proposition != ""
+    async def test_failing_specialist_raises_runtime_error(self):
+        """In the 5-specialist architecture, a failure in any specialist halts the plan draft."""
+        with pytest.raises(RuntimeError, match="Planning specialist competitive failed"):
+            await _run(fail={"plan_competitive"})
 
     @pytest.mark.asyncio
     async def test_failed_synthesis_falls_back_to_direct_assembly(self):

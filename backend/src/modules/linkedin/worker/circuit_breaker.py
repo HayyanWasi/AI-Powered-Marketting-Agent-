@@ -133,7 +133,7 @@ class CircuitBreaker:
         try:
             client = get_supabase_client()
             data = {
-                "account_id": self._account_id,
+                "linkedin_account_id": self._account_id,
                 "state": self._state.value,
                 "tripped_at": self._tripped_at.isoformat() if self._tripped_at else None,
                 "trip_reason": self._trip_reason,
@@ -141,7 +141,7 @@ class CircuitBreaker:
                 "updated_at": datetime.now(UTC).isoformat(),
             }
             client.table("linkedin_circuit_breaker").upsert(
-                data, on_conflict="account_id"
+                data, on_conflict="linkedin_account_id"
             ).execute()
         except Exception as e:
             logger.error("Failed to persist circuit breaker state: %s", e)
@@ -153,11 +153,11 @@ class CircuitBreaker:
             res = (
                 client.table("linkedin_circuit_breaker")
                 .select("*")
-                .eq("account_id", self._account_id)
+                .eq("linkedin_account_id", self._account_id)
                 .limit(1)
                 .execute()
             )
-            if res.data:
+            if res and res.data:
                 row = res.data[0]
                 self._state = CircuitState(row["state"])
                 self._trip_reason = row.get("trip_reason")

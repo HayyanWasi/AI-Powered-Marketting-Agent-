@@ -50,6 +50,19 @@ class MockUnipileGateway(UnipileGateway):
             "name": "Mock LinkedIn Account",
         }
 
+    async def create_hosted_auth_link(
+        self,
+        *,
+        name: str,
+        success_redirect_url: str,
+        failure_redirect_url: str,
+        notify_url: str,
+        expires_on: str,
+        providers: list[str] | None = None,
+    ) -> str | None:
+        logger.info("[MOCK] create_hosted_auth_link(name=%s, providers=%s)", name, providers)
+        return f"https://account.unipile.com/hosted/mock?name={name}"
+
     async def visit_profile(self, account_id: str, linkedin_id: str) -> bool:
         logger.info("[MOCK] visit_profile(%s, %s)", account_id, linkedin_id)
         return True
@@ -75,9 +88,11 @@ class MockUnipileGateway(UnipileGateway):
         logger.info("[MOCK] send_message(%s, %s) -> %s", account_id, chat_id, msg_id)
         return msg_id
 
-    async def create_post(self, account_id: str, text: str) -> str | None:
+    async def create_post(
+        self, account_id: str, text: str, media_url: str | None = None
+    ) -> str | None:
         post_id = f"mock_post_{uuid4().hex[:8]}"
-        logger.info("[MOCK] create_post(%s) -> %s", account_id, post_id)
+        logger.info("[MOCK] create_post(%s, media=%s) -> %s", account_id, bool(media_url), post_id)
         return post_id
 
     async def register_webhook(self, callback_url: str, events: list[str]) -> bool:

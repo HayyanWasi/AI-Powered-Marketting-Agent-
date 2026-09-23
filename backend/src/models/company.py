@@ -25,6 +25,7 @@ class CompanyProfileResponse(BaseModel):
     brand_guidelines: str
     brand_tone: str | None = None
     reference_image_urls: list[str]
+    default_linkedin_account_id: str | None = None
     created_at: str
     updated_at: str
 
@@ -44,6 +45,7 @@ class CompanyProfile:
     brand_guidelines: str = ""
     brand_tone: str | None = None
     reference_image_urls: list[str] = field(default_factory=list)
+    default_linkedin_account_id: str | None = None
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -54,6 +56,7 @@ class CompanyProfile:
             brand_guidelines=self.brand_guidelines,
             brand_tone=self.brand_tone,
             reference_image_urls=self.reference_image_urls,
+            default_linkedin_account_id=self.default_linkedin_account_id,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

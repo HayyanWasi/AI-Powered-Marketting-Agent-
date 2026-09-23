@@ -8,9 +8,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from PIL import Image
+from pydantic import BaseModel
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.models.company import CompanyProfileCreate, CompanyProfileUpdate
+from src.repositories.base import BaseRepository
+from src.services.campaign_context_service import owned_profiles
 from src.services.company.campaign_lookup_service import CampaignLookupService
 from src.services.company.create_company_service import CreateCompanyService
 from src.services.company.delete_company_service import DeleteCompanyService
@@ -28,32 +31,32 @@ from src.services.supabase import (
 router = APIRouter(prefix="/company", tags=["Company"])
 
 
-async def _get_supabase_service() -> SupabaseService:
-    return SupabaseService()
+async def _get_supabase_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> SupabaseService:
+    return SupabaseService(user_id=user.id)
 
 
-async def _get_create_service() -> CreateCompanyService:
-    return CreateCompanyService()
+async def _get_create_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> CreateCompanyService:
+    return CreateCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_update_service() -> UpdateCompanyService:
-    return UpdateCompanyService()
+async def _get_update_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> UpdateCompanyService:
+    return UpdateCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_get_service() -> GetCompanyService:
-    return GetCompanyService()
+async def _get_get_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> GetCompanyService:
+    return GetCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_list_service() -> ListCompanyService:
-    return ListCompanyService()
+async def _get_list_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> ListCompanyService:
+    return ListCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_delete_service() -> DeleteCompanyService:
-    return DeleteCompanyService()
+async def _get_delete_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> DeleteCompanyService:
+    return DeleteCompanyService(repository=owned_profiles(user.id), supabase=SupabaseService(user_id=user.id))
 
 
-async def _get_campaign_lookup_service() -> CampaignLookupService:
-    return CampaignLookupService()
+async def _get_campaign_lookup_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> CampaignLookupService:
+    return CampaignLookupService(repository=owned_profiles(user.id))
 
 
 @router.post("", status_code=201)
@@ -75,6 +78,7 @@ async def create_profile(
             "brand_guidelines": profile.brand_guidelines,
             "brand_tone": profile.brand_tone,
             "reference_image_urls": profile.reference_image_urls,
+            "default_linkedin_account_id": profile.default_linkedin_account_id,
             "created_at": profile.created_at,
             "updated_at": profile.updated_at,
         }
@@ -128,6 +132,7 @@ async def update_profile(
             "brand_guidelines": profile.brand_guidelines,
             "brand_tone": profile.brand_tone,
             "reference_image_urls": profile.reference_image_urls,
+            "default_linkedin_account_id": profile.default_linkedin_account_id,
             "created_at": profile.created_at,
             "updated_at": profile.updated_at,
         }
@@ -138,6 +143,99 @@ async def update_profile(
         if "already exists" in detail.lower() or "already in use" in detail.lower():
             raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=422, detail=detail)
+
+
+class SetBrandLinkedInAccountRequest(BaseModel):
+    """Set or clear a brand's default LinkedIn publishing account.
+
+    ``account_id`` is the internal ``linkedin_accounts.id`` (never a raw Unipile
+    id supplied blindly). ``None`` clears the brand's default account.
+    """
+
+    account_id: str | None = None
+
+
+@router.put("/{profile_id}/linkedin-account")
+async def set_brand_linkedin_account(
+    profile_id: str,
+    body: SetBrandLinkedInAccountRequest,
+    get_service: GetCompanyService = Depends(_get_get_service),
+    update_service: UpdateCompanyService = Depends(_get_update_service),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> dict[str, Any]:
+    """Set (or clear) the brand's default LinkedIn account.
+
+    Ownership is enforced server-side on BOTH sides: the brand must belong to the
+    caller (owned repository), and the LinkedIn account must be a row the caller
+    owns and that is currently ``connected``. A foreign, unknown, or disconnected
+    account is rejected and nothing is changed. Passing ``account_id: null``
+    clears the association.
+    """
+    try:
+        UUID(profile_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid profile ID format: {profile_id}")
+
+    # 1. Verify the brand exists AND belongs to this user (owned repository).
+    try:
+        get_service.execute(profile_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    account_id = (body.account_id or "").strip() or None
+
+    # 2. When setting (not clearing), the account must be owned + connected.
+    if account_id is not None:
+        try:
+            UUID(account_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid LinkedIn account id format.")
+        repo = BaseRepository("linkedin_accounts")
+        try:
+            res = (
+                repo.client.table("linkedin_accounts")
+                .select("*")
+                .eq("id", account_id)
+                .eq("user_id", str(user.id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+        except Exception as e:  # noqa: BLE001 - surfaced as 503
+            raise HTTPException(
+                status_code=503,
+                detail=f"linkedin_accounts table not available. Run migration first. ({e})",
+            ) from e
+        if not rows:
+            # Not owned by this user, or does not exist. Never reveal which.
+            raise HTTPException(
+                status_code=404,
+                detail="LinkedIn account not found for your account.",
+            )
+        if rows[0].get("status") != "connected":
+            raise HTTPException(
+                status_code=409,
+                detail="That LinkedIn account is not connected. Reconnect it before assigning it to a brand.",
+            )
+
+    # 3. Persist on the owned brand (user-scoped update; cross-user cannot write).
+    try:
+        profile = update_service.execute(
+            profile_id, {"default_linkedin_account_id": account_id}
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return {
+        "id": profile.id,
+        "company_name": profile.company_name,
+        "brand_guidelines": profile.brand_guidelines,
+        "brand_tone": profile.brand_tone,
+        "reference_image_urls": profile.reference_image_urls,
+        "default_linkedin_account_id": profile.default_linkedin_account_id,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+    }
 
 
 @router.get("/{profile_id}/brand-info")

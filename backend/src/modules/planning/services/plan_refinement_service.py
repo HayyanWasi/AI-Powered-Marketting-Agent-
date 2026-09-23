@@ -14,15 +14,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
+from src.modules.linkedin.scheduling import ScheduleOptimizer
+from src.modules.linkedin.scheduling.slot_validation import (
+    ScheduleSlotMismatchError,
+    normalize_calendar_slots,
+)
+from src.modules.linkedin.scheduling.timezone_resolver import resolve_scheduling_timezone
 from src.modules.planning.models.brief import PlanBrief
 from src.modules.planning.models.campaign_plan import (
     CampaignPlan,
     PlanMessage,
     PlanStatus,
     PlanVersion,
+    ResearchStatus,
 )
 from src.modules.planning.repositories.plan_repository import (
     PlanNotFoundError,
@@ -78,17 +85,58 @@ class PlanRefinementService:
         plan_row = await self._repo.get_or_create_plan_row(campaign_id, created_by, language)
         plan_id = UUID(plan_row["id"])
 
+        # Build the neutral timing skeleton before any LLM runs. It remains
+        # in memory until the completed plan version is persisted.
+        today = datetime.now(UTC).date()
+        start = date.fromisoformat(brief.campaign_start) if brief.campaign_start else today
+        end = date.fromisoformat(brief.campaign_end) if brief.campaign_end else start + timedelta(days=29)
+        resolved_timezone = resolve_scheduling_timezone(
+            audience=brief.audience_profile,
+            campaign_timezone=brief.campaign_timezone,
+        )
+        schedule_plan = ScheduleOptimizer.build(
+            campaign_start=start,
+            campaign_end=end,
+            timezone_name=resolved_timezone.name,
+            timezone_source=resolved_timezone.source,
+            timezone_confidence=resolved_timezone.confidence,
+            audience=brief.audience_profile,
+            campaign_type=brief.campaign_type,
+            objective=brief.objective,
+            event_date=brief.event_date,
+        )
+        brief = brief.model_copy(update={"schedule_plan": schedule_plan})
+
         # Execute Autonomous Research Engine pre-hook to gather live web evidence
         research_context = None
+        research_status = ResearchStatus.NOT_REQUESTED
+        research_reason = ""
         if tier != "Quick":
             research_context = await self._run_research(brief, campaign_id, tier)
             if research_context:
                 brief = brief.model_copy(update={"research_context": research_context})
+                research_status, research_reason = brief.get_research_status()
+        else:
+            research_status = ResearchStatus.NOT_REQUESTED
+            research_reason = "Research was not requested for Quick tier."
+            if brief.research_context:
+                research_status, research_reason = brief.get_research_status()
+
+        # Warm the planning Ollama GPUs before the heavy specialist calls so a
+        # cold first request does not miss the tunnel window and fall back to a
+        # remote provider. Idempotent (warms once per process) and never raises
+        # — a warm-up failure just leaves the remote fallback path in place.
+        from src.modules.planning import warmup
+
+        await warmup.ensure_planning_endpoints_warm()
 
         # Run the panel graph with enriched brief.
         graph = plan_graph.compile_graph(tier=tier)
         state = plan_graph.initial_state(brief)
-        final_state = await graph.ainvoke(state)
+        try:
+            final_state = await graph.ainvoke(state)
+        except Exception as exc:
+            raise PlanDraftError("Planning failed. Please retry.") from exc
 
         plan: CampaignPlan | None = final_state.get("plan")
         if plan is None:
@@ -97,13 +145,77 @@ class PlanRefinementService:
                 f"Failures: {final_state.get('failures', [])}"
             )
 
-        # Stamp the plan with the campaign FK and version 1.
+        # All 5 specialist sections are required — a specialist that failed
+        # upstream (provider retry/failover exhausted) degrades to an empty
+        # section rather than crashing the graph, but that is not a plan we
+        # may save. Fail truthfully here, before any persistence, instead of
+        # silently continuing with a partial plan. Full failure detail stays
+        # server-side; the frontend gets a safe, non-leaking message.
+        failures = final_state.get("failures", [])
+        if failures:
+            logger.error(
+                "Specialist panel failed for campaign %s (%s); refusing to save a partial plan.",
+                campaign_id,
+                "; ".join(failures),
+            )
+            failed_names = sorted({f.split(":", 1)[0].strip() for f in failures})
+            if failed_names == ["channel_plan"]:
+                raise PlanDraftError("Channel planning failed. Please retry planning.")
+            raise PlanDraftError(
+                f"Planning failed: {', '.join(failed_names)} could not be generated. "
+                "Please retry planning."
+            )
+
+        # No specialist failure was recorded, but the channel calendar is still
+        # empty — same truthful failure, since there is nothing to validate.
+        if not plan.channel_plan.calendar_slots:
+            logger.error(
+                "Channel plan for campaign %s produced no calendar slots despite no "
+                "recorded specialist failure; refusing to save a partial plan.",
+                campaign_id,
+            )
+            raise PlanDraftError("Channel planning failed. Please retry planning.")
+
+        try:
+            normalized_calendar = normalize_calendar_slots(
+                plan.channel_plan.calendar_slots, schedule_plan
+            )
+        except ScheduleSlotMismatchError as exc:
+            raise PlanDraftError(
+                "Channel planner changed the fixed schedule slots. Please retry planning."
+            ) from exc
+        plan = plan.model_copy(update={
+            "channel_plan": plan.channel_plan.model_copy(
+                update={"calendar_slots": normalized_calendar}
+            )
+            })
+
+        previous = await self._repo.get_latest_version(plan_id)
+        next_version = previous.version + 1 if previous else 1
+
+        # Stamp the plan with its identity, source snapshot and next version.
+        from src.modules.planning.models.campaign_plan import InputIdentity
+        input_id = InputIdentity(
+            campaign_id=UUID(brief.campaign_id) if brief.campaign_id else campaign_id,
+            company_profile_id=UUID(brief.company_profile_id) if brief.company_profile_id else None,
+            brand_version=brief.brand_version,
+            intake_hash=brief.intake_hash,
+            user_goal=brief.user_goal,
+            generated_at=datetime.utcnow().isoformat(),
+        )
+
         plan = plan.model_copy(
             update={
                 "campaign_id": campaign_id,
-                "version": 1,
+                "version": next_version,
+                "plan_id": plan_id,
+                "source_brief": brief.model_dump(mode="json"),
+                "input_identity": input_id,
                 "language": language,
                 "status": PlanStatus.DRAFT,
+                "research_status": research_status,
+                "research_status_reason": research_reason,
+                "schedule_plan": schedule_plan,
             }
         )
 
@@ -112,18 +224,20 @@ class PlanRefinementService:
             plan,
             change_summary="Initial draft by the specialist panel with web research ground truth.",
             sections_changed=("core_strategy", "channel_plan", "measurement", "competitive"),
-            parent_version=None,
+            parent_version=previous.version if previous else None,
         )
         logger.info(
             "Plan v1 drafted for campaign %s (Research Enriched: %s)",
+            "Plan v1 drafted for campaign %s (Research Status: %s, Enriched: %s)",
             campaign_id,
+            research_status.value,
             bool(research_context),
         )
         return plan
 
     async def _run_research(self, brief: PlanBrief, campaign_id: UUID, tier: str) -> dict | None:
         """Run standalone Autonomous Research Engine pre-hook with fallback gracefully on error/timeout."""
-        goal = brief.user_goal or brief.event_name or "Marketing Campaign"
+        goal = brief.user_goal or brief.objective or brief.campaign_name or "Marketing Campaign"
         try:
             svc = ResearchEngineService()
             results = await asyncio.wait_for(
@@ -132,15 +246,39 @@ class PlanRefinementService:
                     company_name=brief.company_name,
                     tier=tier,
                     campaign_id=campaign_id,
+                    campaign_type=brief.campaign_type,
+                    audience=brief.target_audience,
+                    category=brief.category,
                 ),
                 timeout=120.0,
             )
+            if not isinstance(results, dict):
+                return {"status": "no_evidence", "reason": "Research returned empty result."}
+
+            brief_dict = results.get("research_brief")
+            has_evidence = False
+            if isinstance(brief_dict, dict):
+                for dim in ("market", "competitor", "audience", "content", "channel", "trend"):
+                    d = brief_dict.get(dim)
+                    if isinstance(d, dict) and (d.get("key_findings") or d.get("evidence_items")):
+                        has_evidence = True
+                        break
+            graph_dict = results.get("evidence_graph")
+            if isinstance(graph_dict, dict) and graph_dict.get("nodes"):
+                has_evidence = True
+
+            if has_evidence:
+                results["status"] = "available"
+            else:
+                results["status"] = "no_evidence"
+                results["reason"] = "Web search completed but found no usable evidence."
             return results
         except Exception as e:
             logger.warning(
                 "Pre-research hook failed or timed out (%s); continuing without web research", e
             )
-            return None
+            return {"error": str(e), "status": "degraded"}
+            return {"error": str(e), "status": "degraded", "reason": f"Live research failed or timed out ({e})"}
 
     async def refine_plan(
         self,
@@ -179,9 +317,46 @@ class PlanRefinementService:
         # Run the refinement graph.
         graph = refinement_graph.compile_graph()
         state = refinement_graph.initial_state(current_plan, brief, critique)
-        final_state = await graph.ainvoke(state)
+        try:
+            final_state = await graph.ainvoke(state)
+        except Exception as exc:
+            raise PlanDraftError("Planning failed. Please retry.") from exc
 
         revised: CampaignPlan = final_state.get("revised_plan", current_plan)
+        if "channel_plan" in final_state.get("sections_changed", ()):
+            if current_plan.schedule_plan is None:
+                raise PlanDraftError("Plan refinement cannot change fixed schedule slots.")
+            try:
+                normalized_calendar = normalize_calendar_slots(
+                    revised.channel_plan.calendar_slots, current_plan.schedule_plan
+                )
+            except ScheduleSlotMismatchError as exc:
+                raise PlanDraftError(
+                    "Plan refinement cannot change fixed schedule slots."
+                ) from exc
+            revised = revised.model_copy(update={
+                "channel_plan": revised.channel_plan.model_copy(
+                    update={"calendar_slots": normalized_calendar}
+                )
+            })
+        from src.modules.planning.models.campaign_plan import InputIdentity
+        input_id = InputIdentity(
+            campaign_id=UUID(brief.campaign_id) if brief.campaign_id else campaign_id,
+            company_profile_id=UUID(brief.company_profile_id) if brief.company_profile_id else None,
+            brand_version=brief.brand_version,
+            intake_hash=brief.intake_hash,
+            user_goal=brief.user_goal,
+            generated_at=datetime.utcnow().isoformat(),
+        )
+        revised = revised.model_copy(
+            update={
+                "source_brief": brief.model_dump(mode="json"),
+                "input_identity": input_id,
+                "research_status": current_plan.research_status,
+                "research_status_reason": current_plan.research_status_reason,
+                "schedule_plan": current_plan.schedule_plan,
+            }
+        )
         reply: str = final_state.get("reply", "")
         sections_changed: tuple[str, ...] = final_state.get("sections_changed", ())
         language: str = final_state.get("language") or current_plan.language

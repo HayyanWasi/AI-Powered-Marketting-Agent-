@@ -238,6 +238,7 @@ class AssetType(str, Enum):
     HASHTAG_SET = "hashtag_set"
     METADATA = "metadata"
     OTHER = "other"
+    VIDEO = "video"
 
 
 class AssetSource(str, Enum):

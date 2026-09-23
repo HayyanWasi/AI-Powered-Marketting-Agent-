@@ -101,6 +101,12 @@ class SearchExecutor:
         return flat_results
 
     def _run_search(self, query: str) -> list[dict[str, Any]]:
-        """Synchronous search wrapper."""
-        # Legacy DDGS search removed for V2.
-        return []
+        """Synchronous search wrapper using ddgs."""
+        try:
+            from ddgs import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=5))
+                return results
+        except Exception as e:
+            logger.error("DDGS search error for query '%s': %s", query, e)
+            return []

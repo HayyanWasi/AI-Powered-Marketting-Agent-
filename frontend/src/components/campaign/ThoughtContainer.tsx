@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Check, Loader2 } from "lucide-react";
-import { ThoughtStep } from "./types";
+import type { ThoughtStep } from "./types";
 
 interface Props {
   thoughts: ThoughtStep[];

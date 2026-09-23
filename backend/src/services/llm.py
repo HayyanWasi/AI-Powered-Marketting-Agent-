@@ -1,10 +1,9 @@
 """LLM service for guest profile analysis.
 
-Uses OpenRouter (OpenAI-compatible API) with json_object response mode so that
-any model can be used — including free-tier models that do not support the
-`json_schema` response format extension required by the OpenAI `.parse()` helper.
-
-JSON is extracted from the completion text and validated against GuestProfileData.
+Talks to the same OpenAI-compatible endpoint as the rest of the app
+(LLM_BASE_URL / LLM_MODEL / LLM_API_KEY). JSON is extracted from the
+completion text rather than requested via the `json_schema` response format,
+so small local models that lack that extension still work.
 """
 
 import json
@@ -18,8 +17,6 @@ from src.config.settings import settings
 from src.models.guest_profile import ConfidenceLevel, GuestProfile
 
 logger = logging.getLogger(__name__)
-
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 ANALYSIS_SYSTEM_PROMPT = """\
 You are a research assistant that analyzes web search result metadata to build structured guest/speaker profiles.
@@ -78,13 +75,12 @@ class LLMService:
         if client is not None:
             self._client = client
         else:
-            api_key = settings.grok_api_key or settings.openrouter_api_key
-            base_url = (
-                "https://api.groq.com/openai/v1" if settings.grok_api_key else OPENROUTER_BASE_URL
+            self._client = OpenAI(
+                api_key=settings.llm_api_key or "ollama",
+                base_url=(settings.llm_base_url or "").strip().rstrip("/"),
             )
-            self._client = OpenAI(api_key=api_key, base_url=base_url)
 
-        self._model = "qwen/qwen3.6-27b" if settings.grok_api_key else settings.openrouter_model
+        self._model = settings.llm_model
 
     def analyze_search_results(
         self, results: list[dict[str, Any]], campaign_context: str = ""

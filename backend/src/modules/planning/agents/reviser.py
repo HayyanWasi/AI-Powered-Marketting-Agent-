@@ -64,7 +64,7 @@ async def route_critique(plan: CampaignPlan, critique: str, **kw: Any) -> Route:
         )
     except Exception as e:
         logger.warning("Critique routing failed (%s); treating as a question", e)
-        return Route(language=plan.language)
+        raise RuntimeError("Could not route your revision. Please retry.") from e
 
     targets = tuple(s for s in (result.get("target_sections") or []) if s in SECTION_NAMES)
     instructions = {
@@ -109,13 +109,13 @@ async def revise_section(
         result = await ask_json("plan_revise_section", variables, **kw)
     except Exception as e:
         logger.error("Revision of %s failed: %s", section_name, e)
-        return {}
+        raise RuntimeError("Plan revision failed. Please retry.") from e
 
     # The model may wrap its answer in the section name, or return it bare.
     payload = result.get(section_name, result)
     if not isinstance(payload, dict) or not payload:
         logger.warning("Revision of %s returned no usable content", section_name)
-        return {}
+        raise ValueError("The model returned an empty revision. Please retry.")
 
     try:
         # Validate through the section's own model so a malformed revision
@@ -136,7 +136,7 @@ async def revise_section(
                 return type(section).model_validate(current_dict).model_dump(mode="json")
         except Exception as e2:
             logger.error("Fallback validation of %s also failed: %s", section_name, e2)
-        return {}
+        raise ValueError("The model returned an invalid revision. Please retry.")
 
 
 async def compose_reply(

@@ -7,9 +7,8 @@ from supabase import create_client
 from src.config.settings import settings
 
 
-@lru_cache
 def get_supabase_client():
-    """Create and return Supabase client singleton."""
+    """Create and return Supabase client."""
     url = settings.SUPABASE_URL
     key = settings.SUPABASE_SERVICE_KEY or settings.SUPABASE_KEY
 

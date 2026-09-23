@@ -5,6 +5,11 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from src.models.brand_context import BrandContext
+from src.modules.linkedin.generators.local_llm_gate import (
+    LINKEDIN_LOCAL_OLLAMA_TIMEOUT_SECONDS,
+    linkedin_local_ollama_slot,
+)
 from src.modules.linkedin.models import OutreachTemplate
 from src.modules.planning.models.campaign_plan import CampaignPlan
 from src.modules.research.models.research_brief import ResearchBrief
@@ -24,6 +29,7 @@ class OutreachSequenceGenerator:
         campaign_id: UUID,
         plan: CampaignPlan,
         brief: ResearchBrief | None = None,
+        brand: BrandContext | None = None,
     ) -> OutreachTemplate:
         """Generate a 4-step outbound sequence template."""
         usp = plan.core_strategy.unique_selling_proposition if plan.core_strategy else ""
@@ -39,12 +45,18 @@ class OutreachSequenceGenerator:
             "LinkedIn messaging sequence using exact audience pain points and differentiators."
         )
 
+        if brand is None:
+            raise ValueError("Brand context is required for outreach generation.")
         user_prompt = f"""
+BRAND IDENTITY AND REQUIRED COMMUNICATION RULES:
+{brand.as_prompt()}
+Follow the brand tone and guardrails. Do not invent brand facts.
+
 Campaign Objective: {plan.title}
 USP: {usp}
 Differentiation: {diff}
 Target Audience Pain Points (from research):
-{chr(10).join(f"- {p}" for p in pain_points) if pain_points else "- Looking for efficient solutions"}
+{chr(10).join(f"- {p}" for p in pain_points) if pain_points else "(not provided)"}
 
 Generate 3 copy templates:
 1. Connection Request Note (max 200 characters, subtle hook, NO hard pitch)
@@ -59,7 +71,16 @@ Return ONLY valid JSON matching this schema:
 }}
 """
         try:
-            res = await self.llm.generate_json(system_prompt, user_prompt)
+            # Share the LinkedIn local-Ollama gate with post generation so
+            # outreach never runs against the single GPU alongside a post.
+            async with linkedin_local_ollama_slot(self.llm):
+                res = await self.llm.generate_json(
+                    system_prompt,
+                    user_prompt,
+                    timeout=LINKEDIN_LOCAL_OLLAMA_TIMEOUT_SECONDS,
+                )
+            if not all(isinstance(res.get(k), str) and res[k].strip() for k in ("step_invite_msg", "step_value_msg", "step_followup_msg")):
+                raise ValueError("The model returned incomplete outreach content.")
             return OutreachTemplate(
                 campaign_id=campaign_id,
                 step_invite_msg=res.get("step_invite_msg", "").strip(),
@@ -67,10 +88,4 @@ Return ONLY valid JSON matching this schema:
                 step_followup_msg=res.get("step_followup_msg", "").strip(),
             )
         except Exception as e:
-            logger.error("Failed to generate outreach sequence for campaign %s: %s", campaign_id, e)
-            return OutreachTemplate(
-                campaign_id=campaign_id,
-                step_invite_msg="Hi [Name], loved your work. Would love to connect!",
-                step_value_msg="Hi [Name], sharing a quick resource on our recent research.",
-                step_followup_msg="Hi [Name], just checking if you had a chance to look at this.",
-            )
+            raise RuntimeError("Outreach generation failed. Please retry.") from e

@@ -38,10 +38,12 @@ class CloudflareImageService:
         self,
         account_id: str | None = None,
         token: str | None = None,
+        gateway_id: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._account_id = account_id or settings.cloudflare_account_id
         self._token = token or settings.cloudflare_ai_token
+        self._gateway_id = gateway_id or settings.cloudflare_gateway_id
         self._base_url = settings.cloudflare_ai_base_url.rstrip("/")
         self._img2img_model = settings.cloudflare_img2img_model
         self._text2img_model = settings.cloudflare_text2img_model
@@ -77,23 +79,31 @@ class CloudflareImageService:
                 "(set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN)"
             )
 
-    def _run_url(self, model: str) -> str:
-        return f"{self._base_url}/{self._account_id}/ai/run/{model}"
+    def _run_url(self) -> str:
+        return f"{self._base_url}/{self._account_id}/ai/run"
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._token}"}
+        headers = {"Authorization": f"Bearer {self._token}"}
+        if self._gateway_id:
+            headers["cf-aig-gateway-id"] = self._gateway_id
+        return headers
 
     async def _post(self, model: str, payload: dict) -> httpx.Response:
         """POST to a Workers AI model with retry/backoff on 429 and 5xx."""
         self._require_config()
         assert self._client is not None  # set by __aenter__
-        url = self._run_url(model)
+        url = self._run_url()
         last_error: Exception | None = None
+        
+        envelope_payload = {
+            "model": model,
+            "input": payload
+        }
 
         for attempt in range(1, self._max_retries + 1):
             try:
-                response = await self._client.post(url, json=payload, headers=self._headers)
+                response = await self._client.post(url, json=envelope_payload, headers=self._headers)
             except httpx.HTTPError as exc:
                 last_error = exc
                 logger.warning(

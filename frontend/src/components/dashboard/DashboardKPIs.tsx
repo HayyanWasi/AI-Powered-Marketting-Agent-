@@ -163,9 +163,8 @@ export default function DashboardKPIs() {
           <div className="pt-3 border-t border-[#252C35]/60 space-y-1.5">
             <div className="flex items-center space-x-1.5 text-xs">
               <span
-                className={`inline-flex items-center font-medium ${
-                  item.trendPositive ? "text-[#10B981]" : "text-[#EF4444]"
-                }`}
+                className={`inline-flex items-center font-medium ${item.trendPositive ? "text-[#10B981]" : "text-[#EF4444]"
+                  }`}
               >
                 {item.trend.startsWith("+") && <ArrowUpRight size={13} className="mr-0.5" />}
                 {item.trend}

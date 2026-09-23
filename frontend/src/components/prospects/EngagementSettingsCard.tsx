@@ -126,12 +126,11 @@ export default function EngagementSettingsCard({
                 type="number"
                 value={settings.daily_connections || ""}
                 onChange={(e) => handleConnectionsChange(parseInt(e.target.value))}
-                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${
-                  errors.connections
+                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${errors.connections
                     ? "border-rose-500 focus:ring-rose-500 focus:border-rose-500"
                     : "border-zinc-800 focus:ring-blue-500 focus:border-blue-500"
-                }`}
-                placeholder="15"
+                  }`}
+                placeholder="25"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500 font-sans">
                 invites/day
@@ -163,12 +162,11 @@ export default function EngagementSettingsCard({
                 type="number"
                 value={settings.daily_likes || ""}
                 onChange={(e) => handleLikesChange(parseInt(e.target.value))}
-                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${
-                  errors.likes
+                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${errors.likes
                     ? "border-rose-500 focus:ring-rose-500 focus:border-rose-500"
                     : "border-zinc-800 focus:ring-purple-500 focus:border-purple-500"
-                }`}
-                placeholder="20"
+                  }`}
+                placeholder="40"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500 font-sans">
                 likes/day
@@ -200,12 +198,11 @@ export default function EngagementSettingsCard({
                 type="number"
                 value={settings.daily_comments || ""}
                 onChange={(e) => handleCommentsChange(parseInt(e.target.value))}
-                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${
-                  errors.comments
+                className={`w-full h-11 px-3.5 rounded-lg bg-zinc-950/80 border text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 transition-colors font-mono ${errors.comments
                     ? "border-rose-500 focus:ring-rose-500 focus:border-rose-500"
                     : "border-zinc-800 focus:ring-emerald-500 focus:border-emerald-500"
-                }`}
-                placeholder="10"
+                  }`}
+                placeholder="15"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500 font-sans">
                 comments/day
@@ -224,7 +221,7 @@ export default function EngagementSettingsCard({
           <div className="p-3 rounded-lg bg-zinc-950/50 border border-zinc-800/80 text-zinc-400 text-xs flex items-start space-x-2">
             <ShieldCheck size={16} className="text-emerald-400 flex-shrink-0 mt-0.5" />
             <span className="leading-relaxed">
-              Quotas are constrained within safe platform limits to protect your LinkedIn account reputation.
+              These are hard daily caps. Comments are generated from the target post by the configured AI provider; generation failures are never replaced with fabricated text.
             </span>
           </div>
 
@@ -233,11 +230,10 @@ export default function EngagementSettingsCard({
             <button
               type="submit"
               disabled={isSaving}
-              className={`h-10 px-5 rounded-lg text-xs font-medium flex items-center space-x-2 transition-all cursor-pointer shadow-sm ${
-                isSaved
+              className={`h-10 px-5 rounded-lg text-xs font-medium flex items-center space-x-2 transition-all cursor-pointer shadow-sm ${isSaved
                   ? "bg-emerald-500 text-zinc-950 font-semibold"
                   : "bg-blue-600 hover:bg-blue-500 text-white"
-              }`}
+                }`}
             >
               {isSaving ? (
                 <>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from src.models.brand_context import BrandContext
 from src.modules.linkedin.models import ContentContext, ResearchedFact
 from src.modules.planning.models.campaign_plan import CalendarSlot, CampaignPlan
 from src.modules.research.models.research_brief import ResearchBrief
@@ -27,12 +28,21 @@ class ContentContextBuilder:
         registration_link: str = "",
         target_audience: str = "",
         curriculum_breakdown: str = "",
-        ticket_price: str = "Free",
+        ticket_price: str = "",
         guest_name: str | None = None,
         guest_position: str | None = None,
         guest_organization: str | None = None,
         guest_profile: dict | None = None,
         post_time_str: str = "10:00 AM",
+        brand: BrandContext | None = None,
+        campaign_type: str = "",
+        campaign_name: str = "",
+        objective: str = "",
+        value_proposition: str = "",
+        cta_url: str = "",
+        campaign_category: str = "",
+        outcome_value_proposition: str = "",
+        product_facts: str = "",
     ) -> ContentContext:
         """Construct a ContentContext for a specific CalendarSlot.
 
@@ -51,9 +61,14 @@ class ContentContextBuilder:
             guest_name: Guest speaker name from intake_checklists.
             guest_position: Guest speaker title from intake_checklists.
             guest_organization: Guest speaker organization.
+            campaign_type: Campaign type from intake_checklists (e.g. app_launch).
+            campaign_name: Campaign name from intake/campaign.
+            objective: Campaign objective from intake_checklists.
+            value_proposition: Value proposition from intake_checklists.
+            cta_url: Primary CTA URL from intake_checklists.
 
         Returns:
-            ContentContext populated with slot info, web-verified ResearchedFacts, and event data.
+            ContentContext populated with slot info, web-verified ResearchedFacts, and campaign data.
         """
         facts: list[ResearchedFact] = []
 
@@ -92,6 +107,8 @@ class ContentContextBuilder:
         )
 
         return ContentContext(
+            brand=brand,
+            positioning=plan.core_strategy.positioning_statement,
             slot_id=slot.slot_id,
             slot_date=slot.date,
             scheduled_time=post_time_str,
@@ -115,4 +132,12 @@ class ContentContextBuilder:
             curriculum_breakdown=curriculum_breakdown,
             ticket_price=ticket_price,
             guest_profile=guest_profile,
+            campaign_type=campaign_type,
+            campaign_name=campaign_name,
+            objective=objective,
+            value_proposition=value_proposition,
+            cta_url=cta_url,
+            campaign_category=campaign_category,
+            outcome_value_proposition=outcome_value_proposition,
+            product_facts=product_facts,
         )

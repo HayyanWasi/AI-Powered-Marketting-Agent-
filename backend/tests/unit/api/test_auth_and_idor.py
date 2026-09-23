@@ -144,7 +144,7 @@ class TestIdorPreventionAutopilot:
         settings_a["master_active"] = False
 
         # Verify User B's settings remain untouched at default
-        assert settings_b["daily_connections"] == 15
+        assert settings_b["daily_connections"] == 25
         assert settings_b["master_active"] is True
         assert _get_user_settings(user_a)["master_active"] is False
         assert _get_user_settings(user_b)["master_active"] is True

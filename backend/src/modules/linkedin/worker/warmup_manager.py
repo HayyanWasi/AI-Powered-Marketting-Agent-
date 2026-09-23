@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 class WarmupManager:
     """Manages the lifecycle of a LinkedIn account's API limits."""
 
-    def __init__(self, account_id: str) -> None:
-        self._account_id = account_id
+    def __init__(self, linkedin_account_id: str) -> None:
+        self._linkedin_account_id = str(linkedin_account_id)
 
     def get_state(self) -> WarmupState:
         """Fetch the current warm-up state from the database."""
@@ -28,7 +28,7 @@ class WarmupManager:
             res = (
                 client.table("linkedin_warmup_state")
                 .select("*")
-                .eq("account_id", self._account_id)
+                .eq("linkedin_account_id", self._linkedin_account_id)
                 .limit(1)
                 .execute()
             )
@@ -39,15 +39,15 @@ class WarmupManager:
                 return WarmupState(**row)
 
             # If no state exists, create a new one in RAMP_UP phase by default
-            new_state = WarmupState(account_id=self._account_id)
+            new_state = WarmupState(linkedin_account_id=self._linkedin_account_id)
             self._save_state(new_state)
             return new_state
 
         except Exception as e:
-            logger.error("Failed to load warmup state for %s: %s", self._account_id, e)
+            logger.error("Failed to load warmup state for %s: %s", self._linkedin_account_id, e)
             # Return a safe, conservative default in case of DB failure
             return WarmupState(
-                account_id=self._account_id,
+                linkedin_account_id=self._linkedin_account_id,
                 current_daily_invite_limit=5,
                 current_daily_engage_limit=5,
             )
@@ -58,7 +58,7 @@ class WarmupManager:
             client = get_supabase_client()
             data = {
                 "id": str(state.id),
-                "account_id": state.account_id,
+                "linkedin_account_id": str(state.linkedin_account_id),
                 "activation_date": state.activation_date.isoformat(),
                 "days_active": state.days_active,
                 "current_daily_invite_limit": state.current_daily_invite_limit,
@@ -71,9 +71,9 @@ class WarmupManager:
                 ),
                 "updated_at": datetime.now(UTC).isoformat(),
             }
-            client.table("linkedin_warmup_state").upsert(data, on_conflict="account_id").execute()
+            client.table("linkedin_warmup_state").upsert(data, on_conflict="linkedin_account_id").execute()
         except Exception as e:
-            logger.error("Failed to save warmup state for %s: %s", self._account_id, e)
+            logger.error("Failed to save warmup state for %s: %s", self._linkedin_account_id, e)
 
     def evaluate_daily_limits(
         self, target_invite_limit: int, target_engage_limit: int
@@ -119,7 +119,7 @@ class WarmupManager:
 
             logger.info(
                 "Warmup limits increased for %s. Invites: %d, Engagements: %d",
-                self._account_id,
+                self._linkedin_account_id,
                 new_invite,
                 new_engage,
             )
@@ -127,7 +127,7 @@ class WarmupManager:
             # Did we reach operating limits?
             if new_invite >= target_invite_limit and new_engage >= target_engage_limit:
                 state.phase = WarmupPhase.OPERATING
-                logger.info("Account %s has reached OPERATING phase.", self._account_id)
+                logger.info("Account %s has reached OPERATING phase.", self._linkedin_account_id)
 
         self._save_state(state)
         return state

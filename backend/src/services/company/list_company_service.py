@@ -21,6 +21,7 @@ class ListCompanyService:
                     "company_name": p.company_name,
                     "is_complete": p.is_complete,
                     "image_count": len(p.reference_image_urls),
+                    "default_linkedin_account_id": p.default_linkedin_account_id,
                     "updated_at": p.updated_at,
                 }
                 for p in profiles

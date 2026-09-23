@@ -229,13 +229,12 @@ export default function LiveTrackingCard({ progress, campaigns, onOpenCampaign }
                       <div className="inline-flex items-center space-x-2.5">
                         <div className="w-24 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              camp.status === "ACTIVE"
+                            className={`h-full rounded-full transition-all duration-300 ${camp.status === "ACTIVE"
                                 ? "bg-emerald-400"
                                 : camp.status === "SCHEDULED"
-                                ? "bg-amber-400"
-                                : "bg-zinc-500"
-                            }`}
+                                  ? "bg-amber-400"
+                                  : "bg-zinc-500"
+                              }`}
                             style={{ width: `${camp.progress_pct}%` }}
                           />
                         </div>

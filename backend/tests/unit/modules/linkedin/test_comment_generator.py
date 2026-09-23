@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.modules.linkedin.generators.comment_generator import CommentGenerator
 from src.modules.linkedin.models import ReviewStatus, TargetPost
 from src.services.llm_service import LLMService
@@ -39,7 +41,7 @@ def test_comment_generator_prompt_constraints():
     assert comment.generated_text == "This is a great point."
 
 
-def test_comment_generator_fallback_on_exception():
+def test_comment_generator_failure_does_not_create_fake_review_item():
     mock_llm = MagicMock(spec=LLMService)
     # Simulate an LLM failure
     mock_llm.generate.side_effect = Exception("API Error")
@@ -55,8 +57,5 @@ def test_comment_generator_fallback_on_exception():
         persona_label="Error Target",
     )
 
-    comment = generator.generate_comment(post)
-
-    # It should not crash, it should return a safe fallback
-    assert comment.status == ReviewStatus.PENDING_REVIEW
-    assert "Great insights" in comment.generated_text
+    with pytest.raises(RuntimeError, match="no review item was created"):
+        generator.generate_comment(post)

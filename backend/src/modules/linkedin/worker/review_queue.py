@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class ReviewQueue:
     """Manages the human-in-the-loop review gate for AI comments."""
 
-    def add_comment(self, comment: GeneratedComment) -> UUID:
-        """Add a newly generated comment to the queue for human review."""
+    def add_comment(self, comment: GeneratedComment) -> UUID | None:
+        """Add a newly generated comment to the queue for human review with dedupe."""
         try:
             client = get_supabase_client()
             expires_at = datetime.now(UTC) + timedelta(hours=48)
@@ -38,32 +38,47 @@ class ReviewQueue:
                 "generated_at": comment.generated_at.isoformat(),
                 "expires_at": expires_at.isoformat(),
             }
+            if comment.user_id:
+                data["user_id"] = str(comment.user_id)
+            if comment.company_profile_id:
+                data["company_profile_id"] = str(comment.company_profile_id)
+            if comment.linkedin_account_id:
+                data["linkedin_account_id"] = str(comment.linkedin_account_id)
 
-            client.table("linkedin_review_queue").insert(data).execute()
-            logger.info(
-                "Added comment %s to review queue for post %s", comment.id, comment.target_post_id
-            )
-            return comment.id
+            res = client.table("linkedin_review_queue").insert(data).execute()
+            if res.data:
+                logger.info(
+                    "Added comment %s to review queue for post %s", comment.id, comment.target_post_id
+                )
+                return comment.id
+            return None
         except Exception as e:
-            logger.error("Failed to add comment to review queue: %s", e)
-            raise
+            logger.warning("Failed to add comment to review queue (possible duplicate): %s", e)
+            return None
 
-    def get_pending(self, limit: int = 50) -> list[GeneratedComment]:
+    def get_pending(
+        self,
+        limit: int = 50,
+        company_profile_id: str | UUID | None = None,
+        user_id: str | UUID | None = None,
+    ) -> list[GeneratedComment]:
         """Fetch all comments currently awaiting human review."""
         try:
             client = get_supabase_client()
-            res = (
+            query = (
                 client.table("linkedin_review_queue")
                 .select("*")
                 .eq("status", ReviewStatus.PENDING_REVIEW.value)
-                .order("generated_at", desc=False)
-                .limit(limit)
-                .execute()
             )
+            if company_profile_id:
+                query = query.eq("company_profile_id", str(company_profile_id))
+            if user_id:
+                query = query.eq("user_id", str(user_id))
+
+            res = query.order("generated_at", desc=False).limit(limit).execute()
             comments = []
             for row in res.data or []:
                 row["status"] = ReviewStatus(row["status"])
-                # Convert string dates to datetime if needed by Pydantic
                 comments.append(GeneratedComment(**row))
             return comments
         except Exception as e:

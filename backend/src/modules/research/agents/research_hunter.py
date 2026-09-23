@@ -42,6 +42,9 @@ class ResearchHunter:
         company_name: str,
         tier_config: ResearchTierConfig,
         cost_controller: CostController,
+        campaign_type: str = "",
+        audience: str = "",
+        category: str = "",
     ) -> tuple[list[EvidenceItem], float, int]:
         """Execute autonomous search loop up to max_iterations (1 to 3 loops).
 
@@ -56,7 +59,14 @@ class ResearchHunter:
         gap_detector = GapDetector(worker_llm)
 
         # Step 1: Initial query generation
-        queries = await gap_detector.generate_initial_queries(dimension, user_goal, company_name)
+        queries = await gap_detector.generate_initial_queries(
+            dimension=dimension,
+            user_goal=user_goal,
+            company_name=company_name,
+            campaign_type=campaign_type,
+            audience=audience,
+            category=category,
+        )
         cost_controller.record_llm_call()
 
         # Step 2: Loop iterations (Quick: 1, Standard: 2, Deep: 3)
@@ -134,8 +144,9 @@ class ResearchHunter:
 
         system_prompt = (
             "You are a Research Evidence Collector. Extract key claims and verbatim quotes "
-            "from web search snippets. Assign score values (1.0 to 5.0) for corroboration, "
-            "freshness, relevance, and credibility."
+            "strictly from the provided web search snippets. Assign score values (1.0 to 5.0) for corroboration, "
+            "freshness, relevance, and credibility. Do NOT invent facts or sources absent from the snippets. "
+            "If snippets contain no relevant facts, return an empty claims array: {\"claims\": []}."
         )
         user_prompt = f"""
 Dimension: {dimension}

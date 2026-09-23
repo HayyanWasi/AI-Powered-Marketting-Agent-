@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.models.brand_context import BrandContext
+
 # ── Enums ────────────────────────────────────────────────────────────────────
 
 
@@ -19,8 +21,16 @@ class PostStatus(StrEnum):
 
     DRAFT = "draft"
     SCHEDULED = "scheduled"
+    # Transient claim state: a worker has atomically taken this post and is
+    # publishing it. Guarantees exactly-once dispatch across workers/processes.
+    PUBLISHING = "publishing"
     PUBLISHED = "published"
     FAILED = "failed"
+    # Fail-closed recovery state: a claim that stayed in 'publishing' past the
+    # stale threshold (worker likely crashed mid-publish). Because this Unipile
+    # deployment cannot reconcile whether the remote post was created, such a
+    # row is NEVER auto-republished — it is parked here for manual review.
+    NEEDS_REVIEW = "needs_review"
 
 
 class SequenceStatus(StrEnum):
@@ -51,6 +61,8 @@ class ReviewStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     PUBLISHED = "published"
+    FAILED = "failed"
+    NEEDS_REVIEW = "needs_review"
     EXPIRED = "expired"
 
 
@@ -75,12 +87,12 @@ class AutoPilotConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     # ── Outreach limits ──
-    daily_invite_limit: int = Field(default=20, ge=1, le=50)
+    daily_invite_limit: int = Field(default=25, ge=1, le=50)
     daily_message_limit: int = Field(default=30, ge=1, le=100)
 
     # ── Engagement limits ──
-    daily_like_limit: int = Field(default=15, ge=1, le=50)
-    daily_comment_limit: int = Field(default=10, ge=1, le=30)
+    daily_like_limit: int = Field(default=40, ge=1, le=50)
+    daily_comment_limit: int = Field(default=15, ge=1, le=30)
 
     # ── Delay bounds (used by RateLimiter) ──
     delay_min_seconds: int = Field(default=40, ge=20, le=600)
@@ -144,7 +156,9 @@ class ContentContext(BaseModel):
     cta: str
     phase: str = "launch"
     format_type: str = "Text Post"
-    tone_of_voice: str = "Professional & Data-driven"
+    tone_of_voice: str = ""
+    brand: BrandContext | None = None
+    positioning: str = ""
 
     # MUST be sourced from web research
     researched_facts: tuple[ResearchedFact, ...] = ()
@@ -164,7 +178,19 @@ class ContentContext(BaseModel):
     registration_link: str = ""
     target_audience: str = ""
     curriculum_breakdown: str = ""
-    ticket_price: str = "Free"
+    ticket_price: str = ""
+
+    # Canonical campaign & intake fields
+    campaign_type: str = ""
+    campaign_name: str = ""
+    objective: str = ""
+    value_proposition: str = ""
+    cta_url: str = ""
+
+    # Explicit contextual facts
+    campaign_category: str = ""
+    outcome_value_proposition: str = ""
+    product_facts: str = ""
 
 
 class LinkedInPost(BaseModel):
@@ -176,6 +202,14 @@ class LinkedInPost(BaseModel):
     campaign_id: UUID
     slot_id: str
     scheduled_at: datetime
+    timezone: str = "UTC"
+    schedule_reason: str = ""
+    schedule_source: str = ""
+    schedule_confidence: str = "medium"
+    linkedin_account_id: str | None = None
+    campaign_asset_id: UUID | None = None
+    media_url: str | None = None
+    media_type: str | None = None
     hook: str
     body: str
     cta_text: str
@@ -252,7 +286,8 @@ class TargetPersona(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID = Field(default_factory=uuid4)
-    account_id: str
+    user_id: UUID | None = None
+    company_profile_id: UUID | None = None
     label: str  # e.g. "AI Founders"
     search_keywords: str  # e.g. "AI startup founder CEO"
     max_profiles: int = Field(default=150, ge=10, le=500)
@@ -296,6 +331,10 @@ class GeneratedComment(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID = Field(default_factory=uuid4)
+    user_id: UUID | None = None
+    company_profile_id: UUID | None = None
+    linkedin_account_id: UUID | None = None
+    action_log_id: UUID | None = None
     target_post_id: str
     target_post_snippet: str = ""  # First 200 chars for review context
     target_author_name: str = ""
@@ -309,6 +348,65 @@ class GeneratedComment(BaseModel):
     published_at: datetime | None = None
 
 
+# ── Engagement Settings & Log Models ─────────────────────────────────────────
+
+
+class EngagementSettings(BaseModel):
+    """Brand-scoped engagement automation settings."""
+
+    model_config = ConfigDict(frozen=False)
+
+    id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    company_profile_id: UUID
+    linkedin_account_id: UUID | None = None
+    engagement_enabled: bool = False
+    auto_like_enabled: bool = False
+    auto_comment_generation_enabled: bool = False
+    auto_connect_enabled: bool = False
+    likes_per_day: int = Field(default=15, ge=0, le=100)
+    comments_per_day: int = Field(default=5, ge=0, le=50)
+    invites_per_day: int = Field(default=10, ge=0, le=40)
+    connection_note_template: str = ""
+    timezone: str = "UTC"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class EngagementActionType(StrEnum):
+    LIKE = "like"
+    COMMENT = "comment"
+    CONNECTION_REQUEST = "connection_request"
+
+
+class EngagementLogStatus(StrEnum):
+    CLAIMED = "claimed"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    NEEDS_REVIEW = "needs_review"
+
+
+class EngagementLogEntry(BaseModel):
+    """Authoritative durable event log & idempotency anchor."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    company_profile_id: UUID
+    linkedin_account_id: UUID
+    action_type: EngagementActionType
+    target_post_id: str | None = None
+    target_profile_id: str | None = None
+    review_queue_id: UUID | None = None
+    comment_text: str | None = None
+    status: EngagementLogStatus = EngagementLogStatus.CLAIMED
+    provider_result_id: str | None = None
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+
+
 # ── Warm-Up State ────────────────────────────────────────────────────────────
 
 
@@ -318,7 +416,7 @@ class WarmupState(BaseModel):
     model_config = ConfigDict(frozen=False)  # Mutable — updated during ramp-up
 
     id: UUID = Field(default_factory=uuid4)
-    account_id: str
+    linkedin_account_id: UUID | str
     activation_date: _dt.date = Field(default_factory=_dt.date.today)
     days_active: int = 0
     current_daily_invite_limit: int = 10

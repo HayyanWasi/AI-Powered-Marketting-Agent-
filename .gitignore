@@ -15,7 +15,7 @@ env/
 
 # Environment
 .env
-.env.local
+.env.local  
 *.key.json
 *key.json
 .agents/*.json
@@ -56,4 +56,20 @@ Thumbs.db
 
 # Tooling
 .specify/
+
+# Scratch & temporary traces
+scratch/
+backend/scratch/
+trace_output.txt
+deletion-candidates.json
+backend/analyze_channel_trace.py
+backend/fast_trace.py
+backend/find_failing_trace.py
+backend/run_*.py
+backend/scratch_*.py
+backend/src/scratch_*.py
+backend/test_*.py
+backend/smoke_test_providers.py
+apply_rls.py
+supabase/
 

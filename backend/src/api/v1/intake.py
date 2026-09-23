@@ -17,12 +17,22 @@ from src.models.intake import (
     IntakeChecklist,
 )
 from src.repositories.base import BaseRepository
-from src.services.intake_chat_service import IntakeChatService
+from src.services.intake_access_service import IntakeAccessDenied, IntakeAccessService
+from src.services.intake_chat_service import (
+    IntakeChatService,
+    IntakePersistenceError,
+    IntakeProcessingError,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/campaigns/intake", tags=["Campaign Intake"])
 intake_service = IntakeChatService()
+intake_access = IntakeAccessService()
+
+
+def _access_denied() -> HTTPException:
+    return HTTPException(status_code=404, detail="Intake resource not found or access denied.")
 
 
 @router.post("/chat")
@@ -36,25 +46,27 @@ async def chat_turn(
         req.campaign_id,
         req.user_message,
     )
-    from src.repositories.campaign_repository import CampaignRepository
+    user_id = UUID(user.id)
+    try:
+        await intake_access.authorize(req.campaign_id, user_id, claim_if_missing=True)
+    except IntakeAccessDenied:
+        raise _access_denied() from None
 
-    campaign_repo = CampaignRepository()
-    existing_campaign = await campaign_repo.get_by_id(req.campaign_id)
-    if existing_campaign and existing_campaign.organization_id != UUID(user.id):
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied: You do not own this campaign intake session.",
+    history = await intake_service.get_history(req.campaign_id, user_id)
+    current_checklist = await intake_service.get_checklist(req.campaign_id, user_id)
+
+    try:
+        res = await intake_service.process_chat_turn(
+            campaign_id=req.campaign_id,
+            owner_id=user_id,
+            user_message=req.user_message,
+            history=history,
+            current_checklist=current_checklist,
         )
-
-    history = await intake_service.get_history(req.campaign_id)
-    current_checklist = await intake_service.get_checklist(req.campaign_id)
-
-    res = await intake_service.process_chat_turn(
-        campaign_id=req.campaign_id,
-        user_message=req.user_message,
-        history=history,
-        current_checklist=current_checklist,
-    )
+    except IntakeProcessingError as exc:
+        raise HTTPException(502, "Intake AI processing failed. Please retry.") from exc
+    except IntakePersistenceError as exc:
+        raise HTTPException(503, "Could not save intake progress. Please retry.") from exc
 
     logger.info(
         "[INTAKE API Step 2] Chat turn complete for campaign_id=%s | Reply='%s' | Complete=%s",
@@ -72,18 +84,14 @@ async def get_intake_history(
 ) -> dict[str, Any]:
     """Fetch persistent chat history and current checklist for a campaign with ownership check."""
     logger.info("[INTAKE API] Fetching intake history for campaign_id=%s", campaign_id)
-    from src.repositories.campaign_repository import CampaignRepository
+    user_id = UUID(user.id)
+    try:
+        await intake_access.authorize(campaign_id, user_id)
+    except IntakeAccessDenied:
+        raise _access_denied() from None
 
-    campaign_repo = CampaignRepository()
-    existing_campaign = await campaign_repo.get_by_id(campaign_id)
-    if existing_campaign and existing_campaign.organization_id != UUID(user.id):
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied: You do not own this campaign intake session.",
-        )
-
-    history = await intake_service.get_history(campaign_id)
-    checklist = await intake_service.get_checklist(campaign_id)
+    history = await intake_service.get_history(campaign_id, user_id)
+    checklist = await intake_service.get_checklist(campaign_id, user_id)
 
     return {
         "campaign_id": str(campaign_id),
@@ -111,6 +119,15 @@ async def migrate_intake_session(
         req.session_id,
         req.campaign_id,
     )
+
+    user_id = UUID(user.id)
+    try:
+        # Authorize both identifiers before reading source checklist/messages.
+        await intake_access.authorize(req.session_id, user_id)
+        await intake_access.require_campaign(req.campaign_id, user_id)
+    except IntakeAccessDenied:
+        raise _access_denied() from None
+
     if req.session_id == req.campaign_id:
         logger.info("[INTAKE MIGRATE] session_id equals campaign_id (no-op).")
         return {"status": "no_op", "message": "session_id and campaign_id are the same"}
@@ -125,6 +142,7 @@ async def migrate_intake_session(
             repo.client.table("intake_checklists")
             .select("*")
             .eq("campaign_id", str(req.session_id))
+            .eq("owner_id", str(user_id))
             .execute()
         )
     except Exception as e:
@@ -150,6 +168,7 @@ async def migrate_intake_session(
             "[INTAKE MIGRATE Step 3] Upserting checklist under real campaign_id=%s", req.campaign_id
         )
         checklist_row["campaign_id"] = str(req.campaign_id)
+        checklist_row["owner_id"] = str(user_id)
         repo.client.table("intake_checklists").upsert(
             checklist_row, on_conflict="campaign_id"
         ).execute()
@@ -177,6 +196,7 @@ async def migrate_intake_session(
             msg_repo.client.table("intake_messages")
             .select("*")
             .eq("campaign_id", str(req.session_id))
+            .eq("owner_id", str(user_id))
             .execute()
         )
         if msg_res.data:
@@ -184,6 +204,7 @@ async def migrate_intake_session(
             for m in msg_res.data:
                 row = dict(m)
                 row["campaign_id"] = str(req.campaign_id)
+                row["owner_id"] = str(user_id)
                 row.pop("id", None)  # let DB generate new PK
                 migrated.append(row)
             msg_repo.client.table("intake_messages").insert(migrated).execute()
@@ -205,7 +226,7 @@ async def migrate_intake_session(
         )
         repo.client.table("intake_checklists").delete().eq(
             "campaign_id", str(req.session_id)
-        ).execute()
+        ).eq("owner_id", str(user_id)).execute()
         logger.info(
             "[INTAKE MIGRATE Step 5 SUCCESS] Deleted old session row for session_id=%s",
             req.session_id,
@@ -234,7 +255,14 @@ async def confirm_guest(
         req.guest_name,
         req.confirmed,
     )
-    checklist = await intake_service.get_checklist(req.campaign_id)
+
+    user_id = UUID(user.id)
+    try:
+        await intake_access.authorize(req.campaign_id, user_id)
+    except IntakeAccessDenied:
+        raise _access_denied() from None
+
+    checklist = await intake_service.get_checklist(req.campaign_id, user_id)
 
     checklist_dict = checklist.model_dump()
     checklist_dict["has_guest"] = True
@@ -256,7 +284,10 @@ async def confirm_guest(
             logger.warning("[GUEST RESEARCH ERROR] Error processing guest on confirm: %s", e)
 
     updated_checklist = IntakeChecklist.model_validate(checklist_dict)
-    intake_service._save_checklist(req.campaign_id, updated_checklist)
+    try:
+        intake_service._save_checklist(req.campaign_id, user_id, updated_checklist)
+    except IntakePersistenceError as exc:
+        raise HTTPException(503, "Could not save intake progress. Please retry.") from exc
     logger.info(
         "[GUEST CONFIRM Step 4 SUCCESS] Saved updated checklist with guest research for campaign_id=%s",
         req.campaign_id,
@@ -276,5 +307,14 @@ async def reset_intake_session(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
     """Reset and delete active chat history and checklist for a campaign intake session."""
-    intake_service.clear_session(campaign_id)
+    user_id = UUID(user.id)
+    try:
+        await intake_access.authorize(campaign_id, user_id)
+    except IntakeAccessDenied:
+        raise _access_denied() from None
+
+    try:
+        intake_service.clear_session(campaign_id, user_id)
+    except IntakePersistenceError as exc:
+        raise HTTPException(503, "Could not reset intake progress. Please retry.") from exc
     return {"status": "success", "message": f"Intake session {campaign_id} reset."}

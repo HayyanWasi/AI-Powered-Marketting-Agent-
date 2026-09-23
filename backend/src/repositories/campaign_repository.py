@@ -99,6 +99,15 @@ class CampaignRepository(BaseRepository):
 
         return len(result.data) > 0
 
+    import httpx
+    from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+    @retry(
+        retry=retry_if_exception_type(httpx.RequestError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.1, max=1),
+        reraise=True,
+    )
     async def list(
         self,
         organization_id: UUID,
@@ -108,6 +117,7 @@ class CampaignRepository(BaseRepository):
         owner_id: UUID | None = None,
         page: int = 1,
         page_size: int = 20,
+        company_profile_id: UUID | None = None,
     ) -> tuple[list[Campaign], int]:
         """List campaigns with filters and pagination."""
         query = (
@@ -116,6 +126,8 @@ class CampaignRepository(BaseRepository):
             .eq("organization_id", str(organization_id))
         )
 
+        if company_profile_id:
+            query = query.eq("company_profile_id", str(company_profile_id))
         if state:
             query = query.eq("state", state.value)
         if start_date:

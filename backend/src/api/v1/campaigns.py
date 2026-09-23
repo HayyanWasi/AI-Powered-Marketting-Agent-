@@ -26,6 +26,7 @@ from src.schemas import (
 )
 from src.services.asset_service import AssetService
 from src.services.campaign_service import CampaignService
+from src.services.campaign_context_service import require_profile
 from src.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ async def create_campaign(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
     """Create a new campaign."""
+    require_profile(request.company_profile_id, user.id)
     campaign = await svc.create_campaign(
         organization_id=UUID(user.id),
         name=request.name,
@@ -68,6 +70,7 @@ async def create_campaign(
 
 @router.get("", response_model=CampaignListResponse)
 async def list_campaigns(
+    company_profile_id: UUID | None = Query(None),
     state: CampaignState | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -82,6 +85,7 @@ async def list_campaigns(
         owner_id=owner_id,
         page=page,
         page_size=page_size,
+        company_profile_id=company_profile_id,
     )
     return CampaignListResponse(
         campaigns=[CampaignSummary.model_validate(c.to_dict()) for c in campaigns],
@@ -97,11 +101,8 @@ async def get_campaign(
     svc: CampaignService = Depends(_get_campaign_service),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
-    """Get campaign by ID with dev-mode tenant fallback."""
-    try:
-        campaign = await svc.get_campaign(campaign_id, UUID(user.id))
-    except NotFoundError:
-        campaign = await svc.campaign_repository.get_by_id(campaign_id, None)
+    """Get the authenticated user's campaign."""
+    campaign = await svc.get_campaign(campaign_id, UUID(user.id))
 
     if not campaign:
         raise NotFoundError("Campaign", str(campaign_id))
@@ -117,6 +118,11 @@ async def update_campaign(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
     """Update campaign configuration (Draft only) with optimistic locking."""
+    await svc.get_campaign(campaign_id, UUID(user.id))
+    if "company_profile_id" in request.model_fields_set:
+        if request.company_profile_id is None:
+            raise HTTPException(422, "A company profile is required.")
+        require_profile(request.company_profile_id, user.id)
     try:
         expected_version = int(if_match)
     except ValueError:
@@ -259,6 +265,7 @@ async def list_assets(
         campaign = await svc.get_campaign(campaign_id, UUID(user.id))
     except NotFoundError:
         campaign = await svc.campaign_repository.get_by_id(campaign_id, None)
+    campaign = await svc.get_campaign(campaign_id, UUID(user.id))
 
     if not campaign:
         raise NotFoundError("Campaign", str(campaign_id))
@@ -273,9 +280,14 @@ async def list_assets(
 @router.get("/{campaign_id}/posts")
 async def get_campaign_posts(
     campaign_id: UUID,
+    svc: CampaignService = Depends(_get_campaign_service),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> list[dict[str, Any]]:
     """Get all generated/scheduled posts for this campaign."""
+    campaign = await svc.get_campaign(campaign_id, UUID(user.id))
+    if not campaign:
+        raise NotFoundError("Campaign", str(campaign_id))
+
     posts_repo = BaseRepository("linkedin_posts")
     try:
         res = (

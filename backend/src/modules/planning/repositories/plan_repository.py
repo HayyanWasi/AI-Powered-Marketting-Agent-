@@ -91,26 +91,23 @@ class PlanRepository(BaseRepository):
         sections_changed: tuple[str, ...] = (),
         parent_version: int | None = None,
     ) -> PlanVersion:
-        """Append a new version and point the plan row at it."""
-        row = {
-            "plan_id": str(plan_id),
-            "version": plan.version,
-            "document": plan.to_document(),
-            "parent_version": parent_version,
-            "change_summary": change_summary,
-            "sections_changed": list(sections_changed),
+        """Append a new version and point the plan row at it atomically using an RPC."""
+        args = {
+            "p_plan_id": str(plan_id),
+            "p_version": plan.version,
+            "p_document": plan.to_document(),
+            "p_parent_version": parent_version,
+            "p_change_summary": change_summary,
+            "p_sections_changed": list(sections_changed),
+            "p_status": plan.status.value,
+            "p_language": plan.language,
         }
-        result = self.client.table(VERSIONS_TABLE).insert(row).execute()
+
+        result = self.client.rpc("add_plan_version", args).execute()
         if not result.data:
             raise RuntimeError(f"Failed to store version {plan.version} for plan {plan_id}")
 
-        await self.update_plan_row(
-            plan_id,
-            current_version=plan.version,
-            status=plan.status.value,
-            language=plan.language,
-        )
-        return self._to_version(result.data[0])
+        return self._to_version(result.data)
 
     async def get_version(self, plan_id: UUID, version: int) -> PlanVersion | None:
         """Return one specific version of a plan."""

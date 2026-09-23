@@ -8,17 +8,7 @@ interface GenerationOptions {
   forceError?: boolean;
 }
 
-const getStaticFallbackUrl = () => {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_URL ||
-    (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
-      ? "https://ai-powered-marketting-agent.onrender.com/api"
-      : "http://localhost:8000/api");
-  const baseUrl = apiUrl.replace(/\/api\/?$/, "");
-  return `${baseUrl}/static/videos/campaign_standalone.mp4`;
-};
-
-export function useVideoGeneration() {
+export function useVideoGeneration(campaignId: string | null) {
   const [status, setStatus] = useState<VideoGenerationStatus>("idle");
   const [currentStage, setCurrentStage] = useState("Waiting to generate...");
   const [targetProgress, setTargetProgress] = useState(0);
@@ -73,6 +63,11 @@ export function useVideoGeneration() {
 
   const startGeneration = useCallback(
     async (prompt: string, options?: GenerationOptions) => {
+      if (!campaignId) {
+        setStatus("error");
+        setError("Select a campaign before generating a video.");
+        return;
+      }
       abortControllerRef.current = false;
       setStatus("generating");
       setError(null);
@@ -86,15 +81,7 @@ export function useVideoGeneration() {
       const defaultVariations: VideoVariation[] = [
         {
           id: `var-1-${Date.now()}`,
-          label: "Variation 1 (9:16 Reel)",
-          durationSeconds: 15,
-          resolution: "1080p HD",
-          aspectRatio: "9:16",
-          fps: 24,
-        },
-        {
-          id: `var-2-${Date.now()}`,
-          label: "Variation 2 (9:16 Reel)",
+          label: "Campaign video (9:16 Reel)",
           durationSeconds: 15,
           resolution: "1080p HD",
           aspectRatio: "9:16",
@@ -150,7 +137,7 @@ export function useVideoGeneration() {
         }, 1000);
 
         // Await the real backend generation without arbitrary client-side timeout
-        const res = await videoApi.generate("standalone", prompt);
+        const res = await videoApi.generate(campaignId, prompt);
 
         if (progressInterval) clearInterval(progressInterval);
 
@@ -162,20 +149,6 @@ export function useVideoGeneration() {
           if (apiUrl && !apiUrl.includes("localhost")) {
             const baseUrl = apiUrl.replace(/\/api\/?$/, "");
             finalVideoUrl = finalVideoUrl.replace("http://localhost:8000", baseUrl);
-          }
-        }
-
-        // Fallback check to static directory if video_url is empty
-        if (!finalVideoUrl) {
-          const fallbackUrl = getStaticFallbackUrl();
-          try {
-            const check = await fetch(fallbackUrl, { method: "HEAD" });
-            if (check.ok) {
-              finalVideoUrl = fallbackUrl;
-              console.info("[VideoGen] Recovered video from backend cache:", finalVideoUrl);
-            }
-          } catch {
-            // Fallback not reachable
           }
         }
 
@@ -194,10 +167,6 @@ export function useVideoGeneration() {
             ...defaultVariations[0],
             videoUrl: finalVideoUrl,
           },
-          {
-            ...defaultVariations[1],
-            videoUrl: finalVideoUrl,
-          },
         ];
 
         setArtifact((prev) =>
@@ -211,44 +180,13 @@ export function useVideoGeneration() {
                 videoUrl: finalVideoUrl,
                 variations: completedVariations,
                 generationDuration: secondsElapsed,
+                campaignAssetId: res.asset?.id,
+                schedulerPostId: res.draft_post?.id || res.draft_post?.post_id,
               }
             : null
         );
       } catch (err: unknown) {
         if (progressInterval) clearInterval(progressInterval);
-
-        // Check if video was rendered in static folder before showing error
-        try {
-          const fallbackUrl = getStaticFallbackUrl();
-          const check = await fetch(fallbackUrl, { method: "HEAD" });
-          if (check.ok) {
-            console.info("[VideoGen] Recovered video from local cache on error recovery.");
-            setTargetProgress(100);
-            setDisplayProgress(100);
-            displayProgressRef.current = 100;
-            setStatus("completed");
-            setCurrentStage("Render Completed");
-            setArtifact((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status: "completed",
-                    progress: 100,
-                    displayProgress: 100,
-                    currentStage: "Render Completed",
-                    videoUrl: fallbackUrl,
-                    variations: [
-                      { ...defaultVariations[0], videoUrl: fallbackUrl },
-                      { ...defaultVariations[1], videoUrl: fallbackUrl },
-                    ],
-                  }
-                : null
-            );
-            return;
-          }
-        } catch {
-          // Fallback check failed
-        }
 
         const errorMsg =
           err instanceof Error
@@ -270,7 +208,7 @@ export function useVideoGeneration() {
         );
       }
     },
-    []
+    [campaignId]
   );
 
   const selectVariation = useCallback((index: number) => {

@@ -52,8 +52,11 @@ export default function PersonasCard() {
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
+    const target = personas.find((p) => p.id === id);
     try {
-      await personasApi.delete(id);
+      if (target?.company_profile_id) {
+        await personasApi.delete(id, target.company_profile_id);
+      }
       setPersonas((prev) => prev.filter((p) => p.id !== id));
     } catch (e) {
       console.warn("Delete failed:", e);

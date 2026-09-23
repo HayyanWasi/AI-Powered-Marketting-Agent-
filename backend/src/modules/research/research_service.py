@@ -62,6 +62,9 @@ class ResearchEngineService:
         company_name: str = "",
         tier: str = "Quick",
         campaign_id: UUID | None = None,
+        campaign_type: str = "",
+        audience: str = "",
+        category: str = "",
     ) -> dict[str, Any]:
         """Execute complete autonomous research pipeline.
 
@@ -70,6 +73,9 @@ class ResearchEngineService:
             company_name: Brand/Company name.
             tier: Depth tier ("Quick", "Standard", "Deep").
             campaign_id: Optional campaign UUID for database association.
+            campaign_type: Type of campaign (e.g. app_launch).
+            audience: Target audience.
+            category: Industry or market category.
 
         Returns:
             Dict payload with research_brief, evidence_graph, red_team_report,
@@ -102,6 +108,9 @@ class ResearchEngineService:
                         company_name=company_name,
                         tier_config=tier_config,
                         cost_controller=cost_controller,
+                        campaign_type=campaign_type,
+                        audience=audience,
+                        category=category,
                     )
                 return dim, items, conf, abandoned
 

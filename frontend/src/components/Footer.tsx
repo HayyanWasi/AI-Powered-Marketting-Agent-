@@ -27,7 +27,9 @@ export default function Footer() {
     >
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 flex flex-col items-center text-center space-y-8">
         {/* Logo: hipoclipse */}
-        <Link href="/" className="inline-block hover:opacity-90 transition-opacity">
+        <Link href="/" className="inline-flex items-center gap-3 hover:opacity-90 transition-opacity">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Hipoclipse" className="w-10 h-10 rounded-xl object-contain" />
           <span className="text-[34px] sm:text-[42px] font-black tracking-tight text-white lowercase select-none">
             hipoclipse
           </span>

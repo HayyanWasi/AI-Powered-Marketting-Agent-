@@ -14,8 +14,8 @@ from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
-_COMMENT_SYSTEM_PROMPT = """You are an expert LinkedIn ghostwriter. Your job is to write a single, plain-text comment on a LinkedIn post.
-You must adhere STRICTLY to the following anti-detection rules:
+_COMMENT_SYSTEM_PROMPT = """You are an expert LinkedIn ghostwriter. Write one relevant, plain-text comment on the supplied LinkedIn post.
+Follow these rules:
 1. Write ONLY 1 or 2 short sentences.
 2. NEVER use bullet points, numbered lists, or emojis.
 3. NEVER cite external sources or write essays.
@@ -28,7 +28,7 @@ Output ONLY the text of the comment. No quotes, no intro text.
 
 
 class CommentGenerator:
-    """Generates AI comments for the review queue."""
+    """Generates grounded LinkedIn comments with the canonical LLM service."""
 
     def __init__(self, llm_service: LLMService | None = None) -> None:
         self._llm = llm_service or LLMService()
@@ -49,13 +49,12 @@ class CommentGenerator:
             response = self._llm.generate(request)
             generated_text = response.text.strip().strip('"').strip("'")
 
-            # Simple fallback if empty
             if not generated_text:
-                generated_text = "Great insights here, thanks for sharing!"
+                raise RuntimeError("Comment model returned empty content")
 
         except Exception as e:
             logger.error("Failed to generate comment: %s", e)
-            generated_text = "Great insights, thanks for sharing!"
+            raise RuntimeError("LinkedIn comment generation failed; no review item was created") from e
 
         snippet = target_post.content[:200]
         if len(target_post.content) > 200:

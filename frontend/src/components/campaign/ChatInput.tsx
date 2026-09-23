@@ -145,11 +145,10 @@ export default function ChatInput({
             onClick={handleSubmit}
             disabled={!text.trim() || disabled}
             aria-label="Send message"
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              text.trim() && !disabled
-                ? "bg-[#20B8E5] text-[#0E141B] hover:bg-[#1BA1CA] shadow-sm"
-                : "bg-white/[0.05] text-[#6B7785] cursor-not-allowed"
-            }`}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${text.trim() && !disabled
+              ? "bg-[#20B8E5] text-[#0E141B] hover:bg-[#1BA1CA] shadow-sm"
+              : "bg-white/[0.05] text-[#6B7785] cursor-not-allowed"
+              }`}
           >
             <ArrowUp size={15} strokeWidth={2.5} />
           </button>

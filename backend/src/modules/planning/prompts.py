@@ -23,23 +23,73 @@ Rules that apply to every field you write:
 - Section headings, field names and marketing terminology stay in English so
   the plan stays client-shareable.
 - Write plain prose in field values. No markdown, no bullet characters.
+- Keep every value tight and information-dense: one or two sentences at most,
+  no filler or restating the prompt. Same information, fewer words. This does
+  not reduce the NUMBER of required items (personas, KPIs, slots, pillars) —
+  produce all of those, each stated concisely.
 - Return ONLY valid JSON matching the requested schema. No preamble.
 """
 
-_BRIEF_BLOCK = """
+# Role-specific brief slices. Every specialist receives ``_BRIEF_CORE`` (the
+# canonical identity — brand tone/guidelines/guardrails already live inside
+# {brand_identity}, so they are not repeated as separate lines). The schedule,
+# raw research, and event-only details are appended ONLY to the specialists
+# that actually use them, instead of the old one-size-fits-all brief that sent
+# all of it to all five.
+_BRIEF_CORE = """
 CAMPAIGN BRIEF
+BRAND IDENTITY AND COMMUNICATION RULES
+Follow the brand tone and guardrails in all generated messaging. Never invent brand facts.
+{brand_identity}
+
 Marketer's goal (verbatim): {user_goal}
 Brand: {company_name}
-Brand tone: {brand_tone}
-Brand guidelines: {brand_guidelines}
-Event: {event_name}
-Date: {event_date}
-Venue: {venue}
-Registration: {registration_link}
+Campaign type: {campaign_type}
+Campaign name: {campaign_name}
+Campaign objective: {objective}
+Value proposition: {value_proposition}
+CTA / destination URL: {cta_url}
+Campaign target audience: {target_audience}
+Behavioral audience profile: {audience_profile}
+Category: {category}
 Target platforms: {platforms}
+"""
+
+# Event-only facts. Appended for specialists whose output can legitimately
+# feature a speaker/venue/date (positioning, channel). For non-event campaigns
+# every value is "(not specified)" and costs almost nothing.
+_EVENT_BLOCK = """
+OPTIONAL EVENT DETAILS (use only when specified)
+Curriculum: {curriculum_breakdown}
+Attendee outcome / deliverable: {outcome_deliverable}
+Ticket price: {ticket_price}
+Event date: {event_date}
+Venue: {venue}
+Registration link: {registration_link}
 Speakers/Guests:
 {guests}
-{research}
+"""
+
+# Immutable schedule, compact form — line number + local day/date/time only.
+# The planner references slots by line number; the UUID and UTC timestamp are
+# resolved in code and are not sent to the model.
+_SCHEDULE_BLOCK = """
+FIXED LINKEDIN SCHEDULE (timing is immutable; reference each slot by its line number):
+{fixed_schedule_slots}
+"""
+
+# Web research evidence. Appended only to the competitive specialist, whose
+# analysis must be grounded in it; {research} already carries its own header.
+_RESEARCH_BLOCK = """{research}"""
+
+# Minimal identity the chief needs to judge cross-section consistency — no full
+# brief, no schedule, no raw research (the specialists already consumed those).
+_CHIEF_IDENTITY = """
+CANONICAL CAMPAIGN IDENTITY (for judging consistency only)
+Brand: {company_name}  |  Tone: {brand_tone}
+Campaign: {campaign_name} ({campaign_type})
+Objective: {objective}
+Brand guardrails (never violate): {brand_guardrails}
 """
 
 
@@ -58,7 +108,7 @@ _TEMPLATES: dict[str, str] = {
     "plan_audience_research": """You are a senior Audience Research strategist. You build actionable
 personas grounded in real motivations, not demographic filler.
 """
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
     + """
 Identify who this campaign must reach and what actually moves them.
 
@@ -87,7 +137,8 @@ Produce 2-4 personas and 2-3 SMART goals.
     "plan_positioning": """You are a Brand Positioning and Messaging strategist. You find the sharp,
 defensible angle that makes a campaign impossible to ignore.
 """
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
+    + _EVENT_BLOCK
     + """
 Define how this campaign is positioned and what it repeatedly says.
 
@@ -113,11 +164,10 @@ Produce 3-4 messaging pillars and 3-4 objections.
     "plan_channel": """You are a Channel Planning strategist. You decide where a campaign runs,
 in what sequence, and on what rhythm.
 """
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
+    + _EVENT_BLOCK
+    + _SCHEDULE_BLOCK
     + """
-AUDIENCE RESEARCH (personas, motivations, where they're active):
-{audience_research}
-
 GUEST / SPEAKER INTEGRATION:
 - If a guest/speaker is listed in the brief above, ensure at least 1-2 calendar_slots explicitly center on them (e.g. "announcing chief guest," "why hear from [name]").
 - If no guest is listed, plan calendar_slots around the offer/value only. Do not invent a guest.
@@ -125,7 +175,7 @@ GUEST / SPEAKER INTEGRATION:
 Plan a customized channel mix, campaign phases, and a dated content calendar specifically tailored to this campaign's unique goals, target audience, and platforms.
 
 CRITICAL CADENCE, TIMING & PLATFORM RULES:
-Keep the platform mix to LinkedIn, Instagram, Facebook, and X/Twitter (YouTube excluded). For each platform, derive posting cadence and peak time windows from the personas above — their job type, daily routine, and where_they_are — rather than generic industry defaults. If the audience research above is empty or does not indicate behavior for a platform, state that explicitly in the rationale and use the most defensible general assumption, do not present a guess as researched fact.
+Keep the platform mix to LinkedIn, Instagram, Facebook, and X/Twitter (YouTube excluded). For each platform, derive posting cadence and peak time windows from the Behavioral audience profile and target audience above — their job type, daily routine, and where they are active — rather than generic industry defaults. If the audience signal is empty or does not indicate behavior for a platform, state that explicitly in the rationale and use the most defensible general assumption, do not present a guess as researched fact.
 
 Phases run in order: teaser, launch, sustain, last_call.
 Return JSON:
@@ -146,9 +196,8 @@ Return JSON:
       "primary_cta": "the single action requested in this phase"}}
   ],
   "calendar_slots": [
-    {{"date": "YYYY-MM-DD",
-      "posting_time": "e.g. 09:00 AM",
-      "platform": "LinkedIn|Instagram|Facebook|X/Twitter",
+    {{"slot_id": "the LINE NUMBER (e.g. 1, 2, 3) of the matching entry in FIXED LINKEDIN SCHEDULE above — a plain number, never the slot_id text itself",
+      "platform": "LinkedIn",
       "phase": "teaser|launch|sustain|last_call",
       "theme": "what this specific post is about",
       "format_type": "carousel|reel|single image|text",
@@ -159,13 +208,36 @@ Return JSON:
 }}
 
 CRITICAL CALENDAR RULE:
-You MUST populate the 'calendar_slots' array with 8 to 14 individual post slots with real YYYY-MM-DD dates and peak posting_time values leading up to the event. If no event date is provided, start from today's date and space slots across 30 days. Never leave 'calendar_slots' empty!
+Return exactly one strategic annotation for every numbered entry in FIXED LINKEDIN SCHEDULE, using
+that entry's line number (not its slot_id text) as this object's "slot_id" value — numbers copy
+reliably, long IDs do not. Do not add, delete, reorder, rename, date, or time slots. Timing
+belongs to the deterministic scheduler.
+"""
+    + _SHARED_RULES,
+    "plan_channel_repair": """You are a Channel Planning strategist.
+Your previous attempt to plan this campaign's channel mix violated the strict schedule constraints.
+
+VALIDATION ERROR:
+{validation_error}
+
+You MUST return a COMPLETE valid JSON object for the entire channel plan (platforms, phases, calendar_slots, overall_cadence).
+Do NOT return partial JSON. Do NOT fabricate missing annotations. Do NOT add extra slots.
+"""
+    + _BRIEF_CORE
+    + _EVENT_BLOCK
+    + _SCHEDULE_BLOCK
+    + """
+CRITICAL CALENDAR RULE:
+Return exactly one strategic annotation for every numbered entry in FIXED LINKEDIN SCHEDULE, using
+that entry's line number (not its slot_id text) as this object's "slot_id" value.
+Do not add, delete, reorder, rename, date, or time slots.
+Return exactly the canonical ordinals. Use the canonical fixed schedule values exactly.
 """
     + _SHARED_RULES,
     "plan_measurement": """You are a Marketing Measurement analyst. You define what success means
 before the campaign runs, so it can be judged honestly afterwards.
 """
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
     + """
 Define the KPIs, targets and tracking approach.
 
@@ -187,7 +259,8 @@ targets proportionate to the brief — do not invent implausible numbers.
 """
     + _SHARED_RULES,
     "plan_competitive": """You are a Senior Competitive Intelligence Analyst. You map the full landscape a campaign is entering across 7 core marketing dimensions (Content, SEO, Paid Ads, Social Media, AI Visibility, Pricing/Positioning, and Counter-Positioning) and identify precise attack vectors."""
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
+    + _RESEARCH_BLOCK
     + """
 Identify competitors ONLY from evidence in the {research} block below — never from your own training knowledge. If {research} is empty or contains no competitor evidence, leave 'landscape' as an empty array and do not guess, invent, or recall competitor names from memory.
 ANTI-VAGUENESS MANDATE:
@@ -197,38 +270,26 @@ Return JSON:
 {{
   "landscape": [
     {{
-      "name": "Competitor Name or Category (e.g., 'DataQuest / Self-Paced AI Bootcamps')",
-      "tier": "direct|indirect|status_quo|benchmark",
+      "name": "Competitor Name or Category",
       "positioning": "Their core value proposition and market hook",
-      "content_strategy": "Specific content formats, topics, and publishing cadence",
-      "social_presence": "Key active social channels and engagement style",
-      "pricing_model": "Pricing tier, subscription model, or cost range",
       "strengths": ["Concrete operational or brand strength"],
       "weaknesses": ["Key vulnerability, customer pain point, or gap"],
-      "attack_vector": "Specific counter-positioning strategy to win their audience",
       "source_url": "URL if available from research evidence, else empty string"
     }}
   ],
-  "ai_visibility_insight": "How competitors appear in search intent and AI answer engines vs our brand opportunity",
   "differentiation_angle": "The unique, defensible space our campaign exclusively owns",
-  "whitespace_opportunities": ["Underserved positioning angle or unclaimed market gap"],
-  "counter_positioning_matrix": [
-    {{
-      "they_say": "Competitor claim or common market offering",
-      "we_prove": "Our direct counter-proof and superior campaign value"
-    }}
-  ]
+  "whitespace_opportunities": ["Underserved positioning angle or unclaimed market gap"]
 }}
 
-Produce 2-4 competitor entries, 2-3 counter-positioning matrix items, and sharp whitespace opportunities.
+Produce 2-4 competitor entries and sharp whitespace opportunities.
 """
     + _SHARED_RULES,
     # ── Chief strategist synthesis ───────────────────────────────────────
-    "plan_chief_strategist": """You are the Chief Marketing Officer reviewing your specialists' work.
+    "plan_chief_strategist": """You are the Chief Marketing Officer reconciling your specialists' completed work.
 """
-    + _BRIEF_BLOCK
+    + _CHIEF_IDENTITY
     + """
-Your panel returned these sections:
+Your panel returned these completed, validated sections:
 
 AUDIENCE RESEARCH:
 {audience_research}
@@ -245,31 +306,27 @@ MEASUREMENT:
 COMPETITIVE:
 {competitive}
 
-Synthesize them into one coherent plan. Your job is to resolve contradictions
-between specialists, not to rewrite their work wholesale. Specifically:
-- If Speakers/Guests are present in the brief above, ensure the guest speaker's name is explicitly preserved and featured in the executive summary, title, USP, and messaging pillars.
-- If the channel calendar references a messaging pillar that positioning did
-  not define, align them.
-- If measurement targets are inconsistent with the SMART goals, reconcile them.
-- If the differentiation angle contradicts the USP, sharpen both.
-- Ensure the competitive landscape, counter-positioning matrix, and attack vectors are fully preserved.
+These sections are already FINAL and will be assembled deterministically. Do
+NOT restate, rewrite, or re-output them. Your only job is cross-section
+reconciliation: name genuine conflicts and, only where a real contradiction
+exists, supply a targeted prose correction. Timing, calendar slots, KPIs,
+personas, and competitor lists are owned by their specialists — never touch them.
 
-Return JSON with this exact shape:
+Return JSON with this exact compact shape:
 {{
   "title": "a short campaign title",
-  "executive_summary": "3-5 sentences a busy marketer can read and understand the whole plan",
-  "core_strategy": {{
-    "objective": "", "smart_goals": [], "personas": [],
-    "positioning_statement": "", "unique_selling_proposition": "",
-    "messaging_pillars": [], "tone_of_voice": "", "objection_handling": []
-  }},
-  "channel_plan": {{"platforms": [], "phases": [], "calendar_slots": [], "overall_cadence": ""}},
-  "measurement": {{"kpis": [], "tracking_plan": "", "reporting_cadence": "", "definition_of_success": ""}},
-  "competitive": {{"landscape": [], "ai_visibility_insight": "", "differentiation_angle": "", "whitespace_opportunities": [], "counter_positioning_matrix": []}}
+  "executive_summary": "3-5 sentences a busy marketer can act on, reflecting the whole plan",
+  "consistency_notes": ["short factual observations on cross-section coherence"],
+  "adjustments": {{
+    "unique_selling_proposition": "leave \\"\\" unless positioning's USP must change to resolve a conflict",
+    "differentiation_angle": "leave \\"\\" unless competitive's angle contradicts the USP",
+    "tone_of_voice": "leave \\"\\" unless tone is inconsistent across sections"
+  }}
 }}
 
-Carry the specialists' content through faithfully, preserving each object's
-field names exactly as they were given to you.
+Fill an adjustment ONLY when a real conflict requires it; otherwise leave it "".
+If a guest/speaker appears in the sections, ensure the title and executive
+summary feature them. Never restate the calendar, KPIs, personas, or competitors.
 """
     + _SHARED_RULES,
     # ── Refinement ───────────────────────────────────────────────────────
@@ -305,7 +362,7 @@ are preserved exactly, which is what the marketer expects.
     "plan_revise_section": """You are the specialist who owns the "{section_name}" section of a campaign
 plan. Revise ONLY that section according to the marketer's feedback.
 """
-    + _BRIEF_BLOCK
+    + _BRIEF_CORE
     + """
 The full current plan, for context (do not modify anything outside your section):
 {plan_context}

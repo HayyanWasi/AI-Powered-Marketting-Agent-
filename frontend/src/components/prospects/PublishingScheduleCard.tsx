@@ -29,7 +29,7 @@ export default function PublishingScheduleCard({
   onDeleteJob,
 }: Props) {
   const timezoneLabel = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => {
       try {
         return (

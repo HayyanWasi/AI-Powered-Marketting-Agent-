@@ -5,6 +5,7 @@ import random
 import re
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import edge_tts
@@ -12,6 +13,8 @@ import httpx
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client
+
+from src.models.video_generation_context import VideoGenerationContext
 
 # Pillow 10+ removed ANTIALIAS; moviepy 1.0.3 still references it
 if not hasattr(Image, "ANTIALIAS"):
@@ -38,6 +41,12 @@ _render_semaphore = asyncio.Semaphore(settings.video_max_concurrent_renders)
 
 class VideoGenerationError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class GeneratedVideo:
+    video_url: str
+    storage_path: str
 
 
 class VideoGenerationService:
@@ -89,15 +98,26 @@ class VideoGenerationService:
             logger.error("Failed to process image %s: %s", filepath.name, e)
 
     async def _generate_scenery(
-        self, prompt: str, temp_dir: Path, idx: int, total_scenes: int = 5
+        self,
+        prompt: str,
+        context: VideoGenerationContext,
+        temp_dir: Path,
+        idx: int,
+        total_scenes: int = 5,
     ) -> Path:
         """Generate high-quality scene image via Pollinations AI (720p HD)."""
         import time
         from urllib.parse import quote
 
         filename = temp_dir / f"scene_{idx}.jpg"
-        styled_prompt = f"{prompt}, cinematic lighting, photorealistic, highly detailed, 4k"
-        encoded_prompt = quote(styled_prompt)
+        styled_prompt = (
+            f"SHARED CAMPAIGN VISUAL IDENTITY:\n{context.visual_direction_prompt()}\n\n"
+            f"SCENE {idx + 1} DIRECTION:\n{prompt}\n\n"
+            "Render one coherent campaign frame, cinematic lighting, photorealistic, highly detailed, 4k"
+        )
+        # Sanitize prompt for URL path: remove newlines and fully encode all characters
+        safe_prompt = styled_prompt.replace("\n", " ").replace("\r", "").strip()
+        encoded_prompt = quote(safe_prompt, safe="")
         seed = random.randint(1000, 999999)
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
@@ -164,13 +184,17 @@ class VideoGenerationService:
                     )
                     return filename
                 else:
+                    error_body = resp.text[:100].replace('\n', ' ') if resp.text else ''
                     print(
-                        f"[IMAGE MODEL] [WARNING] Pollinations FLUX returned HTTP status {resp.status_code}. Trying turbo fallback...",
+                        f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=flux Host=image.pollinations.ai "
+                        f"Status={resp.status_code} Content-Type={resp.headers.get('content-type', 'unknown')} "
+                        f"ErrorBody='{error_body}'. Trying turbo fallback...",
                         flush=True,
                     )
         except Exception as flux_err:
             print(
-                f"[IMAGE MODEL] [WARNING] Pollinations FLUX request error: {flux_err}. Trying turbo fallback...",
+                f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=flux Host=image.pollinations.ai "
+                f"Error: {flux_err}. Trying turbo fallback...",
                 flush=True,
             )
 
@@ -194,40 +218,24 @@ class VideoGenerationService:
                         flush=True,
                     )
                     return filename
+                else:
+                    error_body = resp.text[:100].replace('\n', ' ') if resp.text else ''
+                    print(
+                        f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=turbo Host=image.pollinations.ai "
+                        f"Status={resp.status_code} Content-Type={resp.headers.get('content-type', 'unknown')} "
+                        f"ErrorBody='{error_body}'. Failed.",
+                        flush=True,
+                    )
         except Exception as e:
-            print(f"[IMAGE MODEL] [WARNING] Pollinations Turbo timed out / error ({e})", flush=True)
-
-        # 4. Continuity Fallback: If a previous scene exists, reuse it to maintain visual immersion
-        prev_scene = temp_dir / f"scene_{idx-1}.jpg"
-        if idx > 0 and prev_scene.exists():
-            import shutil as _shutil
-
-            _shutil.copy2(prev_scene, filename)
             print(
-                f"[IMAGE MODEL] [FALLBACK] Reusing previous scene visual for Scene {idx+1}/{total_scenes}",
+                f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=turbo Host=image.pollinations.ai "
+                f"Error: {e}. Failed.",
                 flush=True,
             )
-            print("[IMAGE MODEL] ----------------------------------------------------\n", flush=True)
-            return filename
 
-        # 5. High-Resolution Modern Cinematic Gradient (Emergency Fallback)
-        print(
-            f"[IMAGE MODEL] [FALLBACK] Applying high-res cinematic backdrop for Scene {idx+1}/{total_scenes}",
-            flush=True,
+        raise VideoGenerationError(
+            f"All configured image providers failed for scene {idx + 1}; video was not rendered."
         )
-        print("[IMAGE MODEL] ----------------------------------------------------\n", flush=True)
-        try:
-            fallback_img = Image.new("RGB", (720, 1280), color=(18, 30, 49))
-            draw = ImageDraw.Draw(fallback_img)
-            for y in range(1280):
-                r = int(14 + (y / 1280.0) * 15)
-                g = int(24 + (y / 1280.0) * 20)
-                b = int(42 + (y / 1280.0) * 35)
-                draw.line([(0, y), (720, y)], fill=(r, g, b))
-            fallback_img.save(filename, "JPEG")
-            return filename
-        except Exception as fb_err:
-            raise VideoGenerationError(f"Failed to generate frame {idx}: {fb_err}") from fb_err
 
     def _align_words_with_text(self, stream_words: list[dict], original_text: str) -> list[dict]:
         """Align stream WordBoundary tokens with the original punctuated text."""
@@ -682,7 +690,12 @@ class VideoGenerationService:
             logger=None,
         )
 
-    async def generate_campaign_video(self, campaign_id: str, scenes: list[VideoScene]) -> str:
+    async def generate_campaign_video(
+        self,
+        campaign_id: str,
+        scenes: list[VideoScene],
+        context: VideoGenerationContext,
+    ) -> GeneratedVideo:
         """
         Main entry point.
         1. Rate limiting via semaphore.
@@ -730,15 +743,33 @@ class VideoGenerationService:
                 )
                 scene_paths = []
                 for idx, scene in enumerate(scenes):
-                    p = await self._generate_scenery(
-                        scene.image_prompt, temp_path, idx, len(scenes)
-                    )
-                    if p:
+                    try:
+                        p = await self._generate_scenery(
+                            scene.image_prompt, context, temp_path, idx, len(scenes)
+                        )
                         scene_paths.append(p)
+                    except VideoGenerationError as e:
+                        print(f"[VIDEO PIPELINE] Failed to generate visual for scene {idx+1}: {e}", flush=True)
+                        scene_paths.append(None)
                     await asyncio.sleep(0.5)  # brief pause between scenes
 
-                if not scene_paths:
-                    raise VideoGenerationError("Failed to generate any scene images.")
+                failures = [i for i, p in enumerate(scene_paths) if p is None]
+                if len(failures) >= 2:
+                    raise VideoGenerationError(f"Video rendering aborted: {len(failures)} scene images failed to generate.")
+                elif len(failures) == 1:
+                    failed_idx = failures[0]
+                    # Prefer previous scene if available, otherwise next
+                    donor_idx = failed_idx - 1 if failed_idx > 0 else failed_idx + 1
+                    
+                    print(f"[VIDEO PIPELINE] RESILIENCE FALLBACK: Reusing visual from scene {donor_idx+1} for failed scene {failed_idx+1}.", flush=True)
+                    scene_paths[failed_idx] = scene_paths[donor_idx]
+                    
+                    # Persist metadata truthful to the resilience fallback
+                    scenes[failed_idx].visual_reused = True
+                    scenes[failed_idx].reused_from_scene = donor_idx + 1
+
+                if not all(scene_paths):
+                    raise VideoGenerationError("Failed to resolve all scene images despite resilience fallback.")
 
                 # 4. Render Video (with Timeout)
                 output_file = temp_path / f"campaign_{campaign_id}.mp4"
@@ -778,7 +809,7 @@ class VideoGenerationService:
                         self.supabase.storage.from_(self.bucket).get_public_url(storage_name)
                     )
                     logger.info("Video successfully uploaded to Supabase: %s", public_url)
-                    return public_url
+                    return GeneratedVideo(public_url, storage_name)
                 except Exception as upload_err:
                     logger.error("Supabase upload failed: %s", upload_err, exc_info=True)
                     # If Supabase upload fails, check if local static serving is possible
@@ -799,7 +830,7 @@ class VideoGenerationService:
 
                     local_url = f"{render_url}/static/videos/{local_filename}"
                     logger.info("Video saved locally as fallback: %s", local_url)
-                    return local_url
+                    return GeneratedVideo(local_url, str(local_path))
 
             finally:
                 # Cleanup Temp Directory

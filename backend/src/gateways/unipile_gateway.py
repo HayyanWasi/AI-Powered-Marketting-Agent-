@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class UnipileTransportError(Exception):
+    """Raised when request to Unipile fails with ambiguous network/timeout error."""
+
+
 class UnipileGateway:
     """Async Gateway for Unipile LinkedIn REST API with circuit breaker."""
 
@@ -39,9 +43,7 @@ class UnipileGateway:
     def is_configured(self) -> bool:
         """Return whether a real Unipile DSN and API token are configured."""
         return bool(
-            self.token.strip()
-            and self.dsn.startswith("https://")
-            and "13XXX" not in self.dsn
+            self.token.strip() and self.dsn.startswith("https://") and "13XXX" not in self.dsn
         )
 
     def _get_headers(self) -> dict[str, str]:
@@ -273,7 +275,10 @@ class UnipileGateway:
                     media_response.raise_for_status()
                     content_type = media_response.headers.get("content-type", "video/mp4")
                     files.append(
-                        ("attachments", ("campaign-video.mp4", media_response.content, content_type))
+                        (
+                            "attachments",
+                            ("campaign-video.mp4", media_response.content, content_type),
+                        )
                     )
                 res = await client.post(url, headers=headers, files=files)
                 logger.info(
@@ -282,18 +287,48 @@ class UnipileGateway:
                     res.text[:200],
                 )
                 if self._handle_response(res, "create_post") and res.status_code in (200, 201, 202):
-                    data = res.json() if res.text else {}
-                    return (
-                        data.get("post_id")
-                        or data.get("id")
-                        or data.get("social_id")
-                        or "post_published"
+                    try:
+                        data = res.json() if res.text else {}
+                    except Exception:  # noqa: BLE001 - malformed body on a 2xx
+                        data = {}
+                    provider_post_id = (
+                        data.get("post_id") or data.get("id") or data.get("social_id")
                     )
+                    if provider_post_id:
+                        return provider_post_id
+                    # 2xx but NO verifiable provider post id. Never fabricate an id
+                    # and never blindly mark published — the post may or may not
+                    # have gone live. Surface as ambiguous so the caller parks it in
+                    # needs_review for manual verification (never auto-retried).
+                    logger.error(
+                        "[UNIPILE CREATE_POST] HTTP %s with no provider post id in body: %s",
+                        res.status_code,
+                        res.text[:200],
+                    )
+                    raise UnipileTransportError(
+                        f"Publish returned HTTP {res.status_code} without a provider post id"
+                    )
+                # Confirmed provider rejection: we received a definite non-2xx
+                # HTTP response. None here means "confirmed rejection", which the
+                # publisher classifies as `failed` (not the ambiguous path).
                 logger.error(
                     "[UNIPILE CREATE_POST] Failed with status %s: %s", res.status_code, res.text
                 )
                 return None
+            except UnipileTransportError:
+                # Ambiguous outcome raised above (2xx without a provider post id).
+                # Propagate it so the caller parks needs_review; do NOT let the
+                # generic handler below swallow it into None (= confirmed failed).
+                raise
+            except (TimeoutError, httpx.RequestError) as exc:
+                # Timeout / connection reset / ambiguous transport failure: the
+                # request may or may not have reached LinkedIn. Surface it so the
+                # caller parks the post in needs_review (never auto-retried).
+                logger.error("Unipile create_post transport/timeout error: %s", exc)
+                raise UnipileTransportError(str(exc)) from exc
             except Exception as e:
+                # Non-transport error with no confirmed 2xx (e.g. media fetch
+                # failure before dispatch). No confirmed successful publish.
                 logger.error("Unipile create_post error: %s", e)
                 return None
 
@@ -348,13 +383,20 @@ class UnipileGateway:
         url = f"{self.dsn}/api/v1/linkedin/search"
         params = {
             "account_id": account_id,
+        }
+        payload = {
+            "api": "classic",
             "category": "people",
             "keywords": keywords,
-            "limit": str(limit),
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                res = await client.get(url, headers=self._get_headers(), params=params)
+                res = await client.post(
+                    url,
+                    headers=self._get_headers(),
+                    params=params,
+                    json=payload,
+                )
                 if self._handle_response(res, "search_people") and res.status_code == 200:
                     data = res.json()
                     return data.get("items", []) if isinstance(data, dict) else data
@@ -372,10 +414,9 @@ class UnipileGateway:
         """
         if not self._check_breaker("get_user_posts"):
             return []
-        url = f"{self.dsn}/api/v1/posts"
+        url = f"{self.dsn}/api/v1/users/{profile_id}/posts"
         params = {
             "account_id": account_id,
-            "author_id": profile_id,
             "limit": str(limit),
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
