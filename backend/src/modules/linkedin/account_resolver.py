@@ -115,7 +115,10 @@ async def resolve_brand_linkedin_account(
         )
 
     if account.get("status") != "connected":
-        return None, f"LinkedIn account {default_acc_id} is disconnected (status: {account.get('status')})."
+        return (
+            None,
+            f"LinkedIn account {default_acc_id} is disconnected (status: {account.get('status')}).",
+        )
 
     unipile_account_id = account.get("unipile_account_id")
     if not unipile_account_id:

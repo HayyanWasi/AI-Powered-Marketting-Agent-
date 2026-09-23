@@ -13,7 +13,6 @@ from src.modules.planning.agents import panel
 from src.modules.planning.models.brief import PlanBrief
 from src.services.campaign_context_service import CampaignInputs
 
-
 SENTINELS = {
     "campaign_type": "app_launch",
     "campaign_name": "Prompt Sentinel App",

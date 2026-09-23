@@ -54,7 +54,9 @@ class CommentGenerator:
 
         except Exception as e:
             logger.error("Failed to generate comment: %s", e)
-            raise RuntimeError("LinkedIn comment generation failed; no review item was created") from e
+            raise RuntimeError(
+                "LinkedIn comment generation failed; no review item was created"
+            ) from e
 
         snippet = target_post.content[:200]
         if len(target_post.content) > 200:

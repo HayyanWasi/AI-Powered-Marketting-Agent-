@@ -475,8 +475,10 @@ class ChiefReconciliation(_Section):
 
 # ── Identity Tracking ────────────────────────────────────────────────────
 
+
 class InputIdentity(BaseModel):
     """Authoritative snapshot of the exact inputs used to generate this plan."""
+
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     campaign_id: UUID | None = None
@@ -486,7 +488,9 @@ class InputIdentity(BaseModel):
     user_goal: str = ""
     generated_at: str = ""
 
+
 # ── The plan ─────────────────────────────────────────────────────────────
+
 
 class CampaignPlan(BaseModel):
     """A complete, reviewable marketing plan for one campaign."""
@@ -535,7 +539,6 @@ class CampaignPlan(BaseModel):
             if k in SECTION_NAMES:
                 doc[k] = v
         return self.model_validate(doc)
-
 
 
 class PlanMessage(BaseModel):

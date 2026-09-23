@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 class TargetResolver:
     """Resolves target personas into actionable posts for engagement."""
 
-    async def load_personas(
-        self, company_profile_id: str
-    ) -> list[TargetPersona]:
+    async def load_personas(self, company_profile_id: str) -> list[TargetPersona]:
         """Load active target personas from the database for the given brand."""
         if not company_profile_id:
             return []
@@ -251,7 +249,9 @@ class TargetResolver:
                     .eq("linkedin_account_id", account_id)
                     .execute()
                 )
-                engaged_ids.update(row["target_post_id"] for row in res2.data or [] if row.get("target_post_id"))
+                engaged_ids.update(
+                    row["target_post_id"] for row in res2.data or [] if row.get("target_post_id")
+                )
             except Exception:
                 pass
 
@@ -311,7 +311,11 @@ class TargetResolver:
                     .eq("action_type", "connection_request")
                     .execute()
                 )
-                invited_profile_ids.update(row["target_profile_id"] for row in res2.data or [] if row.get("target_profile_id"))
+                invited_profile_ids.update(
+                    row["target_profile_id"]
+                    for row in res2.data or []
+                    if row.get("target_profile_id")
+                )
             except Exception:
                 pass
 
@@ -350,4 +354,6 @@ class TargetResolver:
                     on_conflict="account_id, post_id, action_type",
                 ).execute()
             except Exception as e:
-                logger.error("Failed to record engagement %s on post %s: %s", action_type, post_id, e)
+                logger.error(
+                    "Failed to record engagement %s on post %s: %s", action_type, post_id, e
+                )

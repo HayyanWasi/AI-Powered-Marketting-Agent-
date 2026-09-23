@@ -37,11 +37,15 @@ def normalize_calendar_slots(
             raise ScheduleSlotMismatchError("Schedule slot local time changed.")
         if item.timezone and item.timezone != canonical.timezone:
             raise ScheduleSlotMismatchError("Schedule slot timezone changed.")
-        normalized.append(item.model_copy(update={
-            "date": canonical.local_date.isoformat(),
-            "platform": "LinkedIn",
-            "scheduled_at_utc": canonical.scheduled_at_utc,
-            "local_time": canonical.local_time,
-            "timezone": canonical.timezone,
-        }))
+        normalized.append(
+            item.model_copy(
+                update={
+                    "date": canonical.local_date.isoformat(),
+                    "platform": "LinkedIn",
+                    "scheduled_at_utc": canonical.scheduled_at_utc,
+                    "local_time": canonical.local_time,
+                    "timezone": canonical.timezone,
+                }
+            )
+        )
     return tuple(normalized)

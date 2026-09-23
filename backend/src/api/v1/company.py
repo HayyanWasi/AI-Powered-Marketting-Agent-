@@ -31,31 +31,47 @@ from src.services.supabase import (
 router = APIRouter(prefix="/company", tags=["Company"])
 
 
-async def _get_supabase_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> SupabaseService:
+async def _get_supabase_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> SupabaseService:
     return SupabaseService(user_id=user.id)
 
 
-async def _get_create_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> CreateCompanyService:
+async def _get_create_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> CreateCompanyService:
     return CreateCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_update_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> UpdateCompanyService:
+async def _get_update_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> UpdateCompanyService:
     return UpdateCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_get_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> GetCompanyService:
+async def _get_get_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> GetCompanyService:
     return GetCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_list_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> ListCompanyService:
+async def _get_list_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> ListCompanyService:
     return ListCompanyService(repository=owned_profiles(user.id))
 
 
-async def _get_delete_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> DeleteCompanyService:
-    return DeleteCompanyService(repository=owned_profiles(user.id), supabase=SupabaseService(user_id=user.id))
+async def _get_delete_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> DeleteCompanyService:
+    return DeleteCompanyService(
+        repository=owned_profiles(user.id), supabase=SupabaseService(user_id=user.id)
+    )
 
 
-async def _get_campaign_lookup_service(user: AuthenticatedUser = Depends(get_authenticated_user)) -> CampaignLookupService:
+async def _get_campaign_lookup_service(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> CampaignLookupService:
     return CampaignLookupService(repository=owned_profiles(user.id))
 
 
@@ -220,9 +236,7 @@ async def set_brand_linkedin_account(
 
     # 3. Persist on the owned brand (user-scoped update; cross-user cannot write).
     try:
-        profile = update_service.execute(
-            profile_id, {"default_linkedin_account_id": account_id}
-        )
+        profile = update_service.execute(profile_id, {"default_linkedin_account_id": account_id})
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

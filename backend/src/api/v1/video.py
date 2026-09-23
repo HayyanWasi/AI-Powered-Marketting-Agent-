@@ -53,7 +53,9 @@ async def generate_campaign_video(
     try:
         campaign_uuid = UUID(campaign_id)
     except ValueError as exc:
-        raise HTTPException(422, "A real campaign must be selected before generating video.") from exc
+        raise HTTPException(
+            422, "A real campaign must be selected before generating video."
+        ) from exc
     inputs = await CampaignContextResolver().resolve(campaign_uuid, user.id)
     campaign = inputs.campaign
     try:
@@ -89,7 +91,9 @@ async def generate_campaign_video(
 
     logger.info("Starting on-demand video generation for campaign: %s", campaign_id)
 
-    instruction = request_data.prompt if request_data and request_data.prompt else "Create a campaign video."
+    instruction = (
+        request_data.prompt if request_data and request_data.prompt else "Create a campaign video."
+    )
     video_context = VideoGenerationContext.from_sources(
         inputs=inputs,
         plan=plan,

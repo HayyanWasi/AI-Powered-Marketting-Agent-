@@ -33,6 +33,7 @@ from src.modules.linkedin.worker.session_executor import EngagementSessionExecut
 # Mock Database Infrastructure for In-Memory Unit Isolation
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class MockTable:
     def __init__(self, data_list: list[dict[str, Any]]):
         self.data_list = data_list
@@ -99,7 +100,9 @@ class MockTable:
 
     def execute(self) -> SimpleNamespace:
         if self._insert_data is not None:
-            records = [self._insert_data] if isinstance(self._insert_data, dict) else self._insert_data
+            records = (
+                [self._insert_data] if isinstance(self._insert_data, dict) else self._insert_data
+            )
             inserted = []
             for r in records:
                 copied = dict(r)
@@ -165,12 +168,17 @@ class MockSupabaseClient:
 # 1. DATABASE MIGRATIONS VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def test_migration_025_defines_constraints_and_permanent_indexes():
     mig_025 = (
-        Path(__file__).resolve().parents[3]
-        / "migrations"
-        / "025_create_engagement_settings_and_logs.up.sql"
-    ).read_text(encoding="utf-8").lower()
+        (
+            Path(__file__).resolve().parents[3]
+            / "migrations"
+            / "025_create_engagement_settings_and_logs.up.sql"
+        )
+        .read_text(encoding="utf-8")
+        .lower()
+    )
 
     assert "create table if not exists public.linkedin_engagement_settings" in mig_025
     assert "company_profile_id" in mig_025
@@ -187,10 +195,14 @@ def test_migration_025_defines_constraints_and_permanent_indexes():
 
 def test_migration_026_defines_brand_scoping_and_dedupe():
     mig_026 = (
-        Path(__file__).resolve().parents[3]
-        / "migrations"
-        / "026_scope_personas_and_review_queue.up.sql"
-    ).read_text(encoding="utf-8").lower()
+        (
+            Path(__file__).resolve().parents[3]
+            / "migrations"
+            / "026_scope_personas_and_review_queue.up.sql"
+        )
+        .read_text(encoding="utf-8")
+        .lower()
+    )
 
     assert "uq_target_personas_brand_label" in mig_026
     assert "uq_review_queue_account_post" in mig_026
@@ -201,15 +213,14 @@ def test_migration_026_defines_brand_scoping_and_dedupe():
 # 2. TENANCY & BRAND SCOPING TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def test_user_a_cannot_read_or_write_user_b_settings():
     user_a = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
     user_b = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
 
     brand_b_id = str(uuid4())
     stores = {
-        "company_profiles": [
-            {"id": brand_b_id, "user_id": user_b.id, "company_name": "Brand B"}
-        ],
+        "company_profiles": [{"id": brand_b_id, "user_id": user_b.id, "company_name": "Brand B"}],
         "linkedin_engagement_settings": [
             {
                 "id": str(uuid4()),
@@ -275,7 +286,9 @@ def test_user_a_cannot_access_user_b_personas():
         TestClient(app) as client,
     ):
         # User A attempts to delete persona owned by User B -> 404 (does not expose existence)
-        resp = client.delete(f"/api/v1/autopilot/personas/{persona_b_id}?company_profile_id={brand_a_id}")
+        resp = client.delete(
+            f"/api/v1/autopilot/personas/{persona_b_id}?company_profile_id={brand_a_id}"
+        )
         assert resp.status_code == 404
     app.dependency_overrides.clear()
 
@@ -339,6 +352,7 @@ async def test_brand_a_cannot_use_brand_b_linkedin_account():
 # 3. SETTINGS PERSISTENCE & ZERO IN-MEMORY FALLBACK
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def test_settings_persist_across_client_requests():
     user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
     brand_id = str(uuid4())
@@ -383,6 +397,7 @@ def test_settings_persist_across_client_requests():
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. AUTO LIKES — DURABLE CLAIM, PERMANENT IDEMPOTENCY, TIMEOUT NEEDS_REVIEW
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_auto_likes_dispatches_once_and_prevents_duplicate_run():
@@ -481,6 +496,7 @@ async def test_auto_likes_timeout_marks_needs_review_and_blocks_retry():
 # 5. AUTO COMMENTS — GENERATION ONLY & 3-PHASE CRASH-SAFE APPROVAL
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_scheduler_never_calls_unipile_comment_during_generation():
     user_id = str(uuid4())
@@ -513,14 +529,22 @@ async def test_scheduler_never_calls_unipile_comment_during_generation():
         persona_label="Founders",
     )
 
-    with patch("src.modules.linkedin.generators.comment_generator.CommentGenerator.generate_comment", return_value="Great insight Charlie!"):
+    with patch(
+        "src.modules.linkedin.generators.comment_generator.CommentGenerator.generate_comment",
+        return_value="Great insight Charlie!",
+    ):
         res = await executor._generate_and_queue_comment(target, current_count=0, max_count=5)
 
     assert res is True
     # Review queue must contain pending_review item
     assert len(stores["linkedin_review_queue"]) == 1
     assert stores["linkedin_review_queue"][0]["status"] == "pending_review"
-    assert stores["linkedin_review_queue"][0].get("generated_text", stores["linkedin_review_queue"][0].get("comment_text")) == "Great insight Charlie!"
+    assert (
+        stores["linkedin_review_queue"][0].get(
+            "generated_text", stores["linkedin_review_queue"][0].get("comment_text")
+        )
+        == "Great insight Charlie!"
+    )
 
     # CRITICAL: External comment write API MUST NOT be called!
     assert mock_gateway.comment_on_post.call_count == 0
@@ -604,6 +628,7 @@ def test_crash_safe_comment_approval_flow():
 # 6. AUTO CONNECTIONS — RELATION CHECKS & PERMANENT IDEMPOTENCY
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_auto_connection_skips_already_connected_or_pending():
     user_id = str(uuid4())
@@ -628,6 +653,7 @@ async def test_auto_connection_skips_already_connected_or_pending():
     )
 
     from src.modules.linkedin.models import ResolvedTarget
+
     target_prof = ResolvedTarget(
         account_id=account_id,
         persona_label="SaaS",
@@ -659,6 +685,7 @@ async def test_auto_connection_skips_already_connected_or_pending():
 # 7. MULTI-TENANT SCHEDULER & ADVISORY LOCKING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_session_advisory_lock_mutual_exclusion():
     brand_a_id = str(uuid4())
@@ -681,4 +708,3 @@ async def test_session_advisory_lock_mutual_exclusion():
         acquired2_retry = await lock2.acquire()
         assert acquired2_retry is True
         await lock2.release()
-

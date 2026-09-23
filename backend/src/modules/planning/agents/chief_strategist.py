@@ -75,9 +75,7 @@ async def synthesize(
             await ask_json("plan_chief_strategist", variables, **kw)
         )
     except Exception as e:
-        logger.warning(
-            "Chief reconciliation failed (%s); using deterministic assembly", e
-        )
+        logger.warning("Chief reconciliation failed (%s); using deterministic assembly", e)
         return base
 
     return _apply_reconciliation(base, recon)
@@ -88,9 +86,7 @@ def _chief_variables(brief: PlanBrief, panel: dict[str, dict[str, Any]]) -> dict
     variables = brief.as_prompt_vars()
     variables.update(
         {
-            key: json.dumps(
-                panel.get(key) or {}, ensure_ascii=False, separators=(",", ":")
-            )
+            key: json.dumps(panel.get(key) or {}, ensure_ascii=False, separators=(",", ":"))
             for key in (
                 "audience_research",
                 "positioning",

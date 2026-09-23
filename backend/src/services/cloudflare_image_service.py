@@ -95,15 +95,14 @@ class CloudflareImageService:
         assert self._client is not None  # set by __aenter__
         url = self._run_url()
         last_error: Exception | None = None
-        
-        envelope_payload = {
-            "model": model,
-            "input": payload
-        }
+
+        envelope_payload = {"model": model, "input": payload}
 
         for attempt in range(1, self._max_retries + 1):
             try:
-                response = await self._client.post(url, json=envelope_payload, headers=self._headers)
+                response = await self._client.post(
+                    url, json=envelope_payload, headers=self._headers
+                )
             except httpx.HTTPError as exc:
                 last_error = exc
                 logger.warning(

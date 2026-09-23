@@ -304,9 +304,7 @@ async def execute_post_publish(
     )
 
     try:
-        unipile_post_id = await gateway.create_post(
-            account_id, full_content, media_url=media_url
-        )
+        unipile_post_id = await gateway.create_post(account_id, full_content, media_url=media_url)
     except (TimeoutError, UnipileTransportError, httpx.RequestError) as exc:
         logger.error(
             "[POST PUBLISHER] Ambiguous transport failure publishing post %s: %s",

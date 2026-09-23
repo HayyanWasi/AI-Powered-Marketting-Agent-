@@ -47,9 +47,7 @@ def _plan(campaign_id: UUID, calendar_slots: tuple[CalendarSlot, ...] = ()) -> C
         version=1,
         title="Test Plan",
         status=PlanStatus.DRAFT,
-        core_strategy=CoreStrategy(
-            positioning_statement="x", unique_selling_proposition="y"
-        ),
+        core_strategy=CoreStrategy(positioning_statement="x", unique_selling_proposition="y"),
         channel_plan=ChannelPlan(calendar_slots=calendar_slots),
         measurement=Measurement(),
         competitive=Competitive(),
@@ -101,10 +99,13 @@ async def test_b_channel_plan_specialist_failure_is_classified_truthfully_not_as
     )
     service, mock_repo = _service(mock_graph)
 
-    with patch(
-        "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
-        return_value=mock_graph,
-    ), pytest.raises(PlanDraftError) as excinfo:
+    with (
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        pytest.raises(PlanDraftError) as excinfo,
+    ):
         await service.draft_plan(campaign_id=campaign_id, created_by=uuid4(), brief=_brief())
 
     assert str(excinfo.value) == "Channel planning failed. Please retry planning."
@@ -122,13 +123,19 @@ async def test_c_non_empty_mutated_calendar_still_reports_fixed_slot_mutation():
     mock_graph.ainvoke = AsyncMock(return_value={"plan": plan, "failures": []})
     service, mock_repo = _service(mock_graph)
 
-    with patch(
-        "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
-        return_value=mock_graph,
-    ), pytest.raises(PlanDraftError) as excinfo:
+    with (
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        pytest.raises(PlanDraftError) as excinfo,
+    ):
         await service.draft_plan(campaign_id=campaign_id, created_by=uuid4(), brief=_brief())
 
-    assert str(excinfo.value) == "Channel planner changed the fixed schedule slots. Please retry planning."
+    assert (
+        str(excinfo.value)
+        == "Channel planner changed the fixed schedule slots. Please retry planning."
+    )
     mock_repo.add_version.assert_not_awaited()
 
 
@@ -142,10 +149,13 @@ async def test_d_other_specialist_failure_fails_the_whole_draft_truthfully():
     )
     service, mock_repo = _service(mock_graph)
 
-    with patch(
-        "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
-        return_value=mock_graph,
-    ), pytest.raises(PlanDraftError) as excinfo:
+    with (
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        pytest.raises(PlanDraftError) as excinfo,
+    ):
         await service.draft_plan(campaign_id=campaign_id, created_by=uuid4(), brief=_brief())
 
     message = str(excinfo.value)
@@ -172,10 +182,13 @@ async def test_e_no_partial_plan_is_ever_persisted_on_any_failure_path(failures,
     mock_graph.ainvoke = AsyncMock(return_value={"plan": plan, "failures": failures})
     service, mock_repo = _service(mock_graph)
 
-    with patch(
-        "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
-        return_value=mock_graph,
-    ), pytest.raises(PlanDraftError):
+    with (
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        pytest.raises(PlanDraftError),
+    ):
         await service.draft_plan(campaign_id=campaign_id, created_by=uuid4(), brief=_brief())
 
     mock_repo.add_version.assert_not_awaited()

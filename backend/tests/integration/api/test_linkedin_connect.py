@@ -69,9 +69,7 @@ class _FakeTable:
     def execute(self):
         if self._op == "select":
             rows = [
-                r
-                for r in self.store
-                if all(str(r.get(f)) == v for f, v in self._filters.items())
+                r for r in self.store if all(str(r.get(f)) == v for f, v in self._filters.items())
             ]
             return SimpleNamespace(data=list(rows))
         if self._op == "upsert":
@@ -88,9 +86,7 @@ class _FakeTable:
             return SimpleNamespace(data=[new_row])
         if self._op == "update":
             rows = [
-                r
-                for r in self.store
-                if all(str(r.get(f)) == v for f, v in self._filters.items())
+                r for r in self.store if all(str(r.get(f)) == v for f, v in self._filters.items())
             ]
             for r in rows:
                 r.update(self._payload or {})
@@ -166,9 +162,7 @@ def test_hosted_auth_link_generated_server_side_linkedin_only_no_key_leak():
     # (10) success/failure redirect states wired for the frontend
     assert "linkedin=connected" in gateway.link_kwargs["success_redirect_url"]
     assert "linkedin=failed" in gateway.link_kwargs["failure_redirect_url"]
-    assert gateway.link_kwargs["notify_url"].endswith(
-        "/api/v1/linkedin/connections/notify"
-    )
+    assert gateway.link_kwargs["notify_url"].endswith("/api/v1/linkedin/connections/notify")
     # (3) API key never reaches the frontend
     assert FAKE_TOKEN not in res.text
     assert set(body.keys()) == {"url"}

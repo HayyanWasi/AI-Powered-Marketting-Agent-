@@ -25,8 +25,8 @@ from src.schemas import (
     UpdateCampaignRequest,
 )
 from src.services.asset_service import AssetService
-from src.services.campaign_service import CampaignService
 from src.services.campaign_context_service import require_profile
+from src.services.campaign_service import CampaignService
 from src.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)

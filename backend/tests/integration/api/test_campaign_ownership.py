@@ -50,6 +50,7 @@ def mock_campaign_b():
 
 # --- Tests ---
 
+
 def test_list_assets_cross_user_denied(user_a_client, mock_campaign_b):
     with patch("src.api.v1.campaigns.CampaignService") as mock_svc_cls:
         # Mock get_campaign to return None (which happens when UUID(user.id) doesn't match owner)
@@ -82,7 +83,10 @@ def test_migrate_intake_cross_user_denied(user_a_client):
     ):
         response = user_a_client.post(
             "/api/campaigns/intake/migrate",
-            json={"session_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "campaign_id": CAMPAIGN_B_ID},
+            json={
+                "session_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "campaign_id": CAMPAIGN_B_ID,
+            },
         )
         assert response.status_code == 404
         assert response.json()["message"] == "Intake resource not found or access denied."
@@ -128,13 +132,14 @@ async def test_foreign_company_profile_is_rejected_before_campaign_insert():
     )
     campaign_service = AsyncMock()
 
-    with patch(
-        "src.api.v1.campaigns.require_profile",
-        side_effect=HTTPException(404, "Company profile not found or access denied."),
+    with (
+        patch(
+            "src.api.v1.campaigns.require_profile",
+            side_effect=HTTPException(404, "Company profile not found or access denied."),
+        ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await create_campaign(request, campaign_service, mock_user_a())
+        await create_campaign(request, campaign_service, mock_user_a())
 
     assert exc.value.status_code == 404
     campaign_service.create_campaign.assert_not_awaited()
-

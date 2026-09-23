@@ -43,7 +43,9 @@ def test_global_provider_timeout_unchanged():
 async def test_linkedin_post_generation_uses_120s_on_local_ollama(monkeypatch):
     captured: dict = {}
 
-    def fake_generate(self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None):
+    def fake_generate(
+        self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None
+    ):
         captured["timeout"] = timeout
         return _ollama_response('{"hook": "H", "body": "B", "cta": "C"}')
 
@@ -71,7 +73,9 @@ async def test_non_linkedin_call_keeps_default_timeout(monkeypatch):
     client default — proving the 120s override is LinkedIn-specific, not global."""
     captured: dict = {"timeout": "unset"}
 
-    def fake_generate(self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None):
+    def fake_generate(
+        self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None
+    ):
         captured["timeout"] = timeout
         return _ollama_response('{"ok": true}')
 

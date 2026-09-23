@@ -201,15 +201,12 @@ async def test_user_a_session_a_to_campaign_a_passes(two_user_data) -> None:
 
     assert response["status"] == "success"
     destination = next(
-        row
-        for row in two_user_data["intake_checklists"]
-        if row["campaign_id"] == str(CAMPAIGN_A)
+        row for row in two_user_data["intake_checklists"] if row["campaign_id"] == str(CAMPAIGN_A)
     )
     assert destination["owner_id"] == str(USER_A)
     assert destination["campaign_name"] == "USER_A_PRIVATE_INTAKE"
     assert any(
-        row["campaign_id"] == str(CAMPAIGN_A)
-        and row["content"] == "USER_A_PRIVATE_MESSAGE"
+        row["campaign_id"] == str(CAMPAIGN_A) and row["content"] == "USER_A_PRIVATE_MESSAGE"
         for row in two_user_data["intake_messages"]
     )
 
@@ -311,19 +308,17 @@ async def test_new_pre_campaign_session_is_claimed_by_authenticated_user(two_use
     await intake_api.intake_access.authorize(session_id, USER_A, claim_if_missing=True)
 
     claimed = next(
-        row
-        for row in two_user_data["intake_checklists"]
-        if row["campaign_id"] == str(session_id)
+        row for row in two_user_data["intake_checklists"] if row["campaign_id"] == str(session_id)
     )
     assert claimed["owner_id"] == str(USER_A)
 
 
 def test_forward_migration_binds_campaign_intake_without_claiming_legacy_sessions() -> None:
     migration = (
-        Path(__file__).resolve().parents[3]
-        / "migrations"
-        / "014_add_intake_ownership.up.sql"
-    ).read_text(encoding="utf-8").lower()
+        (Path(__file__).resolve().parents[3] / "migrations" / "014_add_intake_ownership.up.sql")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
 
     assert "add column if not exists owner_id uuid" in migration
     assert "checklist.campaign_id = campaign.id" in migration

@@ -41,7 +41,6 @@ from src.services.campaign_context_service import (
     compute_intake_fingerprint,
 )
 
-
 # ── Streaming response consumption ────────────────────────────────────────────
 
 
@@ -110,8 +109,12 @@ def _endpoint_context():
         ),
         channel_plan=ChannelPlan(
             calendar_slots=(
-                CalendarSlot(slot_id="slot-1", date="2026-09-20", platform="LinkedIn", theme="A", cta="Go"),
-                CalendarSlot(slot_id="slot-2", date="2026-09-22", platform="LinkedIn", theme="B", cta="Go"),
+                CalendarSlot(
+                    slot_id="slot-1", date="2026-09-20", platform="LinkedIn", theme="A", cta="Go"
+                ),
+                CalendarSlot(
+                    slot_id="slot-2", date="2026-09-22", platform="LinkedIn", theme="B", cta="Go"
+                ),
             )
         ),
     )
@@ -155,7 +158,9 @@ def _driver(posts, *, fail_after: int | None = None):
     mimicking a mid-batch generation failure.
     """
 
-    async def _fake(campaign_id, plan, brief, *, on_post_started=None, on_post_completed=None, **kwargs):
+    async def _fake(
+        campaign_id, plan, brief, *, on_post_started=None, on_post_completed=None, **kwargs
+    ):
         total = len(posts)
         for i, post in enumerate(posts, 1):
             if on_post_started is not None:
@@ -184,10 +189,21 @@ async def test_stream_emits_started_completed_and_persists_atomically() -> None:
     repository = SimpleNamespace(client=client)
 
     with (
-        patch("src.api.v1.linkedin.CampaignContextResolver.resolve", new=AsyncMock(return_value=inputs)),
-        patch("src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)),
-        patch("src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts", new=AsyncMock(side_effect=_driver(posts))),
-        patch("src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence", new=AsyncMock(return_value=outreach)),
+        patch(
+            "src.api.v1.linkedin.CampaignContextResolver.resolve",
+            new=AsyncMock(return_value=inputs),
+        ),
+        patch(
+            "src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)
+        ),
+        patch(
+            "src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts",
+            new=AsyncMock(side_effect=_driver(posts)),
+        ),
+        patch(
+            "src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence",
+            new=AsyncMock(return_value=outreach),
+        ),
         patch("src.api.v1.linkedin.BaseRepository", return_value=repository),
     ):
         response = await generate_campaign_content_stream(campaign_id, user=user)
@@ -227,10 +243,21 @@ async def test_stream_first_post_completes_before_generation_completed() -> None
     repository = SimpleNamespace(client=client)
 
     with (
-        patch("src.api.v1.linkedin.CampaignContextResolver.resolve", new=AsyncMock(return_value=inputs)),
-        patch("src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)),
-        patch("src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts", new=AsyncMock(side_effect=_driver(posts))),
-        patch("src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence", new=AsyncMock(return_value=outreach)),
+        patch(
+            "src.api.v1.linkedin.CampaignContextResolver.resolve",
+            new=AsyncMock(return_value=inputs),
+        ),
+        patch(
+            "src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)
+        ),
+        patch(
+            "src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts",
+            new=AsyncMock(side_effect=_driver(posts)),
+        ),
+        patch(
+            "src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence",
+            new=AsyncMock(return_value=outreach),
+        ),
         patch("src.api.v1.linkedin.BaseRepository", return_value=repository),
     ):
         response = await generate_campaign_content_stream(campaign_id, user=user)
@@ -249,13 +276,21 @@ async def test_stream_failure_emits_generation_failed_and_persists_nothing() -> 
     repository = SimpleNamespace(client=client)
 
     with (
-        patch("src.api.v1.linkedin.CampaignContextResolver.resolve", new=AsyncMock(return_value=inputs)),
-        patch("src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)),
+        patch(
+            "src.api.v1.linkedin.CampaignContextResolver.resolve",
+            new=AsyncMock(return_value=inputs),
+        ),
+        patch(
+            "src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)
+        ),
         patch(
             "src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts",
             new=AsyncMock(side_effect=_driver(posts, fail_after=1)),
         ),
-        patch("src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence", new=AsyncMock(return_value=outreach)),
+        patch(
+            "src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence",
+            new=AsyncMock(return_value=outreach),
+        ),
         patch("src.api.v1.linkedin.BaseRepository", return_value=repository),
     ):
         response = await generate_campaign_content_stream(campaign_id, user=user)
@@ -312,7 +347,9 @@ async def test_e2e_first_post_reaches_consumer_before_generation_completes() -> 
 
     consumer_saw_first = asyncio.Event()
 
-    async def driver(campaign_id, plan, brief, *, on_post_started=None, on_post_completed=None, **kwargs):
+    async def driver(
+        campaign_id, plan, brief, *, on_post_started=None, on_post_completed=None, **kwargs
+    ):
         await on_post_started(1, posts[0].slot_id, 2)
         await on_post_completed(1, posts[0].slot_id, 2, posts[0])
         # Block until the consumer confirms it received post 1 over the stream.
@@ -324,10 +361,21 @@ async def test_e2e_first_post_reaches_consumer_before_generation_completes() -> 
     observed_order: list[str] = []
 
     with (
-        patch("src.api.v1.linkedin.CampaignContextResolver.resolve", new=AsyncMock(return_value=inputs)),
-        patch("src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)),
-        patch("src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts", new=AsyncMock(side_effect=driver)),
-        patch("src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence", new=AsyncMock(return_value=outreach)),
+        patch(
+            "src.api.v1.linkedin.CampaignContextResolver.resolve",
+            new=AsyncMock(return_value=inputs),
+        ),
+        patch(
+            "src.api.v1.linkedin.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)
+        ),
+        patch(
+            "src.api.v1.linkedin.LinkedInPostGenerator.generate_all_posts",
+            new=AsyncMock(side_effect=driver),
+        ),
+        patch(
+            "src.api.v1.linkedin.OutreachSequenceGenerator.generate_sequence",
+            new=AsyncMock(return_value=outreach),
+        ),
         patch("src.api.v1.linkedin.BaseRepository", return_value=repository),
     ):
         response = await generate_campaign_content_stream(campaign_id, user=user)
@@ -390,8 +438,12 @@ def _generator_plan():
     )
     channel_plan = ChannelPlan(
         calendar_slots=(
-            CalendarSlot(slot_id=str(sid1), date="2026-09-20", platform="LinkedIn", theme="T1", cta="C1"),
-            CalendarSlot(slot_id=str(sid2), date="2026-09-22", platform="LinkedIn", theme="T2", cta="C2"),
+            CalendarSlot(
+                slot_id=str(sid1), date="2026-09-20", platform="LinkedIn", theme="T1", cta="C1"
+            ),
+            CalendarSlot(
+                slot_id=str(sid2), date="2026-09-22", platform="LinkedIn", theme="T2", cta="C2"
+            ),
         )
     )
     plan = CampaignPlan(

@@ -147,7 +147,9 @@ def _post(status: str = "draft", full_content: str = "Hello world") -> dict:
 def _client(stores: dict, *, owner=USER_A.id, cpid=BRAND_ID) -> TestClient:
     svc = _FakeCampaignService(owner_id=owner, company_profile_id=cpid)
     patches = [
-        patch("src.api.v1.linkedin.BaseRepository", side_effect=lambda name: _FakeRepo(name, stores)),
+        patch(
+            "src.api.v1.linkedin.BaseRepository", side_effect=lambda name: _FakeRepo(name, stores)
+        ),
         patch("src.api.v1.linkedin.CampaignService", return_value=svc),
     ]
     for p in patches:

@@ -74,7 +74,9 @@ def test_multiple_audience_timezones_do_not_select_first():
     assert plan.confidence == "low"
 
 
-@pytest.mark.parametrize("field", ["explicit_target_timezone", "campaign_timezone", "creator_timezone"])
+@pytest.mark.parametrize(
+    "field", ["explicit_target_timezone", "campaign_timezone", "creator_timezone"]
+)
 def test_invalid_explicit_timezone_fails_truthfully(field):
     with pytest.raises(ValueError, match="Invalid scheduling timezone: Not/A_Zone"):
         resolve_scheduling_timezone(**{field: "Not/A_Zone"})

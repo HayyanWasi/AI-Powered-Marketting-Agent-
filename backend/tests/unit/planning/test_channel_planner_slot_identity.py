@@ -124,8 +124,7 @@ class TestChannelPlannerEndToEnd:
                 "platforms": [],
                 "phases": [],
                 "calendar_slots": [
-                    {"slot_id": str(i + 1), "theme": f"post {i + 1}"}
-                    for i in range(4)
+                    {"slot_id": str(i + 1), "theme": f"post {i + 1}"} for i in range(4)
                 ],
                 "overall_cadence": "steady",
             }
@@ -231,9 +230,7 @@ class TestIntegerSlotIdCoercion:
         from src.modules.planning.models.campaign_plan import ChannelPlan
 
         payload = {
-            "calendar_slots": [
-                {"slot_id": o, "theme": f"post {o}"} for o in (1, 3, 6, 2, 8)
-            ],
+            "calendar_slots": [{"slot_id": o, "theme": f"post {o}"} for o in (1, 3, 6, 2, 8)],
         }
 
         plan = ChannelPlan.model_validate(payload)
@@ -254,9 +251,7 @@ class TestIntegerSlotIdCoercion:
         schedule = _schedule(8)
         brief = _brief(schedule)
         # Raw payload exactly as the model emitted it at runtime: bare ints.
-        payload = {
-            "calendar_slots": [{"slot_id": o, "theme": "x"} for o in (1, 3, 6, 2, 8)]
-        }
+        payload = {"calendar_slots": [{"slot_id": o, "theme": "x"} for o in (1, 3, 6, 2, 8)]}
 
         resolved = _resolve_calendar_slot_ids(payload, brief)
         slots = tuple(CalendarSlot(**c) for c in resolved["calendar_slots"])
@@ -270,25 +265,28 @@ class TestChannelPlannerRepair:
     async def test_valid_exact_n_slot_channel_output(self):
         schedule = _schedule(3)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             assert template_name == "plan_channel"
             return {
                 "calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}, {"slot_id": "3"}],
-                "platforms": [], "phases": [], "overall_cadence": ""
+                "platforms": [],
+                "phases": [],
+                "overall_cadence": "",
             }
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             payload = await channel_planner(brief)
-            
+
         assert len(payload["calendar_slots"]) == 3
 
     @pytest.mark.asyncio
     async def test_missing_one_slot_triggers_repair(self):
         schedule = _schedule(3)
         brief = _brief(schedule)
-        
+
         call_count = 0
+
         async def fake_ask(template_name, variables, **kw):
             nonlocal call_count
             call_count += 1
@@ -302,10 +300,10 @@ class TestChannelPlannerRepair:
                     "calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}, {"slot_id": "3"}],
                 }
             raise ValueError("Unexpected template")
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             payload = await channel_planner(brief)
-            
+
         assert call_count == 2
         assert len(payload["calendar_slots"]) == 3
 
@@ -313,31 +311,31 @@ class TestChannelPlannerRepair:
     async def test_extra_slot_triggers_repair(self):
         schedule = _schedule(2)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             if template_name == "plan_channel":
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}, {"slot_id": "3"}]}
             if template_name == "plan_channel_repair":
                 assert "returned extra schedule slots" in variables["validation_error"]
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}]}
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             payload = await channel_planner(brief)
-            
+
         assert len(payload["calendar_slots"]) == 2
 
     @pytest.mark.asyncio
     async def test_duplicate_ordinal_triggers_repair(self):
         schedule = _schedule(2)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             if template_name == "plan_channel":
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "1"}]}
             if template_name == "plan_channel_repair":
                 assert "Ordinal 1 was duplicated" in variables["validation_error"]
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}]}
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             await channel_planner(brief)
 
@@ -345,14 +343,14 @@ class TestChannelPlannerRepair:
     async def test_unknown_raw_hallucinated_slot_triggers_repair(self):
         schedule = _schedule(2)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             if template_name == "plan_channel":
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "abc"}]}
             if template_name == "plan_channel_repair":
                 assert "unknown or invalid slot ordinals" in variables["validation_error"]
                 return {"calendar_slots": [{"slot_id": "1"}, {"slot_id": "2"}]}
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             await channel_planner(brief)
 
@@ -360,14 +358,14 @@ class TestChannelPlannerRepair:
     async def test_immutable_mutation_triggers_repair(self):
         schedule = _schedule(1)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             if template_name == "plan_channel":
                 return {"calendar_slots": [{"slot_id": "1", "platform": "Instagram"}]}
             if template_name == "plan_channel_repair":
                 assert "changed an immutable field" in variables["validation_error"]
                 return {"calendar_slots": [{"slot_id": "1", "platform": "LinkedIn"}]}
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             await channel_planner(brief)
 
@@ -375,10 +373,10 @@ class TestChannelPlannerRepair:
     async def test_repair_still_invalid_fails_specialist(self):
         schedule = _schedule(1)
         brief = _brief(schedule)
-        
+
         async def fake_ask(template_name, variables, **kw):
             return {"calendar_slots": []}
-            
+
         with patch("src.modules.planning.agents.panel.ask_json", new=fake_ask):
             with pytest.raises(ValueError, match="failed validation after repair"):
                 await channel_planner(brief)

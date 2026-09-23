@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import Any
-from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -247,7 +245,9 @@ def test_delete_persona_not_found_404(test_setup):
         patch("src.repositories.base.get_supabase_client", return_value=mock_client),
         TestClient(app) as client,
     ):
-        resp = client.delete(f"/api/v1/autopilot/personas/{non_existent_id}?company_profile_id={brand_1_id}")
+        resp = client.delete(
+            f"/api/v1/autopilot/personas/{non_existent_id}?company_profile_id={brand_1_id}"
+        )
         assert resp.status_code == 404
         assert "Persona not found" in resp.text
     app.dependency_overrides.clear()
@@ -265,7 +265,9 @@ def test_delete_persona_belonging_to_another_user_returns_404(test_setup):
         patch("src.repositories.base.get_supabase_client", return_value=mock_client),
         TestClient(app) as client,
     ):
-        resp = client.delete(f"/api/v1/autopilot/personas/{other_persona_id}?company_profile_id={brand_1_id}")
+        resp = client.delete(
+            f"/api/v1/autopilot/personas/{other_persona_id}?company_profile_id={brand_1_id}"
+        )
         # Security refinement: return 404 to avoid exposing existence of another user's persona
         assert resp.status_code == 404
         assert "Persona not found" in resp.text
@@ -285,7 +287,9 @@ def test_delete_persona_different_brand_same_user_returns_403(test_setup):
         patch("src.repositories.base.get_supabase_client", return_value=mock_client),
         TestClient(app) as client,
     ):
-        resp = client.delete(f"/api/v1/autopilot/personas/{persona_1_id}?company_profile_id={brand_2_id}")
+        resp = client.delete(
+            f"/api/v1/autopilot/personas/{persona_1_id}?company_profile_id={brand_2_id}"
+        )
         assert resp.status_code == 403
         assert "Persona does not belong to the specified brand profile" in resp.text
     app.dependency_overrides.clear()
@@ -303,13 +307,17 @@ def test_delete_persona_same_brand_succeeds(test_setup):
         patch("src.repositories.base.get_supabase_client", return_value=mock_client),
         TestClient(app) as client,
     ):
-        resp = client.delete(f"/api/v1/autopilot/personas/{persona_1_id}?company_profile_id={brand_1_id}")
+        resp = client.delete(
+            f"/api/v1/autopilot/personas/{persona_1_id}?company_profile_id={brand_1_id}"
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
         assert data["id"] == persona_1_id
 
         # Check it is removed from mock store
-        remaining = [p for p in test_setup["stores"]["linkedin_target_personas"] if p["id"] == persona_1_id]
+        remaining = [
+            p for p in test_setup["stores"]["linkedin_target_personas"] if p["id"] == persona_1_id
+        ]
         assert len(remaining) == 0
     app.dependency_overrides.clear()

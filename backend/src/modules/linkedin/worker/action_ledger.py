@@ -57,7 +57,13 @@ class ActionLedger:
             if res.data:
                 current_count = res.data[0].get("action_count", 0)
                 if current_count >= limit:
-                    logger.info("Daily limit reached for %s/%s (count=%d, limit=%d)", action_type, account_id, current_count, limit)
+                    logger.info(
+                        "Daily limit reached for %s/%s (count=%d, limit=%d)",
+                        action_type,
+                        account_id,
+                        current_count,
+                        limit,
+                    )
                     return False
                 client.table("linkedin_daily_actions").update(
                     {"action_count": current_count + 1}
@@ -77,7 +83,9 @@ class ActionLedger:
             return True
         except Exception as e:
             # Try legacy column fallback if migration hasn't altered column name yet
-            logger.warning("ActionLedger try_acquire failed with linkedin_account_id: %s. Trying fallback.", e)
+            logger.warning(
+                "ActionLedger try_acquire failed with linkedin_account_id: %s. Trying fallback.", e
+            )
             try:
                 res = (
                     client.table("linkedin_daily_actions")
@@ -132,11 +140,9 @@ class ActionLedger:
             )
             if res.data:
                 cnt = res.data[0].get("action_count", 0)
-                client.table("linkedin_daily_actions").update(
-                    {"action_count": cnt + 1}
-                ).eq("linkedin_account_id", account_id).eq("action_date", local_date).eq(
-                    "action_type", action_type
-                ).execute()
+                client.table("linkedin_daily_actions").update({"action_count": cnt + 1}).eq(
+                    "linkedin_account_id", account_id
+                ).eq("action_date", local_date).eq("action_type", action_type).execute()
             else:
                 client.table("linkedin_daily_actions").insert(
                     {

@@ -343,7 +343,11 @@ async def test_deterministic_detection_does_not_override_explicit_correction() -
     )
 
     result = await _turn(
-        service, "Actually, general promotion isn't right, make it a webinar", existing, uuid4(), uuid4()
+        service,
+        "Actually, general promotion isn't right, make it a webinar",
+        existing,
+        uuid4(),
+        uuid4(),
     )
 
     assert result["checklist"].campaign_type is CampaignType.WEBINAR

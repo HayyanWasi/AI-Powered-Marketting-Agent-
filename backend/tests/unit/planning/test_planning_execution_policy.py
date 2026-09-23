@@ -23,8 +23,11 @@ class APITimeoutError(Exception):
 
 def _ok_response() -> LLMResponse:
     return LLMResponse(
-        text="{}", token_usage=TokenUsage(0, 0, 0, "ollama"),
-        provider="ollama", model="qwen3:8b", finish_reason="stop",
+        text="{}",
+        token_usage=TokenUsage(0, 0, 0, "ollama"),
+        provider="ollama",
+        model="qwen3:8b",
+        finish_reason="stop",
     )
 
 
@@ -36,9 +39,8 @@ def test_timeout_not_retried_when_disabled():
         calls["n"] += 1
         raise APITimeoutError("Request timed out.")
 
-    with patch("src.services.llm_service.time.sleep"):
-        with pytest.raises(APITimeoutError):
-            _retry_with_backoff(f, retry_on_timeout=False)
+    with patch("src.services.llm_service.time.sleep"), pytest.raises(APITimeoutError):
+        _retry_with_backoff(f, retry_on_timeout=False)
     assert calls["n"] == 1  # exactly one attempt, no resend
 
 
@@ -63,9 +65,8 @@ def test_non_timeout_transient_still_retried_even_when_timeout_retry_disabled():
         calls["n"] += 1
         raise RuntimeError("500 server error")  # transient, not a timeout
 
-    with patch("src.services.llm_service.time.sleep"):
-        with pytest.raises(RuntimeError):
-            _retry_with_backoff(transient, retry_on_timeout=False)
+    with patch("src.services.llm_service.time.sleep"), pytest.raises(RuntimeError):
+        _retry_with_backoff(transient, retry_on_timeout=False)
     assert calls["n"] == llm_service.MAX_RETRIES
 
 
@@ -76,9 +77,8 @@ def test_remote_timeout_is_retried():
         calls["n"] += 1
         raise APITimeoutError("Request timed out.")
 
-    with patch("src.services.llm_service.time.sleep"):
-        with pytest.raises(APITimeoutError):
-            _retry_with_backoff(f, retry_on_timeout=True)
+    with patch("src.services.llm_service.time.sleep"), pytest.raises(APITimeoutError):
+        _retry_with_backoff(f, retry_on_timeout=True)
     assert calls["n"] == llm_service.MAX_RETRIES
 
 
@@ -118,5 +118,9 @@ async def test_ask_json_no_forced_timeout_for_remote():
 # ── F. All 5 specialists remain mandatory ──
 def test_all_five_specialists_present():
     assert set(panel.SPECIALISTS) == {
-        "audience_research", "positioning", "competitive", "channel_plan", "measurement",
+        "audience_research",
+        "positioning",
+        "competitive",
+        "channel_plan",
+        "measurement",
     }

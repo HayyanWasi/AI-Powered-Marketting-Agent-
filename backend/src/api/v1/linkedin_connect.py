@@ -74,12 +74,8 @@ async def create_connection_link(
         success_redirect_url=_public_url(
             settings.frontend_base_url, "/prospects?linkedin=connected"
         ),
-        failure_redirect_url=_public_url(
-            settings.frontend_base_url, "/prospects?linkedin=failed"
-        ),
-        notify_url=_public_url(
-            settings.app_public_base_url, "/api/v1/linkedin/connections/notify"
-        ),
+        failure_redirect_url=_public_url(settings.frontend_base_url, "/prospects?linkedin=failed"),
+        notify_url=_public_url(settings.app_public_base_url, "/api/v1/linkedin/connections/notify"),
         expires_on=expires_on,
     )
 
@@ -195,9 +191,7 @@ def _upsert_account(*, user_id: str, unipile_account_id: str) -> None:
         "last_verified_at": now_iso,
     }
     try:
-        repo.client.table(_TABLE).upsert(
-            row, on_conflict="unipile_account_id"
-        ).execute()
+        repo.client.table(_TABLE).upsert(row, on_conflict="unipile_account_id").execute()
     except Exception as e:
         logger.error("Failed to upsert linkedin_account %s: %s", unipile_account_id, e)
 

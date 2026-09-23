@@ -74,6 +74,7 @@ def _sample_plan(
 
 # ── Test A: Successful Research ───────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_successful_research_marked_available_and_persisted():
     """A: Research returns usable evidence -> status is available, evidence reaches plan."""
@@ -100,7 +101,9 @@ async def test_successful_research_marked_available_and_persisted():
     mock_research_svc = MagicMock()
     mock_research_svc.draft_research = AsyncMock(return_value=usable_research_result)
 
-    drafted_plan = _sample_plan(campaign_id, ResearchStatus.AVAILABLE, "Live research completed with usable evidence.")
+    drafted_plan = _sample_plan(
+        campaign_id, ResearchStatus.AVAILABLE, "Live research completed with usable evidence."
+    )
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock(return_value={"plan": drafted_plan, "failures": []})
 
@@ -112,9 +115,18 @@ async def test_successful_research_marked_available_and_persisted():
     service = PlanRefinementService(repository=mock_repo)
 
     with (
-        patch("src.modules.planning.services.plan_refinement_service.ResearchEngineService", return_value=mock_research_svc),
-        patch("src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph", return_value=mock_graph),
-        patch("src.modules.planning.services.plan_refinement_service.normalize_calendar_slots", side_effect=lambda slots, sp: slots),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.ResearchEngineService",
+            return_value=mock_research_svc,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.normalize_calendar_slots",
+            side_effect=lambda slots, sp: slots,
+        ),
     ):
         result_plan = await service.draft_plan(
             campaign_id=campaign_id,
@@ -134,6 +146,7 @@ async def test_successful_research_marked_available_and_persisted():
 
 # ── Test B: Research Exception ────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_research_exception_marks_status_degraded():
     """B: Research throws an exception -> planning continues, status marked degraded without fake evidence."""
@@ -142,7 +155,9 @@ async def test_research_exception_marks_status_degraded():
     brief = _sample_brief()
 
     mock_research_svc = MagicMock()
-    mock_research_svc.draft_research = AsyncMock(side_effect=RuntimeError("Search provider API timeout"))
+    mock_research_svc.draft_research = AsyncMock(
+        side_effect=RuntimeError("Search provider API timeout")
+    )
 
     drafted_plan = _sample_plan(campaign_id)
     mock_graph = MagicMock()
@@ -156,9 +171,18 @@ async def test_research_exception_marks_status_degraded():
     service = PlanRefinementService(repository=mock_repo)
 
     with (
-        patch("src.modules.planning.services.plan_refinement_service.ResearchEngineService", return_value=mock_research_svc),
-        patch("src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph", return_value=mock_graph),
-        patch("src.modules.planning.services.plan_refinement_service.normalize_calendar_slots", side_effect=lambda slots, sp: slots),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.ResearchEngineService",
+            return_value=mock_research_svc,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.normalize_calendar_slots",
+            side_effect=lambda slots, sp: slots,
+        ),
     ):
         result_plan = await service.draft_plan(
             campaign_id=campaign_id,
@@ -180,6 +204,7 @@ async def test_research_exception_marks_status_degraded():
 
 
 # ── Test C: Empty Research Results ────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_empty_research_results_marked_no_evidence():
@@ -217,9 +242,18 @@ async def test_empty_research_results_marked_no_evidence():
     service = PlanRefinementService(repository=mock_repo)
 
     with (
-        patch("src.modules.planning.services.plan_refinement_service.ResearchEngineService", return_value=mock_research_svc),
-        patch("src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph", return_value=mock_graph),
-        patch("src.modules.planning.services.plan_refinement_service.normalize_calendar_slots", side_effect=lambda slots, sp: slots),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.ResearchEngineService",
+            return_value=mock_research_svc,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.plan_graph.compile_graph",
+            return_value=mock_graph,
+        ),
+        patch(
+            "src.modules.planning.services.plan_refinement_service.normalize_calendar_slots",
+            side_effect=lambda slots, sp: slots,
+        ),
     ):
         result_plan = await service.draft_plan(
             campaign_id=campaign_id,
@@ -234,6 +268,7 @@ async def test_empty_research_results_marked_no_evidence():
 
 # ── Test D: Degraded Dictionary Suppression Regression ───────────────────────
 
+
 @pytest.mark.asyncio
 async def test_degraded_research_context_does_not_suppress_specialist_search():
     """D: A truthy degraded/no-evidence research_context object must NOT suppress specialist direct searches."""
@@ -245,15 +280,26 @@ async def test_degraded_research_context_does_not_suppress_specialist_search():
 
     # 2. Verify panel specialists invoke their direct parallel search methods when research is degraded
     with (
-        patch("src.modules.planning.agents.panel._parallel_research", new=AsyncMock(return_value="DIRECT SEARCH RESULTS")) as mock_direct_research,
-        patch("src.modules.planning.agents.panel.ask_json", new=AsyncMock(return_value={"goals": []})),
+        patch(
+            "src.modules.planning.agents.panel._parallel_research",
+            new=AsyncMock(return_value="DIRECT SEARCH RESULTS"),
+        ) as mock_direct_research,
+        patch(
+            "src.modules.planning.agents.panel.ask_json", new=AsyncMock(return_value={"goals": []})
+        ),
     ):
         await audience_research(brief)
         mock_direct_research.assert_awaited_once()
 
     with (
-        patch("src.modules.planning.agents.panel._parallel_competitor_research", new=AsyncMock(return_value="COMPETITOR SEARCH RESULTS")) as mock_comp_research,
-        patch("src.modules.planning.agents.panel.ask_json", new=AsyncMock(return_value={"landscape": []})),
+        patch(
+            "src.modules.planning.agents.panel._parallel_competitor_research",
+            new=AsyncMock(return_value="COMPETITOR SEARCH RESULTS"),
+        ) as mock_comp_research,
+        patch(
+            "src.modules.planning.agents.panel.ask_json",
+            new=AsyncMock(return_value={"landscape": []}),
+        ),
     ):
         await competitive(brief)
         mock_comp_research.assert_awaited_once()
@@ -269,14 +315,19 @@ async def test_degraded_research_context_does_not_suppress_specialist_search():
     assert usable_brief.has_usable_research() is True
 
     with (
-        patch("src.modules.planning.agents.panel._parallel_research", new=AsyncMock()) as mock_direct_research,
-        patch("src.modules.planning.agents.panel.ask_json", new=AsyncMock(return_value={"goals": []})),
+        patch(
+            "src.modules.planning.agents.panel._parallel_research", new=AsyncMock()
+        ) as mock_direct_research,
+        patch(
+            "src.modules.planning.agents.panel.ask_json", new=AsyncMock(return_value={"goals": []})
+        ),
     ):
         await audience_research(usable_brief)
         mock_direct_research.assert_not_awaited()
 
 
 # ── Test E: Persist and Retrieve Truthfulness ──────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_persist_and_retrieve_preserves_degraded_research_status():
@@ -302,9 +353,15 @@ async def test_persist_and_retrieve_preserves_degraded_research_status():
 
     try:
         with (
-            patch("src.api.v1.plans.CampaignContextResolver.resolve", new=AsyncMock(return_value=inputs)),
+            patch(
+                "src.api.v1.plans.CampaignContextResolver.resolve",
+                new=AsyncMock(return_value=inputs),
+            ),
             patch("src.api.v1.plans.check_plan_freshness", return_value=(False, None)),
-            patch("src.modules.planning.services.plan_refinement_service.PlanRefinementService.get_plan", new=AsyncMock(return_value=plan)),
+            patch(
+                "src.modules.planning.services.plan_refinement_service.PlanRefinementService.get_plan",
+                new=AsyncMock(return_value=plan),
+            ),
         ):
             response = client.get(f"/api/v1/campaigns/{campaign_id}/plan")
 
@@ -317,6 +374,7 @@ async def test_persist_and_retrieve_preserves_degraded_research_status():
 
 
 # ── Test F: Legacy Plan Handled Safely ────────────────────────────────────────
+
 
 def test_legacy_plan_without_research_status_not_falsely_claimed_research_backed():
     """F: Plan without explicit research-status metadata must NOT be falsely classified as available."""

@@ -153,9 +153,7 @@ async def test_oversized_mandatory_context_fails_before_llm_call() -> None:
     llm = AsyncMock(spec=LLMRouterService)
     generator = LinkedInPostGenerator(llm_router=llm)
     ctx = _context(
-        brand=_brand(
-            guidelines="GUIDELINES_START " + "g" * MAX_PROMPT_CHARS + " GUIDELINES_END"
-        )
+        brand=_brand(guidelines="GUIDELINES_START " + "g" * MAX_PROMPT_CHARS + " GUIDELINES_END")
     )
 
     with pytest.raises(

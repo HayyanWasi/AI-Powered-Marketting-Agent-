@@ -398,7 +398,7 @@ class TestCampaignCRUD:
         mock_svc_cls.return_value = mock_svc
 
         response = client.post("/api/campaigns", json=_make_campaign_request())
-        
+
         if response.status_code != 201:
             print("RESPONSE:", response.json())
 

@@ -38,15 +38,22 @@ def _ok(provider: str) -> MagicMock:
 def test_build_credential_chain_uses_all_keys_in_tier_order():
     with (
         patch.object(type(llm_mod.settings), "get_groq_keys", return_value=["g1", "g2"]),
-        patch.object(type(llm_mod.settings), "get_openrouter_keys", return_value=["o1", "o2", "o3"]),
+        patch.object(
+            type(llm_mod.settings), "get_openrouter_keys", return_value=["o1", "o2", "o3"]
+        ),
         patch.object(type(llm_mod.settings), "get_gemini_keys", return_value=["m1", "m2", "m3"]),
     ):
         chain = _build_credential_chain(["groq", "openrouter", "gemini"])
     names = [n for n, _, _ in chain]
     assert names == [
-        "groq", "groq",
-        "openrouter", "openrouter", "openrouter",
-        "gemini", "gemini", "gemini",
+        "groq",
+        "groq",
+        "openrouter",
+        "openrouter",
+        "openrouter",
+        "gemini",
+        "gemini",
+        "gemini",
     ]
     # Every key is its own distinct provider instance (roll-over target).
     assert len({id(p) for _, p, _ in chain}) == 8
@@ -72,15 +79,20 @@ def test_rate_limited_key_rolls_over_to_sibling_key():
 
     g1, g2, o1, m1 = MagicMock(), _ok("groq"), MagicMock(), MagicMock()
     g1.generate.side_effect = Exception("429 rate limit exceeded")
-    svc._chain = [("groq", g1, "m"), ("groq", g2, "m"), ("openrouter", o1, "m"), ("gemini", m1, "m")]
+    svc._chain = [
+        ("groq", g1, "m"),
+        ("groq", g2, "m"),
+        ("openrouter", o1, "m"),
+        ("gemini", m1, "m"),
+    ]
 
     res = svc.generate(LLMRequest(user_prompt="x"))
 
     assert res.provider == "groq"
-    g1.generate.assert_called_once()   # rate-limited key tried
-    g2.generate.assert_called_once()   # rolled over to sibling groq key
-    o1.generate.assert_not_called()    # never dropped to lower tier
-    m1.generate.assert_not_called()    # gemini (least priority) untouched
+    g1.generate.assert_called_once()  # rate-limited key tried
+    g2.generate.assert_called_once()  # rolled over to sibling groq key
+    o1.generate.assert_not_called()  # never dropped to lower tier
+    m1.generate.assert_not_called()  # gemini (least priority) untouched
 
 
 def test_gemini_is_last_resort_when_groq_and_openrouter_fail():

@@ -104,7 +104,9 @@ def _run(body: dict, *, owned=True, accounts=None):
     app.dependency_overrides[company_api._get_get_service] = lambda: _FakeGetService(owned)
     app.dependency_overrides[company_api._get_update_service] = lambda: update
     stores = {"linkedin_accounts": accounts if accounts is not None else [_account()]}
-    patch.object(company_api, "BaseRepository", side_effect=lambda name: _FakeRepo(name, stores)).start()
+    patch.object(
+        company_api, "BaseRepository", side_effect=lambda name: _FakeRepo(name, stores)
+    ).start()
     res = TestClient(app).put(f"/api/v1/company/{BRAND_ID}/linkedin-account", json=body)
     return res, update
 
@@ -130,9 +132,7 @@ def test_foreign_brand_blocked():
 
 
 def test_foreign_account_blocked():
-    res, update = _run(
-        {"account_id": ACCOUNT_PK}, accounts=[_account(user_id=str(uuid4()))]
-    )
+    res, update = _run({"account_id": ACCOUNT_PK}, accounts=[_account(user_id=str(uuid4()))])
     assert res.status_code == 404
     assert update.calls == []
 

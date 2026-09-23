@@ -2,12 +2,7 @@
 
 from pathlib import Path
 
-
-MIGRATION = (
-    Path(__file__).resolve().parents[2]
-    / "migrations"
-    / "015_harden_active_flow_rls.up.sql"
-)
+MIGRATION = Path(__file__).resolve().parents[2] / "migrations" / "015_harden_active_flow_rls.up.sql"
 SQL = MIGRATION.read_text(encoding="utf-8")
 
 

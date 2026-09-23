@@ -76,9 +76,11 @@ async def test_terminal_failure_propagates_and_cancels_siblings():
             return {"status": "cancelled"}
         return {"status": "success"}
 
-    with patch(
-        "src.modules.planning.agents.panel.SPECIALISTS",
-        {"fail": fast_fail, "slow1": slow, "slow2": slow, "slow3": slow, "slow4": slow},
+    with (
+        patch(
+            "src.modules.planning.agents.panel.SPECIALISTS",
+            {"fail": fast_fail, "slow1": slow, "slow2": slow, "slow3": slow, "slow4": slow},
+        ),
+        pytest.raises(RuntimeError, match="Terminal failure"),
     ):
-        with pytest.raises(RuntimeError, match="Terminal failure"):
-            await run_panel(brief, llm=_llm(False))
+        await run_panel(brief, llm=_llm(False))

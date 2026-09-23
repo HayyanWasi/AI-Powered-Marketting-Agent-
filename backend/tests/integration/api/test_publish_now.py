@@ -90,7 +90,9 @@ class _FakeTable:
 
 
 class _FakeRepo:
-    def __init__(self, table_name: str, stores: dict[str, list[dict]], *, raise_on_status=None) -> None:
+    def __init__(
+        self, table_name: str, stores: dict[str, list[dict]], *, raise_on_status=None
+    ) -> None:
         self.table_name = table_name
         self.stores = stores
         self._raise_on_status = raise_on_status
@@ -187,7 +189,9 @@ def _client(stores, gateway, *, owner=USER_A.id, raise_on_status=None) -> TestCl
     patch("src.api.v1.autopilot.BaseRepository", side_effect=_mk).start()
     patch("src.api.v1.linkedin.BaseRepository", side_effect=_mk).start()
     patch("src.api.v1.autopilot.get_unipile_gateway", return_value=gateway).start()
-    patch("src.api.v1.autopilot.CampaignService", return_value=_FakeCampaignService(owner_id=owner)).start()
+    patch(
+        "src.api.v1.autopilot.CampaignService", return_value=_FakeCampaignService(owner_id=owner)
+    ).start()
     return TestClient(app)
 
 
@@ -276,7 +280,9 @@ def test_disconnected_account_rejected():
 # ── Status guards (draft only) ───────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("bad_status", ["scheduled", "publishing", "published", "failed", "needs_review"])
+@pytest.mark.parametrize(
+    "bad_status", ["scheduled", "publishing", "published", "failed", "needs_review"]
+)
 def test_non_draft_blocked(bad_status):
     _as(USER_A)
     post = _post(status=bad_status)

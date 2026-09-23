@@ -64,7 +64,9 @@ class PlanBrief(BaseModel):
         if isinstance(brief_data, dict):
             for dim in ("market", "competitor", "audience", "content", "channel", "trend"):
                 dim_data = brief_data.get(dim)
-                if isinstance(dim_data, dict) and (dim_data.get("key_findings") or dim_data.get("evidence_items")):
+                if isinstance(dim_data, dict) and (
+                    dim_data.get("key_findings") or dim_data.get("evidence_items")
+                ):
                     return True
 
         graph_data = rc.get("evidence_graph")
@@ -81,7 +83,10 @@ class PlanBrief(BaseModel):
             return ResearchStatus.DEGRADED, str(err)
 
         if rc.get("status") == "no_evidence":
-            return ResearchStatus.NO_EVIDENCE, "Web search executed but returned no usable evidence."
+            return (
+                ResearchStatus.NO_EVIDENCE,
+                "Web search executed but returned no usable evidence.",
+            )
 
         if self.has_usable_research():
             return ResearchStatus.AVAILABLE, "Live research completed with usable evidence."
@@ -141,7 +146,9 @@ class PlanBrief(BaseModel):
             "category": self.category or "(not specified)",
             "target_audience": self.target_audience or "(not specified)",
             "audience_profile": (
-                self.audience_profile.model_dump_json() if self.audience_profile else "(not specified)"
+                self.audience_profile.model_dump_json()
+                if self.audience_profile
+                else "(not specified)"
             ),
             # Compact, immutable: line number (the planner's slot reference) +
             # local day/date/time + timezone. The UUID and UTC timestamp are
@@ -152,7 +159,8 @@ class PlanBrief(BaseModel):
                     f"{slot.local_time} {slot.timezone}"
                     for i, slot in enumerate(self.schedule_plan.slots)
                 )
-                if self.schedule_plan else "(not generated)"
+                if self.schedule_plan
+                else "(not generated)"
             ),
             "curriculum_breakdown": self.curriculum_breakdown or "(not specified)",
             "outcome_deliverable": self.outcome_deliverable or "(not specified)",
@@ -168,4 +176,3 @@ class PlanBrief(BaseModel):
     def as_prompt_vars(self, research: str = "") -> dict[str, str]:
         """Compatibility wrapper for existing planning callers."""
         return self.to_template_vars(research)
-

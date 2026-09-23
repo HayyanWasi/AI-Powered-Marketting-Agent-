@@ -224,9 +224,9 @@ async def migrate_intake_session(
         logger.info(
             "[INTAKE MIGRATE Step 5] Cleaning up old temporary session_id=%s", req.session_id
         )
-        repo.client.table("intake_checklists").delete().eq(
-            "campaign_id", str(req.session_id)
-        ).eq("owner_id", str(user_id)).execute()
+        repo.client.table("intake_checklists").delete().eq("campaign_id", str(req.session_id)).eq(
+            "owner_id", str(user_id)
+        ).execute()
         logger.info(
             "[INTAKE MIGRATE Step 5 SUCCESS] Deleted old session row for session_id=%s",
             req.session_id,

@@ -75,11 +75,12 @@ class TestGeminiProvider:
         assert chunks[2].finished is True
 
 
-
 class TestLLMFailoverChain:
     def test_gemini_success(self):
         gemini = MagicMock()
-        gemini.generate.return_value = LLMResponse(text="gemini_ok", token_usage=MagicMock(), provider="gemini", model="flash")
+        gemini.generate.return_value = LLMResponse(
+            text="gemini_ok", token_usage=MagicMock(), provider="gemini", model="flash"
+        )
         orouter = MagicMock()
         groq = MagicMock()
 
@@ -94,7 +95,9 @@ class TestLLMFailoverChain:
         gemini = MagicMock()
         gemini.generate.side_effect = Exception("gemini broke")
         orouter = MagicMock()
-        orouter.generate.return_value = LLMResponse(text="orouter_ok", token_usage=MagicMock(), provider="openrouter", model="oss")
+        orouter.generate.return_value = LLMResponse(
+            text="orouter_ok", token_usage=MagicMock(), provider="openrouter", model="oss"
+        )
         groq = MagicMock()
 
         svc = LLMService(gemini=gemini, openrouter=orouter, groq=groq)
@@ -110,7 +113,9 @@ class TestLLMFailoverChain:
         orouter = MagicMock()
         orouter.generate.side_effect = Exception("missing API key")
         groq = MagicMock()
-        groq.generate.return_value = LLMResponse(text="groq_ok", token_usage=MagicMock(), provider="groq", model="oss")
+        groq.generate.return_value = LLMResponse(
+            text="groq_ok", token_usage=MagicMock(), provider="groq", model="oss"
+        )
 
         svc = LLMService(gemini=gemini, openrouter=orouter, groq=groq)
         res = svc.generate(LLMRequest(user_prompt="hi"))

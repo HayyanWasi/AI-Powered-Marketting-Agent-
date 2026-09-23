@@ -101,7 +101,9 @@ async def test_3_merge_preserves_both_dates() -> None:
 async def test_4_later_null_output_does_not_erase_confirmed_dates() -> None:
     # A subsequent turn whose message has no range and whose LLM returns nulls
     # must not wipe the previously confirmed window.
-    svc, _ = _service({"extracted": {"campaign_start_date": None, "campaign_end_date": None}, "reply": "ok"})
+    svc, _ = _service(
+        {"extracted": {"campaign_start_date": None, "campaign_end_date": None}, "reply": "ok"}
+    )
     prior = IntakeChecklist(
         campaign_type="general_promotion",
         campaign_start_date="2026-09-20",
@@ -203,9 +205,7 @@ def test_6_and_7_sync_updates_bounds_and_preserves_metadata(monkeypatch) -> None
     monkeypatch.setattr("src.services.intake_chat_service.BaseRepository", _fake_repo)
 
     svc = IntakeChatService(llm=_FakeLLM(_EMPTY_PAYLOAD))
-    svc._sync_campaign_schedule_window(
-        uuid4(), uuid4(), date(2026, 9, 20), date(2026, 10, 1)
-    )
+    svc._sync_campaign_schedule_window(uuid4(), uuid4(), date(2026, 9, 20), date(2026, 10, 1))
 
     updated = store["updated"]["schedule"]
     # 6. Bounds updated.

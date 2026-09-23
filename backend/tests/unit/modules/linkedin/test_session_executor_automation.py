@@ -98,9 +98,7 @@ async def test_session_executes_ai_comment_like_and_invite_with_separate_caps() 
     assert stores["linkedin_review_queue"][0]["status"] == "pending_review"
 
     unipile.like_post.assert_awaited_once_with("account-1", "like-post")
-    unipile.send_connection_request.assert_awaited_once_with(
-        "account-1", "profile-1", None
-    )
+    unipile.send_connection_request.assert_awaited_once_with("account-1", "profile-1", None)
 
 
 @pytest.mark.asyncio

@@ -71,7 +71,9 @@ class IntakeChecklist(BaseModel):
             return False
 
         resolved_audience = self.target_audience or (
-            self.audience_profile.summary if self.audience_profile and self.audience_profile.is_usable() else None
+            self.audience_profile.summary
+            if self.audience_profile and self.audience_profile.is_usable()
+            else None
         )
         common_required = [self.campaign_name, self.objective, resolved_audience]
         has_common = all(_valid(x) for x in common_required)

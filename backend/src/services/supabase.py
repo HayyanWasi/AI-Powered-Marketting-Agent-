@@ -78,7 +78,9 @@ class SupabaseService:
     def create_profile(
         self, company_name: str, brand_guidelines: str, brand_tone: str | None = None
     ) -> dict[str, Any]:
-        existing = self._owned(self._table().select("id")).eq("company_name", company_name).execute()
+        existing = (
+            self._owned(self._table().select("id")).eq("company_name", company_name).execute()
+        )
         if existing.data:
             raise DuplicateCompanyError(f"Company name '{company_name}' already exists")
         record = {"company_name": company_name, "brand_guidelines": brand_guidelines}

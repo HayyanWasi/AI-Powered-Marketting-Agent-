@@ -181,7 +181,7 @@ class TestCompanyProfileCRUD:
             assert_company_shape(data)
             # The backend parses the string, sets it as legacyProse if not json, and stringifies it
             assert "Updated: green palette" in data["brand_guidelines"]
-            
+
     def test_update_company_not_found(self) -> None:
         with _client() as c:
             resp = c.put(
@@ -576,5 +576,3 @@ class TestPerformance:
             resp = c.get("/openapi.json")
             size_kb = len(resp.content) / 1024
             assert size_kb < 500
-
-

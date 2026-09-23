@@ -106,7 +106,9 @@ def _patch(client, post_id, body):
 
 def test_owner_edits_draft():
     post = _post()
-    res = _patch(_client(post), post["id"], {"hook": "New hook", "body": "New body", "cta_text": "CTA"})
+    res = _patch(
+        _client(post), post["id"], {"hook": "New hook", "body": "New body", "cta_text": "CTA"}
+    )
     assert res.status_code == 200, res.text
     assert post["hook"] == "New hook"
     assert post["full_content"] == "New hook\n\nNew body\n\nCTA"

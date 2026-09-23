@@ -52,10 +52,12 @@ def _campaign() -> Campaign:
 
 
 def test_generated_video_is_persisted_as_asset_and_linked_draft():
-    repository = _Repository({
-        "asset": {"id": str(uuid4()), "asset_type": "video"},
-        "post": {"id": str(uuid4()), "status": "draft", "media_type": "video"},
-    })
+    repository = _Repository(
+        {
+            "asset": {"id": str(uuid4()), "asset_type": "video"},
+            "post": {"id": str(uuid4()), "status": "draft", "media_type": "video"},
+        }
+    )
     campaign = _campaign()
     user_id = campaign.organization_id
 

@@ -1,10 +1,12 @@
-import pytest
 import json
 from unittest.mock import MagicMock, patch
 
-from src.agents.video_script_agent import VideoScriptAgent, VideoScene
-from src.models.video_generation_context import VideoGenerationContext
+import pytest
+
+from src.agents.video_script_agent import VideoScene, VideoScriptAgent
 from src.models.brand_context import BrandContext
+from src.models.video_generation_context import VideoGenerationContext
+
 
 @pytest.fixture
 def dummy_context():
@@ -20,31 +22,45 @@ def dummy_context():
         research_status="completed",
         research_context="Some research",
         user_instruction="Make a video",
-        brand=BrandContext(company_profile_id="12345678-1234-5678-1234-567812345678", company_name="Test Company", industry="Tech"),
+        brand=BrandContext(
+            company_profile_id="12345678-1234-5678-1234-567812345678",
+            company_name="Test Company",
+            industry="Tech",
+        ),
         venue="Online",
-        guest="Guest"
+        guest="Guest",
     )
+
 
 def create_mock_llm_response(data: dict) -> MagicMock:
     response = MagicMock()
     response.text = json.dumps(data)
     return response
 
+
 @pytest.mark.asyncio
 async def test_valid_5_scenes(dummy_context):
     agent = VideoScriptAgent()
     valid_data = {
         "scenes": [
-            {"scene_number": i, "narration": f"narration {i} Test Company", "image_prompt": f"prompt {i}"}
+            {
+                "scene_number": i,
+                "narration": f"narration {i} Test Company",
+                "image_prompt": f"prompt {i}",
+            }
             for i in range(1, 6)
         ]
     }
-    
-    with patch("src.agents.video_script_agent.LLMService.generate", return_value=create_mock_llm_response(valid_data)):
+
+    with patch(
+        "src.agents.video_script_agent.LLMService.generate",
+        return_value=create_mock_llm_response(valid_data),
+    ):
         # Should not raise exception
         scenes = await agent.generate_script(dummy_context)
         assert len(scenes) == 5
         assert isinstance(scenes[0], VideoScene)
+
 
 @pytest.mark.asyncio
 async def test_4_scenes_fails(dummy_context):
@@ -55,10 +71,14 @@ async def test_4_scenes_fails(dummy_context):
             for i in range(1, 5)
         ]
     }
-    
-    with patch("src.agents.video_script_agent.LLMService.generate", return_value=create_mock_llm_response(invalid_data)):
+
+    with patch(
+        "src.agents.video_script_agent.LLMService.generate",
+        return_value=create_mock_llm_response(invalid_data),
+    ):
         with pytest.raises(ValueError, match="exactly five scenes"):
             await agent.generate_script(dummy_context)
+
 
 @pytest.mark.asyncio
 async def test_6_scenes_fails(dummy_context):
@@ -69,24 +89,36 @@ async def test_6_scenes_fails(dummy_context):
             for i in range(1, 7)
         ]
     }
-    
-    with patch("src.agents.video_script_agent.LLMService.generate", return_value=create_mock_llm_response(invalid_data)):
+
+    with patch(
+        "src.agents.video_script_agent.LLMService.generate",
+        return_value=create_mock_llm_response(invalid_data),
+    ):
         with pytest.raises(ValueError, match="exactly five scenes"):
             await agent.generate_script(dummy_context)
+
 
 @pytest.mark.asyncio
 async def test_missing_narration_fails(dummy_context):
     agent = VideoScriptAgent()
     invalid_data = {
         "scenes": [
-            {"scene_number": i, "narration": f"narration {i}" if i != 3 else "   ", "image_prompt": f"prompt {i}"}
+            {
+                "scene_number": i,
+                "narration": f"narration {i}" if i != 3 else "   ",
+                "image_prompt": f"prompt {i}",
+            }
             for i in range(1, 6)
         ]
     }
-    
-    with patch("src.agents.video_script_agent.LLMService.generate", return_value=create_mock_llm_response(invalid_data)):
+
+    with patch(
+        "src.agents.video_script_agent.LLMService.generate",
+        return_value=create_mock_llm_response(invalid_data),
+    ):
         with pytest.raises(ValueError, match="requires narration and an image prompt"):
             await agent.generate_script(dummy_context)
+
 
 @pytest.mark.asyncio
 async def test_invalid_scene_order_fails(dummy_context):
@@ -98,7 +130,10 @@ async def test_invalid_scene_order_fails(dummy_context):
             for i in [1, 2, 4, 3, 5]
         ]
     }
-    
-    with patch("src.agents.video_script_agent.LLMService.generate", return_value=create_mock_llm_response(invalid_data)):
+
+    with patch(
+        "src.agents.video_script_agent.LLMService.generate",
+        return_value=create_mock_llm_response(invalid_data),
+    ):
         with pytest.raises(ValueError, match="ordered 1 through 5"):
             await agent.generate_script(dummy_context)

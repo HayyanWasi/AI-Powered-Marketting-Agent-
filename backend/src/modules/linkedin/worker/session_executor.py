@@ -129,9 +129,7 @@ class SessionExecutor:
             and self.circuit_breaker.can_proceed()
         ):
             remaining_actions = session.max_actions - result.actions_attempted
-            await self._process_ai_comments(
-                remaining_actions, daily_comment_limit, result
-            )
+            await self._process_ai_comments(remaining_actions, daily_comment_limit, result)
 
         # 2. Auto Likes: Fully automatic with durable pre-dispatch claims
         if (
@@ -166,7 +164,10 @@ class SessionExecutor:
             company_profile_id=self.company_profile_id
         )
         if not personas:
-            logger.info("No active personas found for brand %s; skipping comment generation.", self.company_profile_id)
+            logger.info(
+                "No active personas found for brand %s; skipping comment generation.",
+                self.company_profile_id,
+            )
             return
 
         targets = await self.target_resolver.get_engagement_targets(
@@ -259,20 +260,26 @@ class SessionExecutor:
             if success:
                 await self._update_claim_status(claim_id, EngagementLogStatus.SUCCEEDED)
                 with contextlib.suppress(Exception):
-                    client.table("linkedin_engaged_posts").upsert({
-                        "linkedin_account_id": self.account_id,
-                        "post_id": target.post_id,
-                        "action_type": "like",
-                        "engaged_at": datetime.now(UTC).isoformat(),
-                    }).execute()
+                    client.table("linkedin_engaged_posts").upsert(
+                        {
+                            "linkedin_account_id": self.account_id,
+                            "post_id": target.post_id,
+                            "action_type": "like",
+                            "engaged_at": datetime.now(UTC).isoformat(),
+                        }
+                    ).execute()
                 return True
             else:
                 await self._update_claim_status(
-                    claim_id, EngagementLogStatus.FAILED, error_message="Disallowed or falsy result from provider"
+                    claim_id,
+                    EngagementLogStatus.FAILED,
+                    error_message="Disallowed or falsy result from provider",
                 )
                 return False
         except (TimeoutError, httpx.TimeoutException) as exc:
-            logger.warning("Timeout while liking post %s; marking needs_review: %s", target.post_id, exc)
+            logger.warning(
+                "Timeout while liking post %s; marking needs_review: %s", target.post_id, exc
+            )
             await self._update_claim_status(
                 claim_id, EngagementLogStatus.NEEDS_REVIEW, error_message=f"Timeout: {exc}"
             )
@@ -431,11 +438,15 @@ class SessionExecutor:
                 return True
             else:
                 await self._update_claim_status(
-                    claim_id, EngagementLogStatus.FAILED, error_message="Unipile returned falsy invite ID"
+                    claim_id,
+                    EngagementLogStatus.FAILED,
+                    error_message="Unipile returned falsy invite ID",
                 )
                 return False
         except (TimeoutError, httpx.TimeoutException) as exc:
-            logger.warning("Timeout while inviting profile %s; marking needs_review: %s", profile_id, exc)
+            logger.warning(
+                "Timeout while inviting profile %s; marking needs_review: %s", profile_id, exc
+            )
             await self._update_claim_status(
                 claim_id, EngagementLogStatus.NEEDS_REVIEW, error_message=f"Timeout: {exc}"
             )
@@ -447,9 +458,7 @@ class SessionExecutor:
             )
             return False
 
-    async def _process_likes(
-        self, max_likes: int, daily_limit: int, result: SessionResult
-    ) -> None:
+    async def _process_likes(self, max_likes: int, daily_limit: int, result: SessionResult) -> None:
         """Find targets and like posts with pre-dispatch claim and permanent idempotency."""
         if max_likes <= 0 or daily_limit <= 0:
             return
@@ -524,9 +533,7 @@ class SessionExecutor:
             if ok:
                 result.actions_succeeded += 1
                 profile_id = getattr(target, "profile_id", str(target))
-                await self.target_resolver.record_engagement(
-                    self.account_id, profile_id, "invite"
-                )
+                await self.target_resolver.record_engagement(self.account_id, profile_id, "invite")
             else:
                 result.actions_failed += 1
 
@@ -596,4 +603,3 @@ class SessionExecutor:
 
 # Backward compatibility and descriptive alias
 EngagementSessionExecutor = SessionExecutor
-

@@ -184,7 +184,7 @@ class VideoGenerationService:
                     )
                     return filename
                 else:
-                    error_body = resp.text[:100].replace('\n', ' ') if resp.text else ''
+                    error_body = resp.text[:100].replace("\n", " ") if resp.text else ""
                     print(
                         f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=flux Host=image.pollinations.ai "
                         f"Status={resp.status_code} Content-Type={resp.headers.get('content-type', 'unknown')} "
@@ -219,7 +219,7 @@ class VideoGenerationService:
                     )
                     return filename
                 else:
-                    error_body = resp.text[:100].replace('\n', ' ') if resp.text else ''
+                    error_body = resp.text[:100].replace("\n", " ") if resp.text else ""
                     print(
                         f"[IMAGE MODEL] [WARNING] Provider=Pollinations Model=turbo Host=image.pollinations.ai "
                         f"Status={resp.status_code} Content-Type={resp.headers.get('content-type', 'unknown')} "
@@ -749,27 +749,37 @@ class VideoGenerationService:
                         )
                         scene_paths.append(p)
                     except VideoGenerationError as e:
-                        print(f"[VIDEO PIPELINE] Failed to generate visual for scene {idx+1}: {e}", flush=True)
+                        print(
+                            f"[VIDEO PIPELINE] Failed to generate visual for scene {idx+1}: {e}",
+                            flush=True,
+                        )
                         scene_paths.append(None)
                     await asyncio.sleep(0.5)  # brief pause between scenes
 
                 failures = [i for i, p in enumerate(scene_paths) if p is None]
                 if len(failures) >= 2:
-                    raise VideoGenerationError(f"Video rendering aborted: {len(failures)} scene images failed to generate.")
+                    raise VideoGenerationError(
+                        f"Video rendering aborted: {len(failures)} scene images failed to generate."
+                    )
                 elif len(failures) == 1:
                     failed_idx = failures[0]
                     # Prefer previous scene if available, otherwise next
                     donor_idx = failed_idx - 1 if failed_idx > 0 else failed_idx + 1
-                    
-                    print(f"[VIDEO PIPELINE] RESILIENCE FALLBACK: Reusing visual from scene {donor_idx+1} for failed scene {failed_idx+1}.", flush=True)
+
+                    print(
+                        f"[VIDEO PIPELINE] RESILIENCE FALLBACK: Reusing visual from scene {donor_idx+1} for failed scene {failed_idx+1}.",
+                        flush=True,
+                    )
                     scene_paths[failed_idx] = scene_paths[donor_idx]
-                    
+
                     # Persist metadata truthful to the resilience fallback
                     scenes[failed_idx].visual_reused = True
                     scenes[failed_idx].reused_from_scene = donor_idx + 1
 
                 if not all(scene_paths):
-                    raise VideoGenerationError("Failed to resolve all scene images despite resilience fallback.")
+                    raise VideoGenerationError(
+                        "Failed to resolve all scene images despite resilience fallback."
+                    )
 
                 # 4. Render Video (with Timeout)
                 output_file = temp_path / f"campaign_{campaign_id}.mp4"
@@ -795,6 +805,7 @@ class VideoGenerationService:
                 # 5. Upload to Supabase (with unique path and upsert=true)
                 logger.info("Uploading video to Supabase...")
                 import time as _time
+
                 timestamp = int(_time.time())
                 storage_name = f"{campaign_id}/campaign_{campaign_id}_{timestamp}.mp4"
 

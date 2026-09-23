@@ -538,4 +538,3 @@ class TestBrandImageReorder:
 
         headers = response.headers
         assert "application/json" in headers["content-type"]
-

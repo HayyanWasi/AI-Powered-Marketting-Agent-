@@ -168,7 +168,9 @@ class CampaignInputs:
         end_date = getattr(campaign_schedule, "end_date", None)
         guests = ()
         if data.get("has_guest") is True and data.get("guest_name"):
-            guests = (" — ".join(str(data[k]) for k in ("guest_name", "guest_title") if data.get(k)),)
+            guests = (
+                " — ".join(str(data[k]) for k in ("guest_name", "guest_title") if data.get(k)),
+            )
         return PlanBrief(
             user_goal=user_goal or (self.campaign.goals.primary if self.campaign.goals else ""),
             campaign_id=str(self.campaign.id),
@@ -180,25 +182,32 @@ class CampaignInputs:
             brand_tone=self.brand.brand_tone,
             brand_guidelines=self.brand.as_prompt(),
             campaign_type=data.get("campaign_type") or "",
-            campaign_name=data.get("campaign_name") or data.get("event_name") or getattr(self.campaign, "name", "") or "",
+            campaign_name=data.get("campaign_name")
+            or data.get("event_name")
+            or getattr(self.campaign, "name", "")
+            or "",
             objective=data.get("objective") or "",
             value_proposition=data.get("value_proposition") or "",
             cta_url=data.get("cta_url") or "",
             category=data.get("category") or "",
-            target_audience=data.get("target_audience") or (
-                (data.get("audience_profile") or {}).get("summary", "")
+            target_audience=data.get("target_audience")
+            or ((data.get("audience_profile") or {}).get("summary", "")),
+            audience_profile=(
+                AudienceProfile.model_validate(data["audience_profile"])
+                if data.get("audience_profile")
+                else None
             ),
-            audience_profile=AudienceProfile.model_validate(data["audience_profile"])
-            if data.get("audience_profile") else None,
             campaign_start=(start_date.date().isoformat() if start_date else ""),
             campaign_end=(end_date.date().isoformat() if end_date else ""),
             campaign_timezone=(getattr(campaign_schedule, "timezone", None) or "UTC"),
             curriculum_breakdown=data.get("curriculum_breakdown") or "",
             outcome_deliverable=data.get("outcome_deliverable") or "",
             ticket_price=data.get("is_free_or_paid") or "",
-            event_date=data.get("event_date") or "", venue=data.get("venue") or "",
+            event_date=data.get("event_date") or "",
+            venue=data.get("venue") or "",
             registration_link=data.get("registration_link") or "",
-            platforms=tuple(self.campaign.platforms), guests=guests,
+            platforms=tuple(self.campaign.platforms),
+            guests=guests,
         )
 
 
@@ -211,7 +220,10 @@ class CampaignContextResolver:
             raise HTTPException(422, "Select Brand Setup for this campaign before generation.")
         brand = require_profile(campaign.company_profile_id, user_id)
         repo = BaseRepository("intake_checklists")
-        result = repo.client.table(repo.table_name).select("*").eq(
-            "campaign_id", str(campaign_id)
-        ).execute()
+        result = (
+            repo.client.table(repo.table_name)
+            .select("*")
+            .eq("campaign_id", str(campaign_id))
+            .execute()
+        )
         return CampaignInputs(campaign, brand, result.data[0] if result.data else {})

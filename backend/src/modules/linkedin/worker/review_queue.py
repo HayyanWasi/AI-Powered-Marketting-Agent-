@@ -48,7 +48,9 @@ class ReviewQueue:
             res = client.table("linkedin_review_queue").insert(data).execute()
             if res.data:
                 logger.info(
-                    "Added comment %s to review queue for post %s", comment.id, comment.target_post_id
+                    "Added comment %s to review queue for post %s",
+                    comment.id,
+                    comment.target_post_id,
                 )
                 return comment.id
             return None

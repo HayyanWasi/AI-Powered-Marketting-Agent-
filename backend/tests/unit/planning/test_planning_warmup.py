@@ -61,6 +61,7 @@ async def test_concurrent_warmups_are_deduped(monkeypatch):
     class _SlowOllama(_CountingOllama):
         def generate(self, *a, **kw):
             import time
+
             _CountingOllama.calls[self.base_url] = _CountingOllama.calls.get(self.base_url, 0) + 1
             time.sleep(0.05)
             return None

@@ -474,9 +474,9 @@ class IntakeChatService:
             return ["campaign_type"]
 
         profile = checklist_dict.get("audience_profile") or {}
-        inferred_audience_is_usable = bool(profile.get("summary")) and profile.get("confidence") in {
-            "medium", "high"
-        }
+        inferred_audience_is_usable = bool(profile.get("summary")) and profile.get(
+            "confidence"
+        ) in {"medium", "high"}
         common = ["campaign_name", "objective"]
         if not checklist_dict.get("target_audience") and not inferred_audience_is_usable:
             common.append("target_audience")
@@ -704,8 +704,7 @@ class IntakeChatService:
             ):
                 checklist_dict["venue"] = "Online (Virtual)"
         if not checklist_dict.get("venue") and any(
-            w in lower_msg
-            for w in ["online", "zoom", "google meet", "teams", "virtual", "remote"]
+            w in lower_msg for w in ["online", "zoom", "google meet", "teams", "virtual", "remote"]
         ):
             checklist_dict["venue"] = "Online (Virtual)"
 
@@ -911,9 +910,7 @@ Instructions:
             # and only touches the schedule's start/end (timezone/recurrence and
             # other metadata are preserved).
             if win_start_d or win_end_d:
-                self._sync_campaign_schedule_window(
-                    campaign_id, owner_id, win_start_d, win_end_d
-                )
+                self._sync_campaign_schedule_window(campaign_id, owner_id, win_start_d, win_end_d)
 
             # ── COMPUTE REMAINING MISSING FIELDS AFTER EXTRACTION ──
             still_missing = []
@@ -944,7 +941,7 @@ Instructions:
                 # The provider supplied a campaign type we cannot map to a supported
                 # value. Nothing was saved, so nothing may be acknowledged.
                 reply = (
-                    f"I could not match \"{campaign_type_unresolved}\" to a supported campaign "
+                    f'I could not match "{campaign_type_unresolved}" to a supported campaign '
                     f"type. Could you please share {_FIELD_LABELS['campaign_type']}?"
                 )
             elif updated_checklist.is_complete() or len(still_missing) == 0:

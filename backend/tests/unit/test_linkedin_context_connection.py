@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from unittest.mock import AsyncMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -10,11 +10,14 @@ from fastapi import HTTPException
 from src.models.brand_context import BrandContext
 from src.modules.linkedin.generators.content_context import ContentContextBuilder
 from src.modules.linkedin.generators.post_generator import LinkedInPostGenerator
-from src.modules.linkedin.models import ContentContext, ResearchedFact
-from src.modules.planning.models.campaign_plan import CalendarSlot, CampaignPlan, ChannelPlan, CoreStrategy, Competitive
-from src.modules.research.models.research_brief import ResearchBrief
+from src.modules.planning.models.campaign_plan import (
+    CalendarSlot,
+    CampaignPlan,
+    ChannelPlan,
+    Competitive,
+    CoreStrategy,
+)
 from src.modules.research.services.llm_router import LLMRouterService
-
 
 SENTINEL_BRAND = BrandContext(
     company_profile_id=uuid4(),
@@ -65,7 +68,7 @@ SENTINEL_PLAN = CampaignPlan(
 async def test_content_context_mapping_and_prompt_propagation():
     """Verify that stored plan, brand context, and campaign facts propagate to LLM prompt."""
     slot = SENTINEL_PLAN.channel_plan.calendar_slots[0]
-    
+
     # 1. Test ContentContextBuilder maps all fields faithfully
     ctx = ContentContextBuilder.build_context(
         slot=slot,
@@ -149,8 +152,8 @@ async def test_content_context_mapping_and_prompt_propagation():
 @pytest.mark.asyncio
 async def test_missing_plan_produces_truthful_error():
     """Verify that generating LinkedIn content without a stored plan produces an actionable error."""
-    from src.api.v1.linkedin import generate_campaign_content
     from src.api.dependencies import AuthenticatedUser
+    from src.api.v1.linkedin import generate_campaign_content
     from src.modules.planning.repositories.plan_repository import PlanNotFoundError
 
     dummy_campaign_id = uuid4()
@@ -168,4 +171,6 @@ async def test_missing_plan_produces_truthful_error():
                 )
 
             assert exc_info.value.status_code == 409
-            assert "Draft a campaign plan before generating LinkedIn content." in exc_info.value.detail
+            assert (
+                "Draft a campaign plan before generating LinkedIn content." in exc_info.value.detail
+            )

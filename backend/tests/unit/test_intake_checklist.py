@@ -28,7 +28,7 @@ def test_intake_checklist_completion():
     # Confirm guest -> Complete
     checklist.guest_confirmed = True
     assert checklist.is_complete() is True
-    
+
     # Test App Launch
     app_checklist = IntakeChecklist()
     app_checklist.campaign_type = "app_launch"
@@ -36,6 +36,6 @@ def test_intake_checklist_completion():
     app_checklist.objective = "Get downloads"
     app_checklist.target_audience = "Everyone"
     assert app_checklist.is_complete() is False
-    
+
     app_checklist.value_proposition = "It's awesome"
     assert app_checklist.is_complete() is True

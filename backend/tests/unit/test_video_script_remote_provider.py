@@ -39,16 +39,20 @@ _VALID_SCRIPT = (
     '{"scene_number": 3, "narration": "Acme gives you speed and clarity.", "image_prompt": "medium portrait, confident person, 8k"},'
     '{"scene_number": 4, "narration": "Your day finally feels easier.", "image_prompt": "close up hands, collaboration, 8k"},'
     '{"scene_number": 5, "narration": "Start with Acme Corp now.", "image_prompt": "dynamic closing, bright office, 8k"}'
-    ']}'
+    "]}"
 )
 
 
 @pytest.fixture(autouse=True)
 def _fixed_credentials_and_clean_rotation():
     """Fixed fake keys per tier + reset global rotation/cooldown state."""
-    with patch.object(type(llm_mod.settings), "get_gemini_keys", lambda self: list(GEMINI_KEYS)), \
-         patch.object(type(llm_mod.settings), "get_openrouter_keys", lambda self: list(OPENROUTER_KEYS)), \
-         patch.object(type(llm_mod.settings), "get_groq_keys", lambda self: list(GROQ_KEYS)):
+    with (
+        patch.object(type(llm_mod.settings), "get_gemini_keys", lambda self: list(GEMINI_KEYS)),
+        patch.object(
+            type(llm_mod.settings), "get_openrouter_keys", lambda self: list(OPENROUTER_KEYS)
+        ),
+        patch.object(type(llm_mod.settings), "get_groq_keys", lambda self: list(GROQ_KEYS)),
+    ):
         llm_mod._provider_rotation_index = 0
         llm_mod._provider_unavailable_until.clear()
         yield
@@ -78,6 +82,7 @@ def _install_provider_stubs(monkeypatch, attempts: list[tuple[str, str]], fail_k
             if self._api_key in fail_keys:
                 raise RuntimeError("429 rate limit / quota exceeded")
             return _ok_response(provider_name)
+
         return _gen
 
     monkeypatch.setattr(llm_mod.GeminiProvider, "generate", make("gemini"))
@@ -149,8 +154,8 @@ def test_both_gemini_fail_falls_back_to_openrouter(monkeypatch):
 
     assert response.provider == "openrouter"
     tried = [name for name, _ in attempts]
-    assert tried[:2] == ["gemini", "gemini"]      # both gemini keys attempted first
-    assert tried[2] == "openrouter"                # then openrouter tier
+    assert tried[:2] == ["gemini", "gemini"]  # both gemini keys attempted first
+    assert tried[2] == "openrouter"  # then openrouter tier
 
 
 def test_gemini_and_openrouter_fail_falls_back_to_groq(monkeypatch):

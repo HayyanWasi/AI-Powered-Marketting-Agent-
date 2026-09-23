@@ -67,10 +67,12 @@ def test_time_bound_campaign_uses_dynamic_density_and_audience_changes_freshness
     assert 4 <= len(plan.slots) <= 7
     assert "3 posts per week" not in plan.recommended_cadence
     a = compute_intake_fingerprint({"target_audience": "Founders"})
-    b = compute_intake_fingerprint({
-        "target_audience": "Founders",
-        "audience_profile": {"summary": "Founders", "confidence": "high"},
-    })
+    b = compute_intake_fingerprint(
+        {
+            "target_audience": "Founders",
+            "audience_profile": {"summary": "Founders", "confidence": "high"},
+        }
+    )
     assert a != b
 
 
@@ -239,5 +241,7 @@ async def test_post_generation_count_and_times_come_only_from_schedule(monkeypat
         brand=BrandContext(company_profile_id=uuid4(), company_name="Sentinel"),
     )
     assert len(posts) == len(schedule.slots)
-    assert [post.scheduled_at for post in posts] == [slot.scheduled_at_utc for slot in schedule.slots]
+    assert [post.scheduled_at for post in posts] == [
+        slot.scheduled_at_utc for slot in schedule.slots
+    ]
     assert [post.timezone for post in posts] == [slot.timezone for slot in schedule.slots]

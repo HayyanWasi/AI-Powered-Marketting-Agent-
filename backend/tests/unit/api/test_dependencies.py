@@ -20,7 +20,9 @@ class TestAuthenticatedUser:
 
 
 class TestGetAuthenticatedUser:
-    async def test_returns_authenticated_user_with_id_when_auth_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_returns_authenticated_user_with_id_when_auth_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from src.config.settings import settings
 
         monkeypatch.setattr(settings, "REQUIRE_AUTH", False)
@@ -29,7 +31,9 @@ class TestGetAuthenticatedUser:
         assert user.id == "00000000-0000-0000-0000-000000000001"
         assert len(user.roles) > 0
 
-    async def test_x_user_id_cannot_bypass_auth_when_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_x_user_id_cannot_bypass_auth_when_required(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from src.config.settings import settings
 
         monkeypatch.setattr(settings, "REQUIRE_AUTH", True)
@@ -44,6 +48,7 @@ class TestGetAuthenticatedUser:
 
     async def test_expired_token_raises_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from unittest.mock import MagicMock
+
         from src.config.settings import settings
 
         monkeypatch.setattr(settings, "REQUIRE_AUTH", True)
@@ -54,10 +59,16 @@ class TestGetAuthenticatedUser:
         with pytest.raises(HTTPException) as exc_info:
             await get_authenticated_user(authorization="Bearer expired-token-jwt")
         assert exc_info.value.status_code == 401
-        assert "Token verification failed" in exc_info.value.detail or "expired" in exc_info.value.detail.lower()
+        assert (
+            "Token verification failed" in exc_info.value.detail
+            or "expired" in exc_info.value.detail.lower()
+        )
 
-    async def test_expired_token_null_user_raises_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_expired_token_null_user_raises_401(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from unittest.mock import MagicMock
+
         from src.config.settings import settings
 
         monkeypatch.setattr(settings, "REQUIRE_AUTH", True)
@@ -68,7 +79,9 @@ class TestGetAuthenticatedUser:
         with pytest.raises(HTTPException) as exc_info:
             await get_authenticated_user(authorization="Bearer expired-token-jwt")
         assert exc_info.value.status_code == 401
-        assert "expired" in exc_info.value.detail.lower() or "invalid" in exc_info.value.detail.lower()
+        assert (
+            "expired" in exc_info.value.detail.lower() or "invalid" in exc_info.value.detail.lower()
+        )
 
 
 class TestRequirePermission:

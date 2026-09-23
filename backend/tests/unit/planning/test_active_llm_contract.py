@@ -75,8 +75,7 @@ async def test_all_five_specialists_use_canonical_generate_contract() -> None:
         ),
     ):
         results = {
-            name: await specialist(brief, llm=llm)
-            for name, specialist in panel.SPECIALISTS.items()
+            name: await specialist(brief, llm=llm) for name, specialist in panel.SPECIALISTS.items()
         }
 
     assert set(results) == set(panel.SPECIALISTS)

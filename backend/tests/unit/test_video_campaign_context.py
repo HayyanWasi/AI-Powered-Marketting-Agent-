@@ -75,7 +75,9 @@ def _context(*, event: bool = False) -> VideoGenerationContext:
             if event
             else "Book trusted beauty services in minutes"
         ),
-        "cta_url": "https://novacare.invalid/health-day" if event else "https://glowbook.app/download",
+        "cta_url": (
+            "https://novacare.invalid/health-day" if event else "https://glowbook.app/download"
+        ),
     }
     if event:
         intake.update(
@@ -118,10 +120,14 @@ class _CapturingLLM:
 
 
 def _five_scenes(identity: str = "GlowBook") -> str:
-    return "[" + ",".join(
-        f'{{"scene_number":{number},"narration":"Clear trusted value today","image_prompt":"{identity} consistent branded product scene"}}'
-        for number in range(1, 6)
-    ) + "]"
+    return (
+        "["
+        + ",".join(
+            f'{{"scene_number":{number},"narration":"Clear trusted value today","image_prompt":"{identity} consistent branded product scene"}}'
+            for number in range(1, 6)
+        )
+        + "]"
+    )
 
 
 @pytest.mark.asyncio

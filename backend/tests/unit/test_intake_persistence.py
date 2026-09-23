@@ -103,10 +103,10 @@ def fake_repository(monkeypatch):
 
 def test_forward_migration_adds_all_model_columns_without_destructive_sql():
     migration = (
-        Path(__file__).parents[2]
-        / "migrations"
-        / "012_add_campaign_type_intake_fields.up.sql"
-    ).read_text(encoding="utf-8").lower()
+        (Path(__file__).parents[2] / "migrations" / "012_add_campaign_type_intake_fields.up.sql")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
 
     for column in {
         "campaign_type",

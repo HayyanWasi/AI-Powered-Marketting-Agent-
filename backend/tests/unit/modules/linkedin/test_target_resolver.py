@@ -116,12 +116,19 @@ async def test_record_engagement(mock_supabase):
 
 @pytest.mark.asyncio
 async def test_resolve_personas_uses_unipile_account_id_for_gateway(mock_supabase, mock_gateway):
-    mock_supabase.table().select().eq().eq().order().limit().execute.return_value = MagicMock(data=[])
+    mock_supabase.table().select().eq().eq().order().limit().execute.return_value = MagicMock(
+        data=[]
+    )
     mock_supabase.table().upsert().execute.return_value = MagicMock()
 
     mock_gateway.search_people = AsyncMock(
         return_value=[
-            {"id": "prof_unipile_1", "provider_id": "prof_unipile_1", "name": "Jane Doe", "headline": "Engineer"}
+            {
+                "id": "prof_unipile_1",
+                "provider_id": "prof_unipile_1",
+                "name": "Jane Doe",
+                "headline": "Engineer",
+            }
         ]
     )
 
@@ -145,9 +152,7 @@ async def test_resolve_personas_uses_unipile_account_id_for_gateway(mock_supabas
     assert results[0].profile_id == "prof_unipile_1"
 
     # Gateway MUST receive unipile_account_id
-    mock_gateway.search_people.assert_awaited_once_with(
-        "unipile-acc-789", "tech lead", 10
-    )
+    mock_gateway.search_people.assert_awaited_once_with("unipile-acc-789", "tech lead", 10)
 
     # Database upsert MUST use internal account_id
     upsert_data = None
@@ -189,6 +194,4 @@ async def test_fetch_target_posts_uses_unipile_account_id_for_gateway(mock_gatew
     assert posts[0].post_id == "post_ext_1"
 
     # Gateway get_user_posts MUST be called with unipile_account_id
-    mock_gateway.get_user_posts.assert_awaited_once_with(
-        "unipile-acc-789", "prof_external_1", 3
-    )
+    mock_gateway.get_user_posts.assert_awaited_once_with("unipile-acc-789", "prof_external_1", 3)

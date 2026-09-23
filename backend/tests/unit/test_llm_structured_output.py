@@ -26,6 +26,7 @@ class SampleSchema(BaseModel):
 
 # ── Scenario A: Native JSON mode parameter propagation ───────────────────────
 
+
 class TestScenarioANativeJsonMode:
     def test_gemini_passes_response_mime_type(self) -> None:
         model = MagicMock()
@@ -119,6 +120,7 @@ class TestScenarioANativeJsonMode:
 
 # ── Scenario B: Provider captures finish_reason ──────────────────────────────
 
+
 class TestScenarioBFinishReasonCapture:
     def test_gemini_captures_finish_reason(self) -> None:
         model = MagicMock()
@@ -161,9 +163,11 @@ class TestScenarioBFinishReasonCapture:
 
 # ── Scenario C: Truncation detection (no repair retry) ─────────────────────────
 
+
 class TestScenarioCTruncationDetection:
     def test_direct_truncation_validation_raises(self) -> None:
         from src.services.llm_service import _validate_structured_response
+
         resp = LLMResponse(
             text='{"name": "partial',
             token_usage=TokenUsage(),
@@ -172,7 +176,9 @@ class TestScenarioCTruncationDetection:
             finish_reason="length",
         )
         with pytest.raises(LLMProviderError, match="truncated due to token limit"):
-            _validate_structured_response(resp, LLMRequest(user_prompt="hi", json_mode=True), "gemini")
+            _validate_structured_response(
+                resp, LLMRequest(user_prompt="hi", json_mode=True), "gemini"
+            )
 
     def test_truncation_detected_and_skips_repair_retry(self) -> None:
         gemini = MagicMock()
@@ -198,6 +204,7 @@ class TestScenarioCTruncationDetection:
 
 # ── Scenario D: In-service structured validation succeeds ─────────────────────
 
+
 class TestScenarioDStructuredValidation:
     def test_valid_json_and_schema_succeeds(self) -> None:
         gemini = MagicMock()
@@ -208,7 +215,9 @@ class TestScenarioDStructuredValidation:
             model="model",
             finish_reason="stop",
         )
-        svc = LLMService(gemini=gemini, openrouter=MagicMock(), groq=MagicMock(), rotate_providers=False)
+        svc = LLMService(
+            gemini=gemini, openrouter=MagicMock(), groq=MagicMock(), rotate_providers=False
+        )
         res = svc.generate(LLMRequest(user_prompt="hi", json_mode=True, output_schema=SampleSchema))
         assert res.provider == "gemini"
         assert json.loads(res.text)["name"] == "Acme"
@@ -216,6 +225,7 @@ class TestScenarioDStructuredValidation:
 
 
 # ── Scenario E: Single repair retry on invalid JSON / schema ──────────────────
+
 
 class TestScenarioERepairRetry:
     def test_single_repair_retry_succeeds(self) -> None:
@@ -236,18 +246,26 @@ class TestScenarioERepairRetry:
                 finish_reason="stop",
             ),
         ]
-        svc = LLMService(gemini=gemini, openrouter=MagicMock(), groq=MagicMock(), rotate_providers=False)
-        res = svc.generate(LLMRequest(user_prompt="original prompt", json_mode=True, output_schema=SampleSchema))
+        svc = LLMService(
+            gemini=gemini, openrouter=MagicMock(), groq=MagicMock(), rotate_providers=False
+        )
+        res = svc.generate(
+            LLMRequest(user_prompt="original prompt", json_mode=True, output_schema=SampleSchema)
+        )
         assert res.provider == "gemini"
         assert json.loads(res.text)["name"] == "Fixed"
         assert gemini.generate.call_count == 2
 
         # Verify repair prompt appends the exact instruction
         second_call_prompt = gemini.generate.call_args_list[1][0][1]
-        assert "Return only valid JSON matching the required schema. No markdown, commentary, or code fences." in second_call_prompt
+        assert (
+            "Return only valid JSON matching the required schema. No markdown, commentary, or code fences."
+            in second_call_prompt
+        )
 
 
 # ── Scenario F: Provider failover on persistent invalid JSON ─────────────────
+
 
 class TestScenarioFFailoverOnInvalidJson:
     def test_provider_fails_after_repair_and_fails_over_to_next(self) -> None:
@@ -269,7 +287,9 @@ class TestScenarioFFailoverOnInvalidJson:
         groq = MagicMock()
 
         svc = LLMService(gemini=gemini, openrouter=openrouter, groq=groq, rotate_providers=False)
-        res = svc.generate(LLMRequest(user_prompt="prompt", json_mode=True, output_schema=SampleSchema))
+        res = svc.generate(
+            LLMRequest(user_prompt="prompt", json_mode=True, output_schema=SampleSchema)
+        )
 
         assert res.provider == "openrouter"
         assert json.loads(res.text)["name"] == "OpenRouterSuccess"
@@ -279,6 +299,7 @@ class TestScenarioFFailoverOnInvalidJson:
 
 
 # ── Scenario G: All providers fail ────────────────────────────────────────────
+
 
 class TestScenarioGAllProvidersFail:
     def test_all_providers_fail_raises_llmserviceerror(self) -> None:
@@ -300,16 +321,21 @@ class TestScenarioGAllProvidersFail:
 
         svc = LLMService(gemini=gemini, openrouter=openrouter, groq=groq, rotate_providers=False)
         with pytest.raises(LLMServiceError, match="All LLM providers failed"):
-            svc.generate(LLMRequest(user_prompt="prompt", json_mode=True, output_schema=SampleSchema))
+            svc.generate(
+                LLMRequest(user_prompt="prompt", json_mode=True, output_schema=SampleSchema)
+            )
 
 
 # ── Scenario H: Specialist panel failure rule preserved ───────────────────────
+
 
 class TestScenarioHSpecialistFailurePreserved:
     @pytest.mark.asyncio
     async def test_specialist_aborts_when_llm_fails(self) -> None:
         fake_service = MagicMock()
-        fake_service.generate.side_effect = LLMServiceError("All LLM providers failed. Last error: 429")
+        fake_service.generate.side_effect = LLMServiceError(
+            "All LLM providers failed. Last error: 429"
+        )
 
         with pytest.raises(LLMServiceError, match="All LLM providers failed"):
             await panel.ask_json(
@@ -320,6 +346,7 @@ class TestScenarioHSpecialistFailurePreserved:
 
 
 # ── Scenario I: PlanBrief.to_template_vars deduplication ──────────────────────
+
 
 class TestScenarioIResearchDeduplication:
     def test_research_findings_not_duplicated(self) -> None:

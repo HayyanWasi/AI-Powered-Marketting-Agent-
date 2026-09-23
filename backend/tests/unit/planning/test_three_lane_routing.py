@@ -94,13 +94,17 @@ async def test_lanes_run_concurrently():
             await asyncio.sleep(0.05)
             live.discard(g._LANE_ASSIGNMENT[name])
             return {"data": name}
+
         return fn
 
     specialists = {n: (await fake_specialist_factory(n)) for n in g._LANE_ASSIGNMENT}
 
     import unittest.mock as m
-    with m.patch.object(g, "SPECIALISTS", specialists), \
-         m.patch.object(g.chief_strategist, "synthesize", new=_fake_synth):
+
+    with (
+        m.patch.object(g, "SPECIALISTS", specialists),
+        m.patch.object(g.chief_strategist, "synthesize", new=_fake_synth),
+    ):
         graph = g.compile_graph()
         state = await graph.ainvoke(g.initial_state(brief))
 
@@ -111,6 +115,7 @@ async def test_lanes_run_concurrently():
 
 async def _fake_synth(brief, panel, **kw):
     from src.modules.planning.agents.chief_strategist import assemble
+
     return assemble(panel, title="t", executive_summary="e")
 
 
@@ -129,15 +134,19 @@ def test_ollama_timeout_falls_back_to_remote_not_retry():
     ollama.generate.side_effect = APITimeoutError("Request timed out.")
     remote = MagicMock()
     remote.generate.return_value = LLMResponse(
-        text="{}", token_usage=TokenUsage(0, 0, 0, "gemini"),
-        provider="gemini", model="g", finish_reason="stop")
+        text="{}",
+        token_usage=TokenUsage(0, 0, 0, "gemini"),
+        provider="gemini",
+        model="g",
+        finish_reason="stop",
+    )
     svc._chain = [("ollama", ollama, "qwen3:8b"), ("gemini", remote, "g")]
 
     with patch("src.services.llm_service.time.sleep"):
         resp = svc.generate(LLMRequest(user_prompt="x", timeout=180.0))
 
-    assert ollama.generate.call_count == 1     # no same-Ollama retry
-    assert remote.generate.call_count == 1     # fell back to remote
+    assert ollama.generate.call_count == 1  # no same-Ollama retry
+    assert remote.generate.call_count == 1  # fell back to remote
     assert resp.provider == "gemini"
 
 
@@ -152,6 +161,7 @@ async def test_chief_runs_after_all_specialists():
             await asyncio.sleep(0.02)
             completed.append(name)
             return {"data": name}
+
         return fn
 
     specialists = {n: (await make(n)) for n in g._LANE_ASSIGNMENT}
@@ -161,11 +171,15 @@ async def test_chief_runs_after_all_specialists():
     async def synth(brief, panel, **kw):
         seen_at_synth["count"] = len(panel)
         from src.modules.planning.agents.chief_strategist import assemble
+
         return assemble(panel, title="t", executive_summary="e")
 
     import unittest.mock as m
-    with m.patch.object(g, "SPECIALISTS", specialists), \
-         m.patch.object(g.chief_strategist, "synthesize", new=synth):
+
+    with (
+        m.patch.object(g, "SPECIALISTS", specialists),
+        m.patch.object(g.chief_strategist, "synthesize", new=synth),
+    ):
         await g.compile_graph().ainvoke(g.initial_state(brief))
 
-    assert seen_at_synth["count"] == 5   # all five present before chief ran
+    assert seen_at_synth["count"] == 5  # all five present before chief ran

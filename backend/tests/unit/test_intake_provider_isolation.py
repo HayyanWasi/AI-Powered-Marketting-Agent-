@@ -20,10 +20,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services import llm_service as llm_mod
-from src.services.llm_service import LLMService, GeminiProvider, OpenRouterProvider, GroqProvider
 from src.modules.research.services.llm_router import LLMRouterService
+from src.services import llm_service as llm_mod
 from src.services.intake_chat_service import IntakeChatService
+from src.services.llm_service import GeminiProvider, GroqProvider, LLMService, OpenRouterProvider
 
 
 def _tier_order(names: list[str]) -> list[str]:
@@ -36,6 +36,7 @@ def _tier_order(names: list[str]) -> list[str]:
 
 
 # ── A/B: Chain shape ─────────────────────────────────────────────────────────
+
 
 def test_intake_remote_chain_provider_order():
     """A: Intake tier order is groq → openrouter → gemini, one entry per key."""
@@ -70,9 +71,10 @@ def test_intake_remote_chain_no_planning_endpoints():
         # Ensure none of the providers are OllamaProvider instances.
         assert not isinstance(provider, type(None))
         from src.services.llm_service import OllamaProvider
-        assert not isinstance(provider, OllamaProvider), (
-            f"Intake chain contains OllamaProvider at slot '{name}'"
-        )
+
+        assert not isinstance(
+            provider, OllamaProvider
+        ), f"Intake chain contains OllamaProvider at slot '{name}'"
 
 
 def test_intake_chat_service_default_uses_intake_chain():
@@ -100,6 +102,7 @@ def test_intake_chat_service_injection_still_accepted():
 
 
 # ── D: Gemini success stops chain ────────────────────────────────────────────
+
 
 def test_intake_gemini_success_no_fallback():
     """D: Gemini success means openrouter/groq are never called."""
@@ -132,6 +135,7 @@ def test_intake_gemini_success_no_fallback():
 
 
 # ── E: Gemini failure → OpenRouter ───────────────────────────────────────────
+
 
 def test_intake_gemini_failure_tries_openrouter():
     """E: Gemini failure causes OpenRouter attempt."""
@@ -166,6 +170,7 @@ def test_intake_gemini_failure_tries_openrouter():
 
 
 # ── F: Gemini + OpenRouter failure → Groq ────────────────────────────────────
+
 
 def test_intake_gemini_openrouter_failure_tries_groq():
     """F: Gemini + OpenRouter failure causes Groq attempt."""
@@ -202,10 +207,11 @@ def test_intake_gemini_openrouter_failure_tries_groq():
 
 # ── G: All fail → truthful error ─────────────────────────────────────────────
 
+
 def test_intake_all_providers_fail_raises():
     """G: All three providers fail → LLMServiceError raised, no fake success."""
     from src.models.llm import LLMRequest
-    from src.services.llm_service import LLMProviderError, LLMServiceError
+    from src.services.llm_service import LLMProviderError
 
     def _fail(sp, up, mt, json_mode=False, **kw):
         raise LLMProviderError("provider", "error")
@@ -231,6 +237,7 @@ def test_intake_all_providers_fail_raises():
 
 # ── K: Video does not use intake profile ─────────────────────────────────────
 
+
 def test_video_script_agent_does_not_use_intake_chain():
     """K: VideoScriptAgent uses its own LLMService, not the intake chain."""
     from src.agents.video_script_agent import VideoScriptAgent
@@ -253,6 +260,6 @@ def test_video_script_agent_does_not_use_intake_chain():
     video_chain_names = [n for n, _, _ in inner_llm._chain]
     # They are different objects / may have same names but this confirms video
     # did not inject the intake chain — it built its own independent LLMService.
-    assert inner_llm is not intake_chain, (
-        "VideoScriptAgent must not share the intake LLMService instance"
-    )
+    assert (
+        inner_llm is not intake_chain
+    ), "VideoScriptAgent must not share the intake LLMService instance"

@@ -129,7 +129,8 @@ def test_stale_recovery_never_calls_unipile_or_resets(monkeypatch):
     monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
     # Any attempt to obtain the gateway during recovery is a bug.
     monkeypatch.setattr(
-        post_publisher, "get_unipile_gateway",
+        post_publisher,
+        "get_unipile_gateway",
         lambda: (_ for _ in ()).throw(AssertionError("recovery must not touch Unipile")),
     )
     stale = _row("publishing", started_min_ago=30)

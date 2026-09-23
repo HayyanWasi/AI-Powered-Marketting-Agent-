@@ -110,9 +110,7 @@ def test_owner_preview_is_allowed_and_returns_owned_content() -> None:
         patch("src.api.v1.linkedin._require_campaign_owner", new=owner_check),
         patch("src.api.v1.linkedin.BaseRepository", side_effect=_Repository),
     ):
-        response = TestClient(app).get(
-            f"/api/v1/linkedin/campaigns/{CAMPAIGN_A}/preview"
-        )
+        response = TestClient(app).get(f"/api/v1/linkedin/campaigns/{CAMPAIGN_A}/preview")
 
     assert response.status_code == 200
     assert PRIVATE_SENTINEL in response.text
@@ -129,9 +127,7 @@ def test_foreign_preview_is_denied_before_repository_access() -> None:
         ),
         repository as repo_cls,
     ):
-        response = TestClient(app).get(
-            f"/api/v1/linkedin/campaigns/{CAMPAIGN_A}/preview"
-        )
+        response = TestClient(app).get(f"/api/v1/linkedin/campaigns/{CAMPAIGN_A}/preview")
 
     assert response.status_code == 404
     assert PRIVATE_SENTINEL not in response.text

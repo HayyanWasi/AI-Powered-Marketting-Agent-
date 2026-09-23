@@ -71,7 +71,9 @@ class WarmupManager:
                 ),
                 "updated_at": datetime.now(UTC).isoformat(),
             }
-            client.table("linkedin_warmup_state").upsert(data, on_conflict="linkedin_account_id").execute()
+            client.table("linkedin_warmup_state").upsert(
+                data, on_conflict="linkedin_account_id"
+            ).execute()
         except Exception as e:
             logger.error("Failed to save warmup state for %s: %s", self._linkedin_account_id, e)
 

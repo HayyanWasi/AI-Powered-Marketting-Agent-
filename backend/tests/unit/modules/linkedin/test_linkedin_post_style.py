@@ -97,7 +97,9 @@ async def test_generated_post_copy_has_no_em_dash(monkeypatch):
         "}"
     )
 
-    def fake_generate(self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None):
+    def fake_generate(
+        self, system_prompt, user_prompt, max_tokens=None, json_mode=False, timeout=None
+    ):
         return _ollama_response(jargon_json)
 
     monkeypatch.setattr(llm_mod.OllamaProvider, "generate", fake_generate)

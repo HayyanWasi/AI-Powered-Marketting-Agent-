@@ -79,7 +79,10 @@ Return ONLY valid JSON matching this schema:
                     user_prompt,
                     timeout=LINKEDIN_LOCAL_OLLAMA_TIMEOUT_SECONDS,
                 )
-            if not all(isinstance(res.get(k), str) and res[k].strip() for k in ("step_invite_msg", "step_value_msg", "step_followup_msg")):
+            if not all(
+                isinstance(res.get(k), str) and res[k].strip()
+                for k in ("step_invite_msg", "step_value_msg", "step_followup_msg")
+            ):
                 raise ValueError("The model returned incomplete outreach content.")
             return OutreachTemplate(
                 campaign_id=campaign_id,

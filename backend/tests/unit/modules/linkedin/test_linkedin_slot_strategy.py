@@ -40,7 +40,9 @@ def _brand() -> BrandContext:
     return BrandContext(company_profile_id=uuid4(), company_name=COMPANY_NAME)
 
 
-def _ctx(slot_id: str, theme: str, pillar: str, *, cta: str = "", angle: str = "") -> ContentContext:
+def _ctx(
+    slot_id: str, theme: str, pillar: str, *, cta: str = "", angle: str = ""
+) -> ContentContext:
     """A ContentContext with shared campaign facts but slot-specific strategy."""
     return ContentContext(
         slot_id=slot_id,

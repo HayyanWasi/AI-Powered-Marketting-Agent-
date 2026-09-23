@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/autopilot", tags=["Autopilot Control Room"])
 
 
-async def _resolve_user_brand(user_id: str, company_profile_id: str | None = None) -> dict[str, Any]:
+async def _resolve_user_brand(
+    user_id: str, company_profile_id: str | None = None
+) -> dict[str, Any]:
     """Verify and retrieve brand profile owned by user."""
     client = get_supabase_client()
     query = client.table("company_profiles").select("*").eq("user_id", user_id)
@@ -333,17 +335,21 @@ async def toggle_autopilot(
         was_active = bool(chk.data[0].get("engagement_enabled", False)) if chk.data else False
 
         if chk.data:
-            client.table("linkedin_engagement_settings").update({
-                "engagement_enabled": req.active,
-                "updated_at": datetime.now(UTC).isoformat(),
-            }).eq("company_profile_id", brand_id).execute()
+            client.table("linkedin_engagement_settings").update(
+                {
+                    "engagement_enabled": req.active,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                }
+            ).eq("company_profile_id", brand_id).execute()
         else:
-            client.table("linkedin_engagement_settings").insert({
-                "user_id": str(user.id),
-                "company_profile_id": brand_id,
-                "linkedin_account_id": brand.get("default_linkedin_account_id"),
-                "engagement_enabled": req.active,
-            }).execute()
+            client.table("linkedin_engagement_settings").insert(
+                {
+                    "user_id": str(user.id),
+                    "company_profile_id": brand_id,
+                    "linkedin_account_id": brand.get("default_linkedin_account_id"),
+                    "engagement_enabled": req.active,
+                }
+            ).execute()
 
         # If transitioning from OFF -> ON, trigger immediate engagement run
         if not was_active and req.active:
@@ -369,7 +375,13 @@ async def get_tracker_data(
     # Load persistent brand settings
     brand_settings: dict[str, Any] = {}
     try:
-        set_res = client.table("linkedin_engagement_settings").select("*").eq("company_profile_id", brand_id).limit(1).execute()
+        set_res = (
+            client.table("linkedin_engagement_settings")
+            .select("*")
+            .eq("company_profile_id", brand_id)
+            .limit(1)
+            .execute()
+        )
         if set_res.data:
             brand_settings = set_res.data[0]
     except Exception as e:
@@ -462,7 +474,11 @@ async def get_tracker_data(
         try:
             action_counts = await ActionLedger().get_daily_summary(str(default_acc_id), tz_name)
         except Exception as e:
-            logger.warning("[AUTOPILOT TRACKER] Could not read action counts for account %s: %s", default_acc_id, e)
+            logger.warning(
+                "[AUTOPILOT TRACKER] Could not read action counts for account %s: %s",
+                default_acc_id,
+                e,
+            )
 
     return {
         "master_active": brand_settings.get("engagement_enabled", False),
@@ -765,7 +781,11 @@ async def list_personas(
             .order("created_at", desc=False)
             .execute()
         )
-        return {"personas": res.data or [], "total": len(res.data or []), "company_profile_id": brand_id}
+        return {
+            "personas": res.data or [],
+            "total": len(res.data or []),
+            "company_profile_id": brand_id,
+        }
     except Exception as e:
         logger.error("[PERSONAS] Failed to list personas for brand %s: %s", brand_id, e)
         return {"personas": [], "total": 0, "error": str(e), "company_profile_id": brand_id}
@@ -816,7 +836,9 @@ async def update_persona(
     repo = BaseRepository("linkedin_target_personas")
     try:
         # 2. Fetch persona
-        chk = repo.client.table("linkedin_target_personas").select("*").eq("id", persona_id).execute()
+        chk = (
+            repo.client.table("linkedin_target_personas").select("*").eq("id", persona_id).execute()
+        )
         if not chk.data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found")
         persona = chk.data[0]
@@ -845,7 +867,12 @@ async def update_persona(
         if not update_data:
             return {"success": True, "persona": persona}
 
-        res = repo.client.table("linkedin_target_personas").update(update_data).eq("id", persona_id).execute()
+        res = (
+            repo.client.table("linkedin_target_personas")
+            .update(update_data)
+            .eq("id", persona_id)
+            .execute()
+        )
         return {"success": True, "persona": res.data[0] if res.data else persona}
     except HTTPException:
         raise
@@ -868,7 +895,9 @@ async def delete_persona(
     repo = BaseRepository("linkedin_target_personas")
     try:
         # 2. Fetch persona
-        chk = repo.client.table("linkedin_target_personas").select("*").eq("id", persona_id).execute()
+        chk = (
+            repo.client.table("linkedin_target_personas").select("*").eq("id", persona_id).execute()
+        )
         if not chk.data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found")
         persona = chk.data[0]
@@ -932,7 +961,12 @@ async def list_review_queue(
         if status_filter != "all":
             query = query.eq("status", status_filter)
         res = query.execute()
-        return {"comments": res.data or [], "total": len(res.data or []), "filter": status_filter, "company_profile_id": brand_id}
+        return {
+            "comments": res.data or [],
+            "total": len(res.data or []),
+            "filter": status_filter,
+            "company_profile_id": brand_id,
+        }
     except Exception as e:
         logger.error("[REVIEW QUEUE] Failed to list for brand %s: %s", brand_id, e)
         return {"comments": [], "total": 0, "error": str(e), "company_profile_id": brand_id}
@@ -964,7 +998,9 @@ async def approve_comment(
     try:
         chk = client.table("linkedin_review_queue").select("*").eq("id", review_id).execute()
         if not chk.data:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found in review queue")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found in review queue"
+            )
         item = chk.data[0]
     except HTTPException:
         raise
@@ -974,7 +1010,9 @@ async def approve_comment(
 
     # Tenancy verification
     if item.get("user_id") and item.get("user_id") != str(user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to approve this comment")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to approve this comment"
+        )
 
     brand_id = str(item.get("company_profile_id"))
     # Verify user owns the brand
@@ -983,20 +1021,30 @@ async def approve_comment(
     # Verify linked LinkedIn account
     account_uuid = item.get("linkedin_account_id")
     if not account_uuid:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No LinkedIn account linked to review item")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="No LinkedIn account linked to review item"
+        )
 
     acc_res = client.table("linkedin_accounts").select("*").eq("id", account_uuid).execute()
     if not acc_res.data:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Linked LinkedIn account not found")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Linked LinkedIn account not found"
+        )
     account = acc_res.data[0]
     if account.get("user_id") != str(user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="LinkedIn account does not belong to user")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="LinkedIn account does not belong to user"
+        )
     if account.get("status") != "connected":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Linked LinkedIn account is disconnected")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Linked LinkedIn account is disconnected"
+        )
 
     account_unipile_id = account.get("unipile_account_id")
     if not account_unipile_id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Missing unipile_account_id for account")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Missing unipile_account_id for account"
+        )
 
     # Determine final text
     final_text = ""
@@ -1006,7 +1054,9 @@ async def approve_comment(
         final_text = (item.get("comment_text") or "").strip()
 
     if not final_text:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Comment text cannot be empty")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Comment text cannot be empty"
+        )
 
     target_post_id = str(item["target_post_id"])
     now_iso = datetime.now(UTC).isoformat()
@@ -1015,11 +1065,13 @@ async def approve_comment(
     # 1. Conditional update review_queue pending_review -> approved
     claim_res = (
         client.table("linkedin_review_queue")
-        .update({
-            "status": ReviewStatus.APPROVED.value,
-            "comment_text": final_text,
-            "reviewed_at": now_iso,
-        })
+        .update(
+            {
+                "status": ReviewStatus.APPROVED.value,
+                "comment_text": final_text,
+                "reviewed_at": now_iso,
+            }
+        )
         .eq("id", review_id)
         .eq("status", ReviewStatus.PENDING_REVIEW.value)
         .execute()
@@ -1051,19 +1103,30 @@ async def approve_comment(
         if not log_res.data:
             raise RuntimeError("Insert returned no data")
         # Link action_log_id on review item
-        client.table("linkedin_review_queue").update({"action_log_id": log_claim_id}).eq("id", review_id).execute()
+        client.table("linkedin_review_queue").update({"action_log_id": log_claim_id}).eq(
+            "id", review_id
+        ).execute()
     except Exception as e:
-        logger.error("[REVIEW APPROVE] Claim insert into engagement log failed: %s. Rolling back approval.", e)
+        logger.error(
+            "[REVIEW APPROVE] Claim insert into engagement log failed: %s. Rolling back approval.",
+            e,
+        )
         # Roll back review item to pending_review
-        client.table("linkedin_review_queue").update({
-            "status": ReviewStatus.PENDING_REVIEW.value,
-        }).eq("id", review_id).execute()
+        client.table("linkedin_review_queue").update(
+            {
+                "status": ReviewStatus.PENDING_REVIEW.value,
+            }
+        ).eq("id", review_id).execute()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Durable engagement claim conflict or failure: {e}",
         ) from e
 
-    logger.info("[REVIEW APPROVE] Phase 1 committed: review %s approved, claim %s created", review_id, log_claim_id)
+    logger.info(
+        "[REVIEW APPROVE] Phase 1 committed: review %s approved, claim %s created",
+        review_id,
+        log_claim_id,
+    )
 
     # ── PHASE 2: EXTERNAL CALL (NO DB TRANSACTION OPEN) ──
     gateway = get_unipile_gateway()
@@ -1079,37 +1142,51 @@ async def approve_comment(
             post_id=target_post_id,
             text=final_text,
         )
-        provider_result_id = str(resp.get("comment_id") or resp.get("id") or f"cmt_{uuid4().hex[:8]}")
+        provider_result_id = str(
+            resp.get("comment_id") or resp.get("id") or f"cmt_{uuid4().hex[:8]}"
+        )
         is_success = True
-        logger.info("[REVIEW APPROVE] Phase 2 succeeded for review %s: provider_id=%s", review_id, provider_result_id)
+        logger.info(
+            "[REVIEW APPROVE] Phase 2 succeeded for review %s: provider_id=%s",
+            review_id,
+            provider_result_id,
+        )
     except (httpx.TimeoutException, TimeoutError) as exc:
         is_ambiguous = True
         error_msg = f"Timeout during Unipile dispatch: {exc}"
         logger.error("[REVIEW APPROVE] Phase 2 ambiguous timeout for review %s: %s", review_id, exc)
     except Exception as exc:
         error_msg = f"Unipile dispatch failure: {exc}"
-        logger.error("[REVIEW APPROVE] Phase 2 deterministic failure for review %s: %s", review_id, exc)
+        logger.error(
+            "[REVIEW APPROVE] Phase 2 deterministic failure for review %s: %s", review_id, exc
+        )
 
     # ── PHASE 3: FINALIZATION ──
     if is_success:
         try:
-            client.table("linkedin_review_queue").update({
-                "status": ReviewStatus.PUBLISHED.value,
-            }).eq("id", review_id).execute()
+            client.table("linkedin_review_queue").update(
+                {
+                    "status": ReviewStatus.PUBLISHED.value,
+                }
+            ).eq("id", review_id).execute()
 
-            client.table("linkedin_engagement_log").update({
-                "status": EngagementLogStatus.SUCCEEDED.value,
-                "provider_result_id": provider_result_id,
-                "completed_at": completed_iso,
-            }).eq("id", log_claim_id).execute()
+            client.table("linkedin_engagement_log").update(
+                {
+                    "status": EngagementLogStatus.SUCCEEDED.value,
+                    "provider_result_id": provider_result_id,
+                    "completed_at": completed_iso,
+                }
+            ).eq("id", log_claim_id).execute()
 
             # Record in engaged posts
-            client.table("linkedin_engaged_posts").upsert({
-                "linkedin_account_id": str(account_uuid),
-                "post_id": target_post_id,
-                "action_type": EngagementActionType.COMMENT.value,
-                "engaged_at": completed_iso,
-            }).execute()
+            client.table("linkedin_engaged_posts").upsert(
+                {
+                    "linkedin_account_id": str(account_uuid),
+                    "post_id": target_post_id,
+                    "action_type": EngagementActionType.COMMENT.value,
+                    "engaged_at": completed_iso,
+                }
+            ).execute()
 
             # Record in daily ledger
             await ActionLedger().record_action(
@@ -1117,7 +1194,9 @@ async def approve_comment(
                 action_type=EngagementActionType.COMMENT.value,
             )
         except Exception as finalize_exc:
-            logger.error("[REVIEW APPROVE] Finalization error for review %s: %s", review_id, finalize_exc)
+            logger.error(
+                "[REVIEW APPROVE] Finalization error for review %s: %s", review_id, finalize_exc
+            )
 
         return {
             "success": True,
@@ -1128,15 +1207,19 @@ async def approve_comment(
         }
 
     elif is_ambiguous:
-        client.table("linkedin_review_queue").update({
-            "status": ReviewStatus.NEEDS_REVIEW.value,
-        }).eq("id", review_id).execute()
+        client.table("linkedin_review_queue").update(
+            {
+                "status": ReviewStatus.NEEDS_REVIEW.value,
+            }
+        ).eq("id", review_id).execute()
 
-        client.table("linkedin_engagement_log").update({
-            "status": EngagementLogStatus.NEEDS_REVIEW.value,
-            "error_message": error_msg,
-            "completed_at": completed_iso,
-        }).eq("id", log_claim_id).execute()
+        client.table("linkedin_engagement_log").update(
+            {
+                "status": EngagementLogStatus.NEEDS_REVIEW.value,
+                "error_message": error_msg,
+                "completed_at": completed_iso,
+            }
+        ).eq("id", log_claim_id).execute()
 
         return {
             "success": False,
@@ -1146,15 +1229,19 @@ async def approve_comment(
         }
 
     else:
-        client.table("linkedin_review_queue").update({
-            "status": ReviewStatus.FAILED.value,
-        }).eq("id", review_id).execute()
+        client.table("linkedin_review_queue").update(
+            {
+                "status": ReviewStatus.FAILED.value,
+            }
+        ).eq("id", review_id).execute()
 
-        client.table("linkedin_engagement_log").update({
-            "status": EngagementLogStatus.FAILED.value,
-            "error_message": error_msg,
-            "completed_at": completed_iso,
-        }).eq("id", log_claim_id).execute()
+        client.table("linkedin_engagement_log").update(
+            {
+                "status": EngagementLogStatus.FAILED.value,
+                "error_message": error_msg,
+                "completed_at": completed_iso,
+            }
+        ).eq("id", log_claim_id).execute()
 
         return {
             "success": False,
@@ -1177,19 +1264,26 @@ async def reject_comment(
     try:
         chk = client.table("linkedin_review_queue").select("*").eq("id", review_id).execute()
         if not chk.data:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found in review queue")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found in review queue"
+            )
         item = chk.data[0]
         if item.get("user_id") and item.get("user_id") != str(user.id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to reject this comment")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to reject this comment",
+            )
 
         reason = (payload.reason or "").strip() if payload else ""
         res = (
             client.table("linkedin_review_queue")
-            .update({
-                "status": ReviewStatus.REJECTED.value,
-                "reject_reason": reason,
-                "reviewed_at": datetime.now(UTC).isoformat(),
-            })
+            .update(
+                {
+                    "status": ReviewStatus.REJECTED.value,
+                    "reject_reason": reason,
+                    "reviewed_at": datetime.now(UTC).isoformat(),
+                }
+            )
             .eq("id", review_id)
             .eq("status", ReviewStatus.PENDING_REVIEW.value)
             .execute()
@@ -1288,7 +1382,9 @@ async def reset_circuit_breaker(
     brand = await _resolve_user_brand(str(user.id), company_profile_id)
     account_uuid = brand.get("default_linkedin_account_id")
     if not account_uuid:
-        raise HTTPException(status_code=400, detail="No default LinkedIn account configured for brand")
+        raise HTTPException(
+            status_code=400, detail="No default LinkedIn account configured for brand"
+        )
 
     try:
         from src.modules.linkedin.models import CircuitState

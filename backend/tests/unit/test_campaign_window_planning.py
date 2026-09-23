@@ -8,7 +8,7 @@ without modifying them.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest

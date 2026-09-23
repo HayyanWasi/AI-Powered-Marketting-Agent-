@@ -113,17 +113,11 @@ async def ensure_planning_endpoints_warm() -> dict[str, bool]:
 
     plans: list[tuple[str, str, str]] = []
     if settings.planning_ollama_a_base_url.strip():
-        plans.append(
-            ("A", settings.planning_ollama_a_base_url, settings.planning_ollama_a_model)
-        )
+        plans.append(("A", settings.planning_ollama_a_base_url, settings.planning_ollama_a_model))
     if settings.planning_ollama_b_base_url.strip():
-        plans.append(
-            ("B", settings.planning_ollama_b_base_url, settings.planning_ollama_b_model)
-        )
+        plans.append(("B", settings.planning_ollama_b_base_url, settings.planning_ollama_b_model))
     if not plans:
         return {}
 
-    results = await asyncio.gather(
-        *(_warm_one(label, url, model) for label, url, model in plans)
-    )
+    results = await asyncio.gather(*(_warm_one(label, url, model) for label, url, model in plans))
     return {label: warmed for (label, _, _), warmed in zip(plans, results, strict=True)}

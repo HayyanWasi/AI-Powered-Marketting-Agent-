@@ -146,7 +146,7 @@ class ResearchHunter:
             "You are a Research Evidence Collector. Extract key claims and verbatim quotes "
             "strictly from the provided web search snippets. Assign score values (1.0 to 5.0) for corroboration, "
             "freshness, relevance, and credibility. Do NOT invent facts or sources absent from the snippets. "
-            "If snippets contain no relevant facts, return an empty claims array: {\"claims\": []}."
+            'If snippets contain no relevant facts, return an empty claims array: {"claims": []}.'
         )
         user_prompt = f"""
 Dimension: {dimension}

@@ -29,18 +29,36 @@ class ScheduleOptimizer:
     """Create exact slots from campaign density and audience-behaviour scores."""
 
     _CANDIDATE_WINDOWS = (
-        time(6, 30), time(7, 30), time(8, 0), time(9, 0), time(10, 30),
-        time(12, 30), time(13, 30), time(16, 30), time(18, 0), time(20, 0),
+        time(6, 30),
+        time(7, 30),
+        time(8, 0),
+        time(9, 0),
+        time(10, 30),
+        time(12, 30),
+        time(13, 30),
+        time(16, 30),
+        time(18, 0),
+        time(20, 0),
     )
     _BASE_TIME_SCORES = {
-        time(6, 30): 0.24, time(7, 30): 0.36, time(8, 0): 0.44,
-        time(9, 0): 0.50, time(10, 30): 0.58, time(12, 30): 0.60,
-        time(13, 30): 0.46, time(16, 30): 0.56, time(18, 0): 0.48,
+        time(6, 30): 0.24,
+        time(7, 30): 0.36,
+        time(8, 0): 0.44,
+        time(9, 0): 0.50,
+        time(10, 30): 0.58,
+        time(12, 30): 0.60,
+        time(13, 30): 0.46,
+        time(16, 30): 0.56,
+        time(18, 0): 0.48,
         time(20, 0): 0.28,
     }
     _BASE_DAY_SCORES = {0: 0.08, 1: 0.20, 2: 0.22, 3: 0.18, 4: 0.05, 5: -0.12, 6: -0.16}
     _TIME_BOUND_TYPES = {
-        "app_launch", "product_launch", "service_launch", "physical_event", "webinar"
+        "app_launch",
+        "product_launch",
+        "service_launch",
+        "physical_event",
+        "webinar",
     }
     _MAX_TOTAL_POSTS = 24
 
@@ -85,21 +103,18 @@ class ScheduleOptimizer:
             event_date=event_date,
         )
         ranked = cls._select(candidates, density.target_count, start, campaign_end)
-        confidence = (
-            timezone_confidence
-            or (audience.confidence if audience and audience.is_usable() else "low")
+        confidence = timezone_confidence or (
+            audience.confidence if audience and audience.is_usable() else "low"
         )
         slots = tuple(
             ScheduleSlot(
                 local_date=item.day,
                 local_time=item.local_time,
                 timezone=timezone_name,
-                scheduled_at_utc=datetime.combine(
-                    item.day, item.local_time, tzinfo=tz
-                ).astimezone(UTC),
-                schedule_reason=(
-                    f"score={item.score:.3f}; " + "; ".join(item.factors)
+                scheduled_at_utc=datetime.combine(item.day, item.local_time, tzinfo=tz).astimezone(
+                    UTC
                 ),
+                schedule_reason=(f"score={item.score:.3f}; " + "; ".join(item.factors)),
                 schedule_source="explainable-linkedin-priors-v2",
                 schedule_confidence=confidence,
             )
@@ -127,8 +142,14 @@ class ScheduleOptimizer:
 
     @classmethod
     def _density(
-        cls, *, start: date, end: date, campaign_type: str, objective: str,
-        event_date: str, today: date,
+        cls,
+        *,
+        start: date,
+        end: date,
+        campaign_type: str,
+        objective: str,
+        event_date: str,
+        today: date,
     ) -> _DensityDecision:
         duration_days = (end - start).days + 1
         score = 0.30
@@ -143,18 +164,39 @@ class ScheduleOptimizer:
             score += 0.18
             factors.append("launch campaign +0.18")
 
-        if any(term in objective_text for term in (
-            "register", "registration", "download", "lead", "sale", "purchase",
-            "book", "booking", "apply", "application", "conversion",
-        )):
+        if any(
+            term in objective_text
+            for term in (
+                "register",
+                "registration",
+                "download",
+                "lead",
+                "sale",
+                "purchase",
+                "book",
+                "booking",
+                "apply",
+                "application",
+                "conversion",
+            )
+        ):
             score += 0.12
             factors.append("action/conversion objective +0.12")
-        if any(term in objective_text for term in ("thought leadership", "authority", "expert insight")):
+        if any(
+            term in objective_text for term in ("thought leadership", "authority", "expert insight")
+        ):
             score -= 0.12
             factors.append("thought-leadership depth -0.12")
-        elif any(term in objective_text for term in (
-            "awareness", "educate", "education", "inform", "prevention",
-        )):
+        elif any(
+            term in objective_text
+            for term in (
+                "awareness",
+                "educate",
+                "education",
+                "inform",
+                "prevention",
+            )
+        ):
             score += 0.02
             factors.append("awareness/education objective +0.02")
 
@@ -190,25 +232,34 @@ class ScheduleOptimizer:
         score = min(1.0, max(0.0, score))
         weekly_rate = 1.10 + (1.90 * score)
         raw_target = round((duration_days / 7.0) * weekly_rate)
-        phase_floor = 3 if (
-            duration_days >= 3 and (normalized_type in cls._TIME_BOUND_TYPES or deadline)
-        ) else 1
+        phase_floor = (
+            3
+            if (duration_days >= 3 and (normalized_type in cls._TIME_BOUND_TYPES or deadline))
+            else 1
+        )
         safe_max = min(
             duration_days,
             cls._MAX_TOTAL_POSTS,
             max(1, ceil(duration_days * 0.55)),
         )
         target = min(safe_max, max(phase_floor, raw_target, 1))
-        factors.extend((
-            f"density score {score:.2f}",
-            f"bounded target {target} within 1..{safe_max}",
-        ))
+        factors.extend(
+            (
+                f"density score {score:.2f}",
+                f"bounded target {target} within 1..{safe_max}",
+            )
+        )
         return _DensityDecision(score, weekly_rate, target, tuple(factors))
 
     @classmethod
     def _candidates(
-        cls, *, start: date, end: date, audience: AudienceProfile | None,
-        objective: str, event_date: str,
+        cls,
+        *,
+        start: date,
+        end: date,
+        audience: AudienceProfile | None,
+        objective: str,
+        event_date: str,
     ) -> tuple[_Candidate, ...]:
         candidates: list[_Candidate] = []
         cursor = start
@@ -223,8 +274,12 @@ class ScheduleOptimizer:
 
     @classmethod
     def _candidate_score(
-        cls, day: date, local_time: time, audience: AudienceProfile | None,
-        objective: str, event_date: str,
+        cls,
+        day: date,
+        local_time: time,
+        audience: AudienceProfile | None,
+        objective: str,
+        event_date: str,
     ) -> tuple[float, tuple[str, ...]]:
         score = cls._BASE_TIME_SCORES[local_time] + cls._BASE_DAY_SCORES[day.weekday()]
         factors = [
@@ -234,27 +289,55 @@ class ScheduleOptimizer:
         profile_text = cls._audience_text(audience)
         weekend = day.weekday() >= 5
 
-        if any(term in profile_text for term in (
-            "shift", "handover", "healthcare", "hospital", "operations",
-        )):
+        if any(
+            term in profile_text
+            for term in (
+                "shift",
+                "handover",
+                "healthcare",
+                "hospital",
+                "operations",
+            )
+        ):
             if local_time in {time(6, 30), time(7, 30), time(13, 30)}:
                 score += 0.42
                 factors.append("shift-change availability +0.42")
             if weekend:
                 score += 0.08
                 factors.append("shift audience weekend availability +0.08")
-        elif any(term in profile_text for term in (
-            "executive", "founder", "decision-maker", "decision maker", "b2b",
-            "director", "c-suite", "ceo",
-        )):
+        elif any(
+            term in profile_text
+            for term in (
+                "executive",
+                "founder",
+                "decision-maker",
+                "decision maker",
+                "b2b",
+                "director",
+                "c-suite",
+                "ceo",
+            )
+        ):
             if local_time in {time(7, 30), time(8, 0), time(18, 0)}:
                 score += 0.40
                 factors.append("executive before/after-work window +0.40")
             score += -0.34 if weekend else 0.18
-            factors.append("executive weekday preference +0.18" if not weekend else "executive weekend penalty -0.34")
-        elif any(term in profile_text for term in (
-            "consumer", "mobile", "community", "job seeker", "b2c", "after work",
-        )):
+            factors.append(
+                "executive weekday preference +0.18"
+                if not weekend
+                else "executive weekend penalty -0.34"
+            )
+        elif any(
+            term in profile_text
+            for term in (
+                "consumer",
+                "mobile",
+                "community",
+                "job seeker",
+                "b2c",
+                "after work",
+            )
+        ):
             if local_time in {time(12, 30), time(16, 30), time(18, 0), time(20, 0)}:
                 score += 0.34
                 factors.append("consumer break/evening window +0.34")
@@ -270,7 +353,9 @@ class ScheduleOptimizer:
                 factors.append("technical weekday preference +0.12")
 
         objective_text = objective.lower()
-        if any(term in objective_text for term in ("register", "download", "book", "apply", "sale")):
+        if any(
+            term in objective_text for term in ("register", "download", "book", "apply", "sale")
+        ):
             if local_time in {time(12, 30), time(16, 30), time(18, 0)}:
                 score += 0.10
                 factors.append("action objective response window +0.10")
@@ -282,7 +367,10 @@ class ScheduleOptimizer:
                 score += 0.05
                 factors.append("awareness weekend reach +0.05")
         elif (
-            any(term in objective_text for term in ("thought leadership", "authority", "expert insight"))
+            any(
+                term in objective_text
+                for term in ("thought leadership", "authority", "expert insight")
+            )
             and local_time in {time(8, 0), time(10, 30)}
             and not weekend
         ):
@@ -308,7 +396,11 @@ class ScheduleOptimizer:
 
     @classmethod
     def _select(
-        cls, candidates: tuple[_Candidate, ...], target: int, start: date, end: date,
+        cls,
+        candidates: tuple[_Candidate, ...],
+        target: int,
+        start: date,
+        end: date,
     ) -> tuple[_Candidate, ...]:
         if not candidates or target <= 0:
             return ()
@@ -328,10 +420,13 @@ class ScheduleOptimizer:
                 anchor_score = -0.075 * abs((item.day - anchor).days)
                 spacing_score = cls._spacing_score(item.day, selected)
                 total = item.score + anchor_score + spacing_score
-                item_order = item.day.toordinal() * 1440 + item.local_time.hour * 60 + item.local_time.minute
+                item_order = (
+                    item.day.toordinal() * 1440 + item.local_time.hour * 60 + item.local_time.minute
+                )
                 best_order = (
                     best.day.toordinal() * 1440 + best.local_time.hour * 60 + best.local_time.minute
-                    if best else 0
+                    if best
+                    else 0
                 )
                 if best is None or (total, -item_order) > (best_score, -best_order):
                     best = item
@@ -340,15 +435,18 @@ class ScheduleOptimizer:
                     best_spacing_score = spacing_score
             if best is None:
                 break
-            selected.append(_Candidate(
-                best.day,
-                best.local_time,
-                best_score,
-                best.factors + (
-                    f"distribution anchor {anchor.isoformat()} {best_anchor_score:+.2f}",
-                    f"spacing quality {best_spacing_score:+.2f}",
-                ),
-            ))
+            selected.append(
+                _Candidate(
+                    best.day,
+                    best.local_time,
+                    best_score,
+                    best.factors
+                    + (
+                        f"distribution anchor {anchor.isoformat()} {best_anchor_score:+.2f}",
+                        f"spacing quality {best_spacing_score:+.2f}",
+                    ),
+                )
+            )
             used_dates.add(best.day)
         return tuple(sorted(selected, key=lambda item: (item.day, item.local_time)))
 

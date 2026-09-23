@@ -89,7 +89,11 @@ class PlanRefinementService:
         # in memory until the completed plan version is persisted.
         today = datetime.now(UTC).date()
         start = date.fromisoformat(brief.campaign_start) if brief.campaign_start else today
-        end = date.fromisoformat(brief.campaign_end) if brief.campaign_end else start + timedelta(days=29)
+        end = (
+            date.fromisoformat(brief.campaign_end)
+            if brief.campaign_end
+            else start + timedelta(days=29)
+        )
         resolved_timezone = resolve_scheduling_timezone(
             audience=brief.audience_profile,
             campaign_timezone=brief.campaign_timezone,
@@ -184,17 +188,20 @@ class PlanRefinementService:
             raise PlanDraftError(
                 "Channel planner changed the fixed schedule slots. Please retry planning."
             ) from exc
-        plan = plan.model_copy(update={
-            "channel_plan": plan.channel_plan.model_copy(
-                update={"calendar_slots": normalized_calendar}
-            )
-            })
+        plan = plan.model_copy(
+            update={
+                "channel_plan": plan.channel_plan.model_copy(
+                    update={"calendar_slots": normalized_calendar}
+                )
+            }
+        )
 
         previous = await self._repo.get_latest_version(plan_id)
         next_version = previous.version + 1 if previous else 1
 
         # Stamp the plan with its identity, source snapshot and next version.
         from src.modules.planning.models.campaign_plan import InputIdentity
+
         input_id = InputIdentity(
             campaign_id=UUID(brief.campaign_id) if brief.campaign_id else campaign_id,
             company_profile_id=UUID(brief.company_profile_id) if brief.company_profile_id else None,
@@ -278,7 +285,11 @@ class PlanRefinementService:
                 "Pre-research hook failed or timed out (%s); continuing without web research", e
             )
             return {"error": str(e), "status": "degraded"}
-            return {"error": str(e), "status": "degraded", "reason": f"Live research failed or timed out ({e})"}
+            return {
+                "error": str(e),
+                "status": "degraded",
+                "reason": f"Live research failed or timed out ({e})",
+            }
 
     async def refine_plan(
         self,
@@ -331,15 +342,16 @@ class PlanRefinementService:
                     revised.channel_plan.calendar_slots, current_plan.schedule_plan
                 )
             except ScheduleSlotMismatchError as exc:
-                raise PlanDraftError(
-                    "Plan refinement cannot change fixed schedule slots."
-                ) from exc
-            revised = revised.model_copy(update={
-                "channel_plan": revised.channel_plan.model_copy(
-                    update={"calendar_slots": normalized_calendar}
-                )
-            })
+                raise PlanDraftError("Plan refinement cannot change fixed schedule slots.") from exc
+            revised = revised.model_copy(
+                update={
+                    "channel_plan": revised.channel_plan.model_copy(
+                        update={"calendar_slots": normalized_calendar}
+                    )
+                }
+            )
         from src.modules.planning.models.campaign_plan import InputIdentity
+
         input_id = InputIdentity(
             campaign_id=UUID(brief.campaign_id) if brief.campaign_id else campaign_id,
             company_profile_id=UUID(brief.company_profile_id) if brief.company_profile_id else None,

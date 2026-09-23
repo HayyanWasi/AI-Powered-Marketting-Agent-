@@ -135,11 +135,11 @@ async def _plan_and_schedule_day() -> None:
 
             # Check personas: zero personas = safe no-op
             target_resolver = TargetResolver()
-            personas = await target_resolver.load_personas(
-                company_profile_id=str(brand_id)
-            )
+            personas = await target_resolver.load_personas(company_profile_id=str(brand_id))
             if not personas:
-                logger.info("Brand %s has 0 active personas; skipping engagement (safe no-op).", brand_id)
+                logger.info(
+                    "Brand %s has 0 active personas; skipping engagement (safe no-op).", brand_id
+                )
                 return
 
             warmup_manager = WarmupManager(account_id)
@@ -148,9 +148,15 @@ async def _plan_and_schedule_day() -> None:
                 s_row.get("likes_per_day", 15) + s_row.get("comments_per_day", 5),
             )
 
-            invite_limit = min(s_row.get("invites_per_day", 10), warmup_state.current_daily_invite_limit)
-            like_limit = min(s_row.get("likes_per_day", 15), warmup_state.current_daily_engage_limit)
-            comment_limit = min(s_row.get("comments_per_day", 5), warmup_state.current_daily_engage_limit)
+            invite_limit = min(
+                s_row.get("invites_per_day", 10), warmup_state.current_daily_invite_limit
+            )
+            like_limit = min(
+                s_row.get("likes_per_day", 15), warmup_state.current_daily_engage_limit
+            )
+            comment_limit = min(
+                s_row.get("comments_per_day", 5), warmup_state.current_daily_engage_limit
+            )
 
             session = SessionWindow(
                 start=datetime.now().time(),

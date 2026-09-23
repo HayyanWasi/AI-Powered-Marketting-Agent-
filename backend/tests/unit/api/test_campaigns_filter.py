@@ -46,7 +46,9 @@ def _make_campaign(org_id: str, brand_id: str) -> Campaign:
 async def test_list_campaigns_passes_brand_filter_to_service(mock_user: AuthenticatedUser) -> None:
     brand_id = uuid4()
     mock_svc = MagicMock(spec=CampaignService)
-    mock_svc.list_campaigns = AsyncMock(return_value=([_make_campaign(mock_user.id, str(brand_id))], 1))
+    mock_svc.list_campaigns = AsyncMock(
+        return_value=([_make_campaign(mock_user.id, str(brand_id))], 1)
+    )
 
     from src.api.v1.campaigns import list_campaigns
 

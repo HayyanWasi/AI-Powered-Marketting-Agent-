@@ -181,8 +181,18 @@ async def test_remote_router_is_not_gated() -> None:
 
 def test_targets_local_ollama_signal() -> None:
     """The gate engages only for services reporting an Ollama provider leg."""
-    assert _targets_local_ollama(SimpleNamespace(llm=SimpleNamespace(has_ollama_provider=lambda: True))) is True
-    assert _targets_local_ollama(SimpleNamespace(llm=SimpleNamespace(has_ollama_provider=lambda: False))) is False
+    assert (
+        _targets_local_ollama(
+            SimpleNamespace(llm=SimpleNamespace(has_ollama_provider=lambda: True))
+        )
+        is True
+    )
+    assert (
+        _targets_local_ollama(
+            SimpleNamespace(llm=SimpleNamespace(has_ollama_provider=lambda: False))
+        )
+        is False
+    )
     # Missing method / unexpected shape → treated as non-Ollama (no-op gate).
     assert _targets_local_ollama(SimpleNamespace(llm=object())) is False
     assert _targets_local_ollama(SimpleNamespace()) is False

@@ -151,21 +151,25 @@ class GeminiProvider:
 
             if self._model is None:
                 keys = [
-                    k for k in (
+                    k
+                    for k in (
                         settings.google_api_key,
                         settings.google_api_key_2,
                         settings.google_api_key_3,
-                    ) if k
+                    )
+                    if k
                 ]
                 active_key = keys[0] if keys else None
                 active_key = self._api_key
                 if not active_key:
                     keys = [
-                        k for k in (
+                        k
+                        for k in (
                             settings.google_api_key,
                             settings.google_api_key_2,
                             settings.google_api_key_3,
-                        ) if k
+                        )
+                        if k
                     ]
                     active_key = keys[0] if keys else None
                 if not active_key:
@@ -249,9 +253,7 @@ class GeminiProvider:
             user_prompt,
             stream=True,
             request_options={"timeout": PROVIDER_TIMEOUT_SECONDS},
-            generation_config={
-                "max_output_tokens": max_tokens or DEFAULT_MAX_OUTPUT_TOKENS
-            },
+            generation_config={"max_output_tokens": max_tokens or DEFAULT_MAX_OUTPUT_TOKENS},
         ):
             content = getattr(chunk, "text", "") or ""
             yield StreamChunk(content=content, finished=False)
@@ -270,25 +272,31 @@ class OpenRouterProvider:
 
             if self._client is None:
                 keys = [
-                    k for k in (
+                    k
+                    for k in (
                         settings.openrouter_api_key,
                         settings.openrouter_api_key_2,
                         settings.openrouter_api_key_3,
-                    ) if k
+                    )
+                    if k
                 ]
                 active_key = keys[0] if keys else None
                 active_key = self._api_key
                 if not active_key:
                     keys = [
-                        k for k in (
+                        k
+                        for k in (
                             settings.openrouter_api_key,
                             settings.openrouter_api_key_2,
                             settings.openrouter_api_key_3,
-                        ) if k
+                        )
+                        if k
                     ]
                     active_key = keys[0] if keys else None
                 if not active_key:
-                    raise LLMProviderError("openrouter", "OpenRouter unavailable/skipped (missing API key)")
+                    raise LLMProviderError(
+                        "openrouter", "OpenRouter unavailable/skipped (missing API key)"
+                    )
                 self._client = OpenAI(
                     api_key=active_key,
                     base_url=OPENROUTER_BASE_URL,
@@ -384,21 +392,25 @@ class GroqProvider:
 
             if self._client is None:
                 keys = [
-                    k for k in (
+                    k
+                    for k in (
                         settings.grok_api_key,
                         settings.grok_api_key_2,
                         settings.grok_api_key_3,
-                    ) if k
+                    )
+                    if k
                 ]
                 active_key = keys[0] if keys else None
                 active_key = self._api_key
                 if not active_key:
                     keys = [
-                        k for k in (
+                        k
+                        for k in (
                             settings.grok_api_key,
                             settings.grok_api_key_2,
                             settings.grok_api_key_3,
-                        ) if k
+                        )
+                        if k
                     ]
                     active_key = keys[0] if keys else None
                 if not active_key:
@@ -501,7 +513,9 @@ class OllamaProvider:
     placeholder; the endpoint does not authenticate.
     """
 
-    def __init__(self, client: Any = None, base_url: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self, client: Any = None, base_url: str | None = None, model: str | None = None
+    ) -> None:
         self._client = client
         self._base_url = base_url
         self._model = model
@@ -717,8 +731,8 @@ class LLMService:
         gemini: Any = None,
         openrouter: Any = None,
         groq: Any = None,
-        primary: Any = None,    # Legacy test support
-        fallback: Any = None,   # Legacy test support
+        primary: Any = None,  # Legacy test support
+        fallback: Any = None,  # Legacy test support
         rotate_providers: bool | None = None,
     ) -> None:
         has_injected_provider = any(
@@ -831,9 +845,9 @@ class LLMService:
         No planning timeout, no planning semaphore, no Ollama.
         """
         svc = cls.__new__(cls)
-        svc._rotate_providers = True    # spread across credentials to avoid TPM
+        svc._rotate_providers = True  # spread across credentials to avoid TPM
         svc._last_provider = None
-        svc._ollama = None              # explicitly excluded
+        svc._ollama = None  # explicitly excluded
         svc._gemini = None
         svc._openrouter = None
         svc._groq = None
@@ -857,9 +871,9 @@ class LLMService:
         LLMService (single-Ollama) and planning/intake lanes are unchanged.
         """
         svc = cls.__new__(cls)
-        svc._rotate_providers = True    # spread across credentials to avoid TPM
+        svc._rotate_providers = True  # spread across credentials to avoid TPM
         svc._last_provider = None
-        svc._ollama = None              # explicitly excluded
+        svc._ollama = None  # explicitly excluded
         svc._gemini = None
         svc._openrouter = None
         svc._groq = None
@@ -923,7 +937,8 @@ class LLMService:
             msg = str(exc).lower()
             import contextlib
             import re
-            m = re.search(r'(?:try again in|retry after)\s*~?([0-9.]+)\s*s', msg)
+
+            m = re.search(r"(?:try again in|retry after)\s*~?([0-9.]+)\s*s", msg)
             if m:
                 with contextlib.suppress(ValueError):
                     cooldown_seconds = min(float(m.group(1)) + 1.0, 300.0)
@@ -932,9 +947,7 @@ class LLMService:
         # rate-limited key rolls over to its sibling key rather than disabling
         # the whole provider tier.
         with _provider_rotation_lock:
-            _provider_unavailable_until[id(provider_instance)] = (
-                time.monotonic() + cooldown_seconds
-            )
+            _provider_unavailable_until[id(provider_instance)] = time.monotonic() + cooldown_seconds
         logger.info(
             "LLM credential cooldown started: %s for %.0fs",
             provider_name,
@@ -962,9 +975,7 @@ class LLMService:
         last_error = None
         chain = self._ordered_chain()
         output_token_budget = request.max_tokens or DEFAULT_MAX_OUTPUT_TOKENS
-        estimated_input_tokens = max(
-            1, (len(system_prompt) + len(request.user_prompt) + 3) // 4
-        )
+        estimated_input_tokens = max(1, (len(system_prompt) + len(request.user_prompt) + 3) // 4)
         logger.warning(
             "LLM provider order for this request: %s",
             " -> ".join(provider_name for provider_name, _, _ in chain),
@@ -1045,7 +1056,9 @@ class LLMService:
                 )
                 self._last_provider = provider_name
                 self._mark_provider_success(provider_instance, provider_name)
-                self._record_telemetry(request, system_prompt, response, start, provider_name, model_name, None)
+                self._record_telemetry(
+                    request, system_prompt, response, start, provider_name, model_name, None
+                )
                 return response
             except Exception as exc:
                 if self._is_auth_error(exc) or "missing API key" in str(exc):

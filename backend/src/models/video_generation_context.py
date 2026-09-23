@@ -154,7 +154,9 @@ class VideoGenerationContext(BaseModel):
             "Prohibited/negative guardrails": "; ".join(brand.negative_guardrails),
         }
         lines = [f"{key}: {value}" for key, value in fields.items() if value]
-        lines.append("Keep the same product/subject identity, visual style, and environment across scenes.")
+        lines.append(
+            "Keep the same product/subject identity, visual style, and environment across scenes."
+        )
         if self.campaign_type not in {"physical_event", "webinar"}:
             lines.append(
                 "Do not depict or mention an event venue, auditorium, workshop, session, guest, or attendees."

@@ -102,13 +102,14 @@ async def get_authenticated_user(
             raise
         except Exception as e:
             import httpx
+
             if isinstance(e, httpx.RequestError):
                 logger.error("Supabase auth network error: %s", e)
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Authentication service unreachable."
+                    detail="Authentication service unreachable.",
                 ) from e
-            
+
             logger.warning("Supabase token verification failed: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

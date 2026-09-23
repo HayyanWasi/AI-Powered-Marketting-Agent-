@@ -84,9 +84,7 @@ class BrandAdvisoryLock:
                 import asyncpg  # type: ignore
 
                 self._conn = await asyncpg.connect(settings.DATABASE_URL, timeout=10.0)
-                locked = await self._conn.fetchval(
-                    "SELECT pg_try_advisory_lock($1)", self.lock_key
-                )
+                locked = await self._conn.fetchval("SELECT pg_try_advisory_lock($1)", self.lock_key)
                 if not locked:
                     logger.info(
                         "Advisory lock unavailable for brand %s (held by another worker); skipping session",
@@ -119,7 +117,9 @@ class BrandAdvisoryLock:
                 return False
             await lock.acquire()
             self._process_locked = True
-            logger.debug("Acquired in-memory lock for brand %s (explicit test/dev mode)", self.brand_id)
+            logger.debug(
+                "Acquired in-memory lock for brand %s (explicit test/dev mode)", self.brand_id
+            )
             return True
 
         logger.error(

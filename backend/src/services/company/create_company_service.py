@@ -30,7 +30,10 @@ class CreateCompanyService:
             raise ValueError("; ".join(errors))
 
         from src.models.brand_context import BrandGuidelinesSchema
-        migrated_guidelines = BrandGuidelinesSchema.parse_and_migrate(brand_guidelines).model_dump_json()
+
+        migrated_guidelines = BrandGuidelinesSchema.parse_and_migrate(
+            brand_guidelines
+        ).model_dump_json()
 
         try:
             profile = self._repository.create(company_name, migrated_guidelines, brand_tone)

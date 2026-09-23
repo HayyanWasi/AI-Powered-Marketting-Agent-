@@ -115,9 +115,7 @@ async def ask_json(
             prompt_name=template_name,
             json_mode=True,
             output_schema=schema,
-            max_tokens=_OUTPUT_TOKEN_BUDGETS.get(
-                template_name, DEFAULT_MAX_OUTPUT_TOKENS
-            ),
+            max_tokens=_OUTPUT_TOKEN_BUDGETS.get(template_name, DEFAULT_MAX_OUTPUT_TOKENS),
             timeout=planning_timeout_seconds(service),
         ),
     )
@@ -193,6 +191,7 @@ def _single_search(query: str, limit: int = 4) -> list[dict]:
     """Execute one DuckDuckGo search, returning up to `limit` results or []."""
     try:
         from ddgs import DDGS
+
         with DDGS() as ddgs:
             return list(ddgs.text(query, max_results=limit))
     except Exception as e:
@@ -306,26 +305,31 @@ def _resolve_calendar_slot_ids(payload: dict[str, Any], brief: PlanBrief) -> dic
     return payload
 
 
-def _validate_channel_payload(payload_resolved: dict[str, Any], brief: PlanBrief, raw_payload: dict[str, Any]) -> str | None:
+def _validate_channel_payload(
+    payload_resolved: dict[str, Any], brief: PlanBrief, raw_payload: dict[str, Any]
+) -> str | None:
+    from src.modules.linkedin.scheduling.slot_validation import (
+        ScheduleSlotMismatchError,
+        normalize_calendar_slots,
+    )
     from src.modules.planning.models.campaign_plan import ChannelPlan
-    from src.modules.linkedin.scheduling.slot_validation import normalize_calendar_slots, ScheduleSlotMismatchError
-    
+
     if not brief.schedule_plan:
         return None
-        
+
     try:
         parsed = ChannelPlan.model_validate(payload_resolved)
     except Exception:
         return "JSON structure or types were invalid."
-        
+
     req_count = len(brief.schedule_plan.slots)
     ret_count = len(parsed.calendar_slots)
-    
+
     if ret_count < req_count:
         return f"You returned {ret_count} calendar slots but exactly {req_count} are required.\nReturn all slot ordinals exactly once: {','.join(str(i) for i in range(1, req_count+1))}.\nDo not change schedule identity/timing."
     if ret_count > req_count:
         return f"You returned extra schedule slots.\nReturn exactly the canonical ordinals: {','.join(str(i) for i in range(1, req_count+1))}."
-        
+
     seen = set()
     for s in raw_payload.get("calendar_slots", []):
         if isinstance(s, dict):
@@ -333,7 +337,7 @@ def _validate_channel_payload(payload_resolved: dict[str, Any], brief: PlanBrief
             if ref in seen:
                 return f"Ordinal {ref} was duplicated.\nReturn every required ordinal exactly once."
             seen.add(ref)
-            
+
     try:
         normalize_calendar_slots(parsed.calendar_slots, brief.schedule_plan)
     except ScheduleSlotMismatchError as exc:
@@ -343,35 +347,37 @@ def _validate_channel_payload(payload_resolved: dict[str, Any], brief: PlanBrief
         return f"A slot changed an immutable field ({msg}).\nUse the canonical fixed schedule values exactly."
     return None
 
+
 async def channel_planner(brief: PlanBrief, **kw: Any) -> dict[str, Any]:
     """Platform mix, campaign phases, and the dated content calendar."""
     import copy
+
     research = "" if brief.has_usable_research() else await _parallel_research(brief)
-    
+
     payload = await ask_json("plan_channel", brief.to_template_vars(research), **kw)
     return _resolve_calendar_slot_ids(payload, brief)
     raw_payload_copy = copy.deepcopy(payload)
     payload_resolved = _resolve_calendar_slot_ids(payload, brief)
-    
+
     error_msg = _validate_channel_payload(payload_resolved, brief, raw_payload_copy)
     if not error_msg:
         return payload_resolved
-        
+
     logger.warning("channel_planner invalid output, running repair: %s", error_msg)
-    
+
     repair_vars = brief.to_template_vars(research)
     repair_vars["validation_error"] = error_msg
-    
+
     repaired_payload = await ask_json("plan_channel_repair", repair_vars, **kw)
     repaired_raw_copy = copy.deepcopy(repaired_payload)
     repaired_resolved = _resolve_calendar_slot_ids(repaired_payload, brief)
-    
+
     error_msg2 = _validate_channel_payload(repaired_resolved, brief, repaired_raw_copy)
     if error_msg2:
         logger.error("channel_planner repair failed: %s", error_msg2)
         # Truthful failure, propagates up
         raise ValueError(f"Channel planner failed validation after repair: {error_msg2}")
-        
+
     return repaired_resolved
 
 
@@ -414,9 +420,7 @@ async def _parallel_competitor_research(brief: PlanBrief, limit_per_query: int =
                 merged.append(r)
 
     if not merged:
-        logger.warning(
-            "All parallel competitor searches returned empty for niche=%r", niche
-        )
+        logger.warning("All parallel competitor searches returned empty for niche=%r", niche)
         return "RESEARCH FAILED: No competitor data could be retrieved. Proceed based on your internal knowledge."
 
     return _format_research(merged)

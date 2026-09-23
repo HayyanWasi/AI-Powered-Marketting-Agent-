@@ -214,10 +214,14 @@ async def test_existing_ownership_boundary_runs_before_generation_or_persistence
 
 def test_forward_migration_defines_one_atomic_owned_replacement() -> None:
     migration = (
-        Path(__file__).resolve().parents[3]
-        / "migrations"
-        / "013_replace_linkedin_campaign_content_rpc.up.sql"
-    ).read_text(encoding="utf-8").lower()
+        (
+            Path(__file__).resolve().parents[3]
+            / "migrations"
+            / "013_replace_linkedin_campaign_content_rpc.up.sql"
+        )
+        .read_text(encoding="utf-8")
+        .lower()
+    )
 
     assert "create or replace function public.replace_linkedin_campaign_content" in migration
     assert "security invoker" in migration
@@ -295,7 +299,10 @@ async def test_canonical_brand_context_propagates_to_real_sequence_generator_and
     # Verify successful generation continues to the existing atomic persistence path
     assert client.calls[0][0] == "replace_linkedin_campaign_content"
     rpc_args = client.calls[0][1]
-    assert rpc_args["p_sequence"]["step_invite_msg"] == "Hi Alex, saw your work on autonomous pipelines."
+    assert (
+        rpc_args["p_sequence"]["step_invite_msg"]
+        == "Hi Alex, saw your work on autonomous pipelines."
+    )
 
 
 @pytest.mark.asyncio
@@ -393,4 +400,3 @@ async def test_app_launch_outreach_neutrality() -> None:
 
     assert response["status"] == "success"
     assert client.calls[0][0] == "replace_linkedin_campaign_content"
-

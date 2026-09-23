@@ -1,8 +1,8 @@
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
@@ -293,4 +293,3 @@ def test_get_plan_reports_freshness_status(base_context):
             assert data["staleness_reason"] == "Campaign details were updated."
     finally:
         app.dependency_overrides.clear()
-

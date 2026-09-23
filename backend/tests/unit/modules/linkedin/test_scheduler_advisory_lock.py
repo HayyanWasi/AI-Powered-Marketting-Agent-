@@ -57,6 +57,7 @@ def sample_session_data() -> dict[str, Any]:
 # TEST A: LOCK ACQUIRED -> SESSION EXECUTOR CALLED EXACTLY ONCE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_a_lock_acquired_executor_called_exactly_once(sample_session_data):
     """When pg_try_advisory_lock succeeds, the engagement session executes once and unlocks."""
@@ -102,6 +103,7 @@ async def test_a_lock_acquired_executor_called_exactly_once(sample_session_data)
 # TEST B: LOCK CONTENTION -> SESSION EXECUTOR CALLED 0 TIMES
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_b_lock_contention_skips_session_zero_calls(sample_session_data):
     """When pg_try_advisory_lock returns False (held by another worker), session is skipped."""
@@ -146,6 +148,7 @@ async def test_b_lock_contention_skips_session_zero_calls(sample_session_data):
 # ═══════════════════════════════════════════════════════════════════════════════
 # TEST C: DB LOCK ERROR -> FAILS CLOSED, NO IN-MEMORY FALLBACK
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_c_db_lock_connection_error_fails_closed_no_fallback(sample_session_data):
@@ -224,6 +227,7 @@ async def test_c_db_lock_query_error_fails_closed_no_fallback(sample_session_dat
 # ═══════════════════════════════════════════════════════════════════════════════
 # TEST D: TWO SCHEDULER WORKERS SAME BRAND -> ONLY ONE ENTERS EXECUTION
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_d_two_scheduler_workers_same_brand_mutual_exclusion(sample_session_data):
@@ -320,6 +324,7 @@ async def test_d_two_scheduler_workers_same_brand_mutual_exclusion(sample_sessio
 # TEST E: ACQUIRED LOCK + EXECUTOR EXCEPTION -> UNLOCK CALLED IN FINALLY
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_e_acquired_lock_executor_exception_unlock_called_in_finally(sample_session_data):
     """When executor crashes during execution, lock is guaranteed to be released in finally."""
@@ -367,6 +372,7 @@ async def test_e_acquired_lock_executor_exception_unlock_called_in_finally(sampl
 # ═══════════════════════════════════════════════════════════════════════════════
 # TEST F: NO PRODUCTION IN-MEMORY FALLBACK (DATABASE_URL UNSET)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_f_no_fallback_when_database_url_not_configured():

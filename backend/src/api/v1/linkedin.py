@@ -15,14 +15,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
+from src.gateways.unipile_gateway import get_unipile_gateway
+from src.models.platform import PLATFORM_TEXT_LIMITS, Platform
 from src.modules.linkedin.generators.post_generator import LinkedInPostGenerator
 from src.modules.linkedin.generators.sequence_generator import OutreachSequenceGenerator
-from src.models.platform import PLATFORM_TEXT_LIMITS, Platform
 from src.modules.linkedin.models import (
     AutoPilotConfig,
     PostStatus,
 )
-from src.gateways.unipile_gateway import get_unipile_gateway
 from src.modules.planning.repositories.plan_repository import PlanNotFoundError
 from src.modules.planning.services.plan_refinement_service import PlanRefinementService
 from src.modules.research.models.research_brief import ResearchBrief
@@ -87,9 +87,13 @@ async def _resolve_generation_inputs(
     try:
         plan = await PlanRefinementService().get_plan(campaign_id)
     except PlanNotFoundError as exc:
-        raise HTTPException(409, "Draft a campaign plan before generating LinkedIn content.") from exc
+        raise HTTPException(
+            409, "Draft a campaign plan before generating LinkedIn content."
+        ) from exc
     if plan.campaign_id != campaign_id or not plan.channel_plan.calendar_slots:
-        raise HTTPException(409, "The stored campaign plan has no valid content calendar. Refine it first.")
+        raise HTTPException(
+            409, "The stored campaign plan has no valid content calendar. Refine it first."
+        )
 
     # ── Verify Plan Identity / Staleness ──
     is_stale, _ = check_plan_freshness(plan, inputs)
@@ -113,7 +117,11 @@ async def _resolve_generation_inputs(
         or ""
     )
     campaign_type_val = intake.get("campaign_type") or ""
-    objective_val = intake.get("objective") or (inputs.campaign.goals.primary if inputs.campaign.goals else "") or ""
+    objective_val = (
+        intake.get("objective")
+        or (inputs.campaign.goals.primary if inputs.campaign.goals else "")
+        or ""
+    )
     value_prop_val = intake.get("value_proposition") or ""
     cta_url_val = intake.get("cta_url") or intake.get("registration_link") or ""
 
@@ -518,7 +526,10 @@ async def _resolve_brand_publishing_account(
     """
     company_profile_id = getattr(campaign, "company_profile_id", None)
     if not company_profile_id:
-        return None, "This campaign is not linked to a brand, so no LinkedIn account can be resolved."
+        return (
+            None,
+            "This campaign is not linked to a brand, so no LinkedIn account can be resolved.",
+        )
 
     profiles = BaseRepository("company_profiles")
     try:
@@ -559,13 +570,21 @@ async def _resolve_brand_publishing_account(
         logger.warning("linkedin_accounts lookup failed during %s: %s", action_verb, e)
         return None, "Could not read the brand's LinkedIn account."
     if not arows:
-        return None, "The brand's LinkedIn account is no longer available. Choose another account for this brand."
+        return (
+            None,
+            "The brand's LinkedIn account is no longer available. Choose another account for this brand.",
+        )
     if arows[0].get("status") != "connected":
-        return None, f"The brand's LinkedIn account is disconnected. Reconnect it before {action_verb}."
+        return (
+            None,
+            f"The brand's LinkedIn account is disconnected. Reconnect it before {action_verb}.",
+        )
     return arows[0], None
 
 
-async def _load_owned_post(campaign_id: UUID, post_id: UUID) -> tuple[BaseRepository, dict[str, Any]]:
+async def _load_owned_post(
+    campaign_id: UUID, post_id: UUID
+) -> tuple[BaseRepository, dict[str, Any]]:
     """Fetch a post that belongs to the campaign, or raise 404/503."""
     posts_repo = BaseRepository("linkedin_posts")
     try:
@@ -837,12 +856,18 @@ async def launch_campaign(
     posts_repo = BaseRepository("linkedin_posts")
 
     try:
-        result = posts_repo.client.table(posts_repo.table_name).update(
-            {
-                "status": PostStatus.SCHEDULED.value,
-                "linkedin_account_id": verified_account_id,
-            }
-        ).eq("campaign_id", str(campaign_id)).eq("status", PostStatus.DRAFT.value).execute()
+        result = (
+            posts_repo.client.table(posts_repo.table_name)
+            .update(
+                {
+                    "status": PostStatus.SCHEDULED.value,
+                    "linkedin_account_id": verified_account_id,
+                }
+            )
+            .eq("campaign_id", str(campaign_id))
+            .eq("status", PostStatus.DRAFT.value)
+            .execute()
+        )
         if not result.data:
             raise HTTPException(409, "No draft LinkedIn posts are available to schedule.")
     except HTTPException:

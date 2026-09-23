@@ -164,29 +164,39 @@ Every scene needs non-empty narration and a scene-specific image prompt. Generat
                 data = json.loads(text)
                 if not isinstance(data, dict) or "scenes" not in data:
                     raise ValueError("Video script must be a JSON object with a 'scenes' key.")
-                
+
                 scenes_data = data["scenes"]
                 if not isinstance(scenes_data, list) or len(scenes_data) != 5:
                     raise ValueError("Video script must contain exactly five scenes.")
-                    
+
                 scenes = [VideoScene(**item) for item in scenes_data]
                 if [scene.scene_number for scene in scenes] != [1, 2, 3, 4, 5]:
                     raise ValueError("Video scenes must be ordered 1 through 5.")
-                if any(not scene.narration.strip() or not scene.image_prompt.strip() for scene in scenes):
+                if any(
+                    not scene.narration.strip() or not scene.image_prompt.strip()
+                    for scene in scenes
+                ):
                     raise ValueError("Every video scene requires narration and an image prompt.")
-                
+
                 self._validate_campaign_alignment(scenes, context)
                 return scenes
             except Exception as e:
-                if attempt == 0 and "Video script omitted the canonical campaign or company identity" in str(e):
-                    logger.warning("VideoScriptAgent: Retrying due to missing brand identity in scene narration.")
+                if (
+                    attempt == 0
+                    and "Video script omitted the canonical campaign or company identity" in str(e)
+                ):
+                    logger.warning(
+                        "VideoScriptAgent: Retrying due to missing brand identity in scene narration."
+                    )
                     continue
-                
+
                 logger.error(
-                    "Failed to parse VideoScriptAgent response: %s\nRaw response: %s", e, response.text
+                    "Failed to parse VideoScriptAgent response: %s\nRaw response: %s",
+                    e,
+                    response.text,
                 )
                 raise ValueError(f"Failed to generate a valid five-scene video script: {e}") from e
-        
+
         raise ValueError("Failed to generate video script after retries.")
 
     @staticmethod
@@ -194,17 +204,16 @@ Every scene needs non-empty narration and a scene-specific image prompt. Generat
         scenes: list[VideoScene], context: VideoGenerationContext
     ) -> None:
         import re
-        combined_raw = " ".join(
-            f"{scene.narration} {scene.image_prompt}" for scene in scenes
-        )
+
+        combined_raw = " ".join(f"{scene.narration} {scene.image_prompt}" for scene in scenes)
         combined = combined_raw.casefold()
-        combined_normalized = re.sub(r'[\W_]+', '', combined_raw).casefold()
+        combined_normalized = re.sub(r"[\W_]+", "", combined_raw).casefold()
 
         identity_terms = [context.campaign_name, context.brand.company_name]
         valid = False
         for term in identity_terms:
             if term:
-                term_normalized = re.sub(r'[\W_]+', '', term).casefold()
+                term_normalized = re.sub(r"[\W_]+", "", term).casefold()
                 if term_normalized and term_normalized in combined_normalized:
                     valid = True
                     break
