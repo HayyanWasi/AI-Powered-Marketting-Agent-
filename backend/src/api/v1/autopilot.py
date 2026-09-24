@@ -501,16 +501,64 @@ async def delete_queue_job(
     job_id: str,
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
-    """Delete or cancel a scheduled job from the upcoming queue."""
+    """Delete or cancel a scheduled job from the upcoming queue, verifying tenant ownership."""
     posts_repo = BaseRepository("linkedin_posts")
-    deleted_from_db = False
+    campaigns_repo = BaseRepository("campaigns")
+
     try:
-        # If it's a UUID, delete from linkedin_posts table
+        # 1. Resolve post and its campaign_id
+        post_res = (
+            posts_repo.client.table("linkedin_posts")
+            .select("id, campaign_id")
+            .eq("id", job_id)
+            .execute()
+        )
+        if not post_res.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue item not found",
+            )
+
+        post = post_res.data[0]
+        campaign_id = post.get("campaign_id")
+        if not campaign_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue item not found",
+            )
+
+        # 2. Verify campaign ownership by authenticated user
+        camp_res = (
+            campaigns_repo.client.table("campaigns")
+            .select("id, organization_id")
+            .eq("id", str(campaign_id))
+            .execute()
+        )
+        if not camp_res.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue item not found",
+            )
+
+        campaign = camp_res.data[0]
+        if str(campaign.get("organization_id")) != str(user.id):
+            # Return 404 instead of 403 to prevent existence leakage
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue item not found",
+            )
+
+        # 3. Ownership confirmed; delete the queued post
         res = posts_repo.client.table("linkedin_posts").delete().eq("id", job_id).execute()
-        if res.data:
-            deleted_from_db = True
+        deleted_from_db = bool(res.data)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("[AUTOPILOT] Could not delete from linkedin_posts: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete queue item: {e}",
+        ) from e
 
     return {
         "success": True,
@@ -704,14 +752,42 @@ async def publish_post_now(
 
 @router.get("/publisher-status")
 async def get_publisher_status(
+    company_profile_id: str | None = Query(default=None),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
-    """Get counts of linkedin_posts by status (scheduled, published, failed) for monitoring."""
+    """Get counts of linkedin_posts by status scoped to authenticated user and brand."""
     from datetime import UTC, datetime
 
+    campaigns_repo = BaseRepository("campaigns")
     posts_repo = BaseRepository("linkedin_posts")
     try:
-        res = posts_repo.client.table("linkedin_posts").select("status, scheduled_at, id").execute()
+        camp_query = (
+            campaigns_repo.client.table("campaigns")
+            .select("id")
+            .eq("organization_id", str(user.id))
+        )
+        if isinstance(company_profile_id, str) and company_profile_id.strip():
+            brand = await _resolve_user_brand(str(user.id), company_profile_id.strip())
+            camp_query = camp_query.eq("company_profile_id", str(brand["id"]))
+        camp_res = camp_query.execute()
+        owned_campaign_ids = [c["id"] for c in (camp_res.data or []) if c.get("id")]
+
+        if not owned_campaign_ids:
+            return {
+                "total_posts": 0,
+                "by_status": {},
+                "overdue_count": 0,
+                "overdue_posts": [],
+                "publisher_interval_minutes": 5,
+                "next_check_hint": "Publisher runs every 5 minutes automatically",
+            }
+
+        res = (
+            posts_repo.client.table("linkedin_posts")
+            .select("status, scheduled_at, id")
+            .in_("campaign_id", owned_campaign_ids)
+            .execute()
+        )
         rows = res.data or []
         now = datetime.now(UTC)
 
@@ -1051,7 +1127,7 @@ async def approve_comment(
     if payload and payload.comment_text and payload.comment_text.strip():
         final_text = payload.comment_text.strip()
     else:
-        final_text = (item.get("comment_text") or "").strip()
+        final_text = (item.get("generated_text") or "").strip()
 
     if not final_text:
         raise HTTPException(
@@ -1068,7 +1144,7 @@ async def approve_comment(
         .update(
             {
                 "status": ReviewStatus.APPROVED.value,
-                "comment_text": final_text,
+                "generated_text": final_text,
                 "reviewed_at": now_iso,
             }
         )
@@ -1142,19 +1218,45 @@ async def approve_comment(
             post_id=target_post_id,
             text=final_text,
         )
-        provider_result_id = str(
-            resp.get("comment_id") or resp.get("id") or f"cmt_{uuid4().hex[:8]}"
-        )
-        is_success = True
-        logger.info(
-            "[REVIEW APPROVE] Phase 2 succeeded for review %s: provider_id=%s",
-            review_id,
-            provider_result_id,
-        )
+        if isinstance(resp, dict):
+            provider_result_id = str(resp.get("comment_id") or resp.get("id") or "").strip()
+        elif isinstance(resp, str):
+            provider_result_id = resp.strip()
+        else:
+            provider_result_id = ""
+
+        if provider_result_id:
+            is_success = True
+            logger.info(
+                "[REVIEW APPROVE] Phase 2 succeeded for review %s: provider_id=%s",
+                review_id,
+                provider_result_id,
+            )
+        else:
+            # Ambiguous/unknown outcome without reliable provider confirmation => needs_review
+            is_ambiguous = True
+            error_msg = "Ambiguous dispatch: Provider returned empty or unconfirmed response"
+            logger.warning(
+                "[REVIEW APPROVE] Phase 2 ambiguous outcome for review %s: %s",
+                review_id,
+                error_msg,
+            )
     except (httpx.TimeoutException, TimeoutError) as exc:
         is_ambiguous = True
         error_msg = f"Timeout during Unipile dispatch: {exc}"
         logger.error("[REVIEW APPROVE] Phase 2 ambiguous timeout for review %s: %s", review_id, exc)
+    except httpx.HTTPStatusError as exc:
+        if 400 <= exc.response.status_code < 500:
+            error_msg = f"Definitive provider rejection (HTTP {exc.response.status_code}): {exc}"
+            logger.error(
+                "[REVIEW APPROVE] Phase 2 definitive rejection for review %s: %s", review_id, exc
+            )
+        else:
+            is_ambiguous = True
+            error_msg = f"Ambiguous provider server error (HTTP {exc.response.status_code}): {exc}"
+            logger.error(
+                "[REVIEW APPROVE] Phase 2 ambiguous server error for review %s: %s", review_id, exc
+            )
     except Exception as exc:
         error_msg = f"Unipile dispatch failure: {exc}"
         logger.error(

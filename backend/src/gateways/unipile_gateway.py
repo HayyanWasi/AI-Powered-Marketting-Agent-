@@ -186,34 +186,49 @@ class UnipileGateway:
                 return False
 
     async def send_connection_request(
-        self, account_id: str, linkedin_id: str, message: str
+        self, account_id: str, linkedin_id: str, message: str | None = None
     ) -> str | None:
         """Send a LinkedIn connection request with custom hook message.
 
-        Returns invite_id if successful, None otherwise.
+        Returns invite_id if successful, raises on timeout/HTTP error.
         """
         if not self._check_breaker("send_connection_request"):
-            return None
+            raise RuntimeError("Circuit breaker OPEN for send_connection_request")
         url = f"{self.dsn}/api/v1/users/invite"
-        payload = {
+        payload: dict[str, Any] = {
             "account_id": account_id,
             "provider_id": linkedin_id,
         }
-        if message.strip():
+        if message and message.strip():
             payload["message"] = message.strip()[:300]
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 res = await client.post(url, headers=self._get_headers(), json=payload)
-                if self._handle_response(res, "send_connection_request") and res.status_code in (
-                    200,
-                    201,
-                ):
+                if res.status_code in (200, 201):
+                    self._handle_response(res, "send_connection_request")
                     data = res.json()
                     return data.get("invite_id") or data.get("id") or "invite_sent"
-                return None
+                elif 400 <= res.status_code < 500:
+                    self._handle_response(res, "send_connection_request")
+                    res.raise_for_status()
+                elif res.status_code == 202:
+                    self._handle_response(res, "send_connection_request")
+                    raise RuntimeError("LinkedIn checkpoint/security challenge (HTTP 202)")
+                else:
+                    self._handle_response(res, "send_connection_request")
+                    res.raise_for_status()
+            except (httpx.TimeoutException, TimeoutError):
+                logger.warning(
+                    "Unipile send_connection_request timeout for account %s, user %s",
+                    account_id,
+                    linkedin_id,
+                )
+                raise
+            except (httpx.HTTPStatusError, RuntimeError):
+                raise
             except Exception as e:
                 logger.error("Unipile send_connection_request error: %s", e)
-                return None
+                raise
 
     async def withdraw_invitation(self, account_id: str, invite_id: str) -> bool:
         """Withdraw a pending connection request."""
@@ -352,22 +367,65 @@ class UnipileGateway:
                 logger.error("Unipile register_webhook error: %s", e)
                 return False
 
-    async def check_relation(self, account_id: str, linkedin_id: str) -> bool:
-        """Check if the account is connected to a specific LinkedIn user."""
+    async def check_relation(self, account_id: str, linkedin_id: str) -> dict[str, Any]:
+        """Check if account is connected to or has pending invite with LinkedIn user.
+
+        Uses verified read-only Unipile routes:
+        - GET /api/v1/users/{profile_id}?account_id=<unipile_account_id>
+        - GET /api/v1/users/invite/sent?account_id=<unipile_account_id>
+
+        Returns:
+            {"status": "CONNECTED"} if FIRST_DEGREE or is_relationship=true
+            {"status": "PENDING"} if target profile is present in sent invitations
+            {"status": "NOT_CONNECTED"} otherwise
+        """
         if not self._check_breaker("check_relation"):
-            return False
-        url = f"{self.dsn}/api/v1/users/{linkedin_id}/relation"
-        params = {"account_id": account_id}
+            return {"status": "NOT_CONNECTED"}
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
+            headers = self._get_headers()
+
+            # 1. Check profile relationship status
             try:
-                res = await client.get(url, headers=self._get_headers(), params=params)
-                if self._handle_response(res, "check_relation") and res.status_code == 200:
-                    data = res.json()
-                    return data.get("is_connected", False)
-                return False
+                prof_url = f"{self.dsn}/api/v1/users/{linkedin_id}"
+                prof_res = await client.get(
+                    prof_url, headers=headers, params={"account_id": account_id}
+                )
+                if prof_res.status_code == 200:
+                    self._handle_response(prof_res, "check_relation")
+                    prof_data = prof_res.json()
+                    net_dist = str(prof_data.get("network_distance") or "").upper()
+                    is_rel = bool(prof_data.get("is_relationship"))
+                    if net_dist in ("FIRST_DEGREE", "DISTANCE_1") or is_rel:
+                        return {
+                            "status": "CONNECTED",
+                            "network_distance": net_dist,
+                            "is_relationship": is_rel,
+                        }
             except Exception as e:
-                logger.error("Unipile check_relation error: %s", e)
-                return False
+                logger.warning("Unipile check profile relation error for %s: %s", linkedin_id, e)
+
+            # 2. Check pending sent invitations
+            try:
+                sent_url = f"{self.dsn}/api/v1/users/invite/sent"
+                sent_res = await client.get(
+                    sent_url, headers=headers, params={"account_id": account_id}
+                )
+                if sent_res.status_code == 200:
+                    self._handle_response(sent_res, "check_relation")
+                    sent_data = sent_res.json()
+                    items = sent_data.get("items", []) if isinstance(sent_data, dict) else []
+                    for item in items:
+                        invited_id = item.get("invited_user_id") or ""
+                        invited_pub = item.get("invited_user_public_id") or ""
+                        if linkedin_id in (invited_id, invited_pub) or (
+                            invited_id and invited_id == linkedin_id
+                        ):
+                            return {"status": "PENDING", "invitation_id": item.get("id")}
+            except Exception as e:
+                logger.warning("Unipile check sent invitations error for %s: %s", linkedin_id, e)
+
+            return {"status": "NOT_CONNECTED"}
 
     # ── New Methods for Scheduler Engine ──────────────────────────────────
 
@@ -451,7 +509,7 @@ class UnipileGateway:
     async def comment_on_post(self, account_id: str, post_id: str, text: str) -> str | None:
         """Comment on a LinkedIn post."""
         if not self._check_breaker("comment_on_post"):
-            return None
+            raise RuntimeError("Circuit breaker open for comment_on_post")
         url = f"{self.dsn}/api/v1/posts/{post_id}/comments"
         payload = {
             "account_id": account_id,
@@ -460,13 +518,28 @@ class UnipileGateway:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 res = await client.post(url, headers=self._get_headers(), json=payload)
-                if self._handle_response(res, "comment_on_post") and res.status_code in (
-                    200,
-                    201,
-                ):
+                if res.status_code in (200, 201):
+                    self._handle_response(res, "comment_on_post")
                     data = res.json()
                     return data.get("comment_id") or data.get("id") or "comment_posted"
-                return None
+                elif 400 <= res.status_code < 500:
+                    self._handle_response(res, "comment_on_post")
+                    res.raise_for_status()
+                elif res.status_code == 202:
+                    self._handle_response(res, "comment_on_post")
+                    raise RuntimeError("LinkedIn checkpoint/security challenge (HTTP 202)")
+                else:
+                    self._handle_response(res, "comment_on_post")
+                    res.raise_for_status()
+            except (httpx.TimeoutException, TimeoutError):
+                logger.warning(
+                    "Unipile comment_on_post timeout for account %s, post %s",
+                    account_id,
+                    post_id,
+                )
+                raise
+            except (httpx.HTTPStatusError, RuntimeError):
+                raise
             except Exception as e:
                 logger.error("Unipile comment_on_post error: %s", e)
                 return None

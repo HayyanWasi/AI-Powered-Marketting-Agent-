@@ -34,9 +34,13 @@ class ExecutionHistoryRepository:
         if not self._supabase:
             raise HistoryQueryError("Supabase client not configured")
 
+        if not record.user_id:
+            raise HistoryQueryError("Execution history record requires a valid user_id owner")
+
         try:
             data = record.to_dict()
             data["id"] = str(record.id)
+            data["user_id"] = str(record.user_id)
             if record.trace_id:
                 data["trace_id"] = str(record.trace_id)
             self._supabase.table(self.TABLE_NAME).insert(data).execute()
@@ -45,6 +49,7 @@ class ExecutionHistoryRepository:
 
     async def query(
         self,
+        user_id: str | UUID | None = None,
         workflow_id: str | None = None,
         status: str | None = None,
         time_range_start: datetime | None = None,
@@ -56,6 +61,7 @@ class ExecutionHistoryRepository:
         """Query execution history records with filters.
 
         Args:
+            user_id: Filter by owner user ID.
             workflow_id: Filter by workflow ID (exact match).
             status: Filter by status (exact match).
             time_range_start: Start of time range filter.
@@ -76,6 +82,8 @@ class ExecutionHistoryRepository:
         try:
             query = self._supabase.table(self.TABLE_NAME).select("*")
 
+            if user_id:
+                query = query.eq("user_id", str(user_id))
             if workflow_id:
                 query = query.eq("workflow_id", workflow_id)
             if status:
@@ -96,6 +104,7 @@ class ExecutionHistoryRepository:
 
     async def count(
         self,
+        user_id: str | UUID | None = None,
         workflow_id: str | None = None,
         status: str | None = None,
         time_range_start: datetime | None = None,
@@ -104,6 +113,7 @@ class ExecutionHistoryRepository:
         """Count execution history records matching filters.
 
         Args:
+            user_id: Filter by owner user ID.
             workflow_id: Filter by workflow ID.
             status: Filter by status.
             time_range_start: Start of time range.
@@ -120,6 +130,8 @@ class ExecutionHistoryRepository:
 
         try:
             query = self._supabase.table(self.TABLE_NAME).select("id", count="exact")  # type: ignore[arg-type]
+            if user_id:
+                query = query.eq("user_id", str(user_id))
             if workflow_id:
                 query = query.eq("workflow_id", workflow_id)
             if status:

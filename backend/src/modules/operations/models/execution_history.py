@@ -26,6 +26,7 @@ class ExecutionHistoryRecord:
     trace_id: UUID | None = None
     guardrail_summary: dict[str, Any] | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    user_id: UUID | str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -38,6 +39,8 @@ class ExecutionHistoryRecord:
             "total_tokens": self.total_tokens,
             "created_at": self.created_at.isoformat(),
         }
+        if self.user_id:
+            d["user_id"] = str(self.user_id)
         if self.start_time:
             d["start_time"] = self.start_time.isoformat()
         if self.end_time:

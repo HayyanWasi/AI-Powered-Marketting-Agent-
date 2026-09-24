@@ -36,6 +36,7 @@ from src.modules.linkedin.worker.circuit_breaker import CircuitBreaker
 from src.modules.linkedin.worker.rate_limiter import RateLimiter
 from src.modules.linkedin.worker.review_queue import ReviewQueue
 from src.modules.linkedin.worker.target_resolver import TargetResolver
+from src.utils.sanitizer import sanitize_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +330,7 @@ class SessionExecutor:
             "persona_label": getattr(target, "persona_label", ""),
             "generated_text": comment_text,
             "status": "pending_review",
-            "created_at": datetime.now(UTC).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
         try:
@@ -380,11 +381,9 @@ class SessionExecutor:
         # 1. Relation check: skip if already connected or invitation pending
         try:
             rel = await self.unipile.check_relation(self.unipile_account_id, profile_id)
-            if isinstance(rel, dict):
-                st = (rel.get("status") or "").upper()
-                if st in ("CONNECTED", "PENDING"):
-                    return False
-            elif rel is True:
+            status_val = rel.get("status") if isinstance(rel, dict) else str(rel)
+            if str(status_val).upper() in ("CONNECTED", "PENDING") or rel is True:
+                logger.info("Skipping profile %s: relation status is %s", profile_id, status_val)
                 return False
         except Exception as e:
             logger.warning("Error checking relation for %s: %s; skipping.", profile_id, e)
@@ -415,20 +414,22 @@ class SessionExecutor:
             return False
 
         # 4. Render note
-        note = ""
+        note: str | None = None
         display_name = getattr(target, "display_name", "")
         if self.connection_note_template and self.connection_note_template.strip():
             first_name = display_name.split()[0] if display_name else "there"
-            note = self.connection_note_template.replace("{first_name}", first_name).strip()
+            rendered = self.connection_note_template.replace("{first_name}", first_name).strip()
+            if rendered:
+                note = rendered
 
         # 5. Call Unipile
         try:
             invitation_id = await self.unipile.send_connection_request(
-                self.unipile_account_id, profile_id, note or None
+                self.unipile_account_id, profile_id, note
             )
             if invitation_id:
                 provider_id = (
-                    invitation_id.get("id")
+                    invitation_id.get("id") or invitation_id.get("invite_id")
                     if isinstance(invitation_id, dict)
                     else str(invitation_id)
                 )
@@ -439,8 +440,8 @@ class SessionExecutor:
             else:
                 await self._update_claim_status(
                     claim_id,
-                    EngagementLogStatus.FAILED,
-                    error_message="Unipile returned falsy invite ID",
+                    EngagementLogStatus.NEEDS_REVIEW,
+                    error_message="Ambiguous falsy response from Unipile send_connection_request",
                 )
                 return False
         except (TimeoutError, httpx.TimeoutException) as exc:
@@ -451,10 +452,40 @@ class SessionExecutor:
                 claim_id, EngagementLogStatus.NEEDS_REVIEW, error_message=f"Timeout: {exc}"
             )
             return False
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else 500
+            err_text = exc.response.text if exc.response is not None else str(exc)
+            if 400 <= status_code < 500:
+                logger.warning(
+                    "Definitive 4xx rejection while inviting profile %s (HTTP %d): %s; marking failed",
+                    profile_id,
+                    status_code,
+                    err_text,
+                )
+                await self._update_claim_status(
+                    claim_id,
+                    EngagementLogStatus.FAILED,
+                    error_message=f"HTTP {status_code}: {err_text}",
+                )
+            else:
+                logger.error(
+                    "Ambiguous 5xx provider error while inviting profile %s (HTTP %d): %s; marking needs_review",
+                    profile_id,
+                    status_code,
+                    err_text,
+                )
+                await self._update_claim_status(
+                    claim_id,
+                    EngagementLogStatus.NEEDS_REVIEW,
+                    error_message=f"HTTP {status_code} server error: {err_text}",
+                )
+            return False
         except Exception as e:
-            logger.error("Error inviting profile %s: %s", profile_id, e)
+            logger.error(
+                "Ambiguous error inviting profile %s: %s; marking needs_review", profile_id, e
+            )
             await self._update_claim_status(
-                claim_id, EngagementLogStatus.FAILED, error_message=str(e)
+                claim_id, EngagementLogStatus.NEEDS_REVIEW, error_message=str(e)
             )
             return False
 
@@ -587,7 +618,7 @@ class SessionExecutor:
             if provider_result_id:
                 update_data["provider_result_id"] = provider_result_id
             if error_message:
-                update_data["error_message"] = error_message
+                update_data["error_message"] = sanitize_error_message(error_message) or ""
             client.table("linkedin_engagement_log").update(update_data).eq("id", claim_id).execute()
         except Exception as e:
             logger.error("Failed to update engagement log %s: %s", claim_id, e)

@@ -95,10 +95,79 @@ async def test_session_executes_ai_comment_like_and_invite_with_separate_caps() 
     # Safety invariant: comments are generation-only to review queue, never directly called
     unipile.comment_on_post.assert_not_awaited()
     assert len(stores["linkedin_review_queue"]) == 1
-    assert stores["linkedin_review_queue"][0]["status"] == "pending_review"
+    queue_item = stores["linkedin_review_queue"][0]
+    assert queue_item["status"] == "pending_review"
+    assert "generated_at" in queue_item
+    assert "created_at" not in queue_item
+    assert (
+        queue_item["generated_text"]
+        == "The distinction you made here is useful and clearly explained."
+    )
 
     unipile.like_post.assert_awaited_once_with("account-1", "like-post")
     unipile.send_connection_request.assert_awaited_once_with("account-1", "profile-1", None)
+
+
+@pytest.mark.asyncio
+async def test_review_queue_insert_uses_generated_at_and_pending_review() -> None:
+    """Proves review queue insert uses canonical generated_at (no created_at) and reaches pending_review."""
+    stores = {
+        "linkedin_review_queue": [],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+
+    circuit_breaker = MagicMock()
+    circuit_breaker.can_proceed.return_value = True
+    ledger = AsyncMock()
+    resolver = AsyncMock()
+    review_queue = MagicMock()
+    comment_generator = MagicMock()
+    unipile = AsyncMock()
+
+    executor = SessionExecutor(
+        "account-1",
+        "UTC",
+        circuit_breaker=circuit_breaker,
+        rate_limiter=AsyncMock(),
+        action_ledger=ledger,
+        target_resolver=resolver,
+        review_queue=review_queue,
+        comment_generator=comment_generator,
+        unipile=unipile,
+        client=mock_client,
+        company_profile_id="company-1",
+        user_id="user-1",
+    )
+
+    target = _post("target-post-123")
+    queued = await executor._queue_comment(
+        target,
+        comment_text="Insightful analysis on marketing automation.",
+        current_count=0,
+        max_count=5,
+    )
+
+    assert queued is True
+    assert len(stores["linkedin_review_queue"]) == 1
+
+    row = stores["linkedin_review_queue"][0]
+    # 1. review queue insert uses generated_at and strictly NO created_at
+    assert "generated_at" in row
+    assert "created_at" not in row
+    assert isinstance(row["generated_at"], str)
+
+    # 2. generated draft reaches pending_review
+    assert row["status"] == "pending_review"
+    assert row["generated_text"] == "Insightful analysis on marketing automation."
+    assert row["target_post_id"] == "target-post-123"
+    assert row["linkedin_account_id"] == "account-1"
+    assert row["company_profile_id"] == "company-1"
+    assert row["user_id"] == "user-1"
+
+    # Zero external dispatch
+    unipile.comment_on_post.assert_not_awaited()
 
 
 @pytest.mark.asyncio

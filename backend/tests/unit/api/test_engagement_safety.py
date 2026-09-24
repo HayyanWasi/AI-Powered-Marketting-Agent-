@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -539,18 +540,15 @@ async def test_scheduler_never_calls_unipile_comment_during_generation():
     # Review queue must contain pending_review item
     assert len(stores["linkedin_review_queue"]) == 1
     assert stores["linkedin_review_queue"][0]["status"] == "pending_review"
-    assert (
-        stores["linkedin_review_queue"][0].get(
-            "generated_text", stores["linkedin_review_queue"][0].get("comment_text")
-        )
-        == "Great insight Charlie!"
-    )
+    assert stores["linkedin_review_queue"][0]["generated_text"] == "Great insight Charlie!"
+    assert "generated_at" in stores["linkedin_review_queue"][0]
+    assert "created_at" not in stores["linkedin_review_queue"][0]
 
     # CRITICAL: External comment write API MUST NOT be called!
     assert mock_gateway.comment_on_post.call_count == 0
 
 
-def test_crash_safe_comment_approval_flow():
+def test_approve_generated_comment_without_edit():
     user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
     brand_id = str(uuid4())
     account_uuid = str(uuid4())
@@ -573,7 +571,7 @@ def test_crash_safe_comment_approval_flow():
                 "company_profile_id": brand_id,
                 "linkedin_account_id": account_uuid,
                 "target_post_id": "target_p_1",
-                "comment_text": "Draft comment text",
+                "generated_text": "Original AI draft comment",
                 "status": "pending_review",
             }
         ],
@@ -593,7 +591,74 @@ def test_crash_safe_comment_approval_flow():
         patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
         TestClient(app) as client,
     ):
-        # 1. Approve with edited comment text
+        # 1. Approve without edit payload
+        resp = client.post(
+            f"/api/v1/autopilot/review/{review_id}/approve",
+            json={},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "published"
+
+        # Verify Unipile was called with original generated text
+        mock_gateway.comment_on_post.assert_awaited_once_with(
+            account_id="unipile_acc_valid",
+            post_id="target_p_1",
+            text="Original AI draft comment",
+        )
+
+        # Verify review queue is marked published and preserved generated_text
+        assert stores["linkedin_review_queue"][0]["generated_text"] == "Original AI draft comment"
+        assert stores["linkedin_review_queue"][0]["status"] == "published"
+        assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+        assert stores["linkedin_engagement_log"][0]["comment_text"] == "Original AI draft comment"
+
+    app.dependency_overrides.clear()
+
+
+def test_approve_edited_comment():
+    user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
+    brand_id = str(uuid4())
+    account_uuid = str(uuid4())
+    review_id = str(uuid4())
+
+    stores = {
+        "company_profiles": [{"id": brand_id, "user_id": user.id}],
+        "linkedin_accounts": [
+            {
+                "id": account_uuid,
+                "user_id": user.id,
+                "status": "connected",
+                "unipile_account_id": "unipile_acc_valid",
+            }
+        ],
+        "linkedin_review_queue": [
+            {
+                "id": review_id,
+                "user_id": user.id,
+                "company_profile_id": brand_id,
+                "linkedin_account_id": account_uuid,
+                "target_post_id": "target_p_1",
+                "generated_text": "Original AI draft comment",
+                "status": "pending_review",
+            }
+        ],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+
+    mock_gateway = AsyncMock()
+    mock_gateway.comment_on_post.return_value = {"id": "cmt_ext_123"}
+
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        # Approve with edited comment text
         resp = client.post(
             f"/api/v1/autopilot/review/{review_id}/approve",
             json={"comment_text": "Polished edited comment text!"},
@@ -608,18 +673,277 @@ def test_crash_safe_comment_approval_flow():
             text="Polished edited comment text!",
         )
 
-        # Verify review queue is marked published
+        # Verify review queue updated generated_text
+        assert (
+            stores["linkedin_review_queue"][0]["generated_text"] == "Polished edited comment text!"
+        )
         assert stores["linkedin_review_queue"][0]["status"] == "published"
-        # Verify engagement log succeeded
         assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+        assert (
+            stores["linkedin_engagement_log"][0]["comment_text"] == "Polished edited comment text!"
+        )
 
-        # 2. Double approval cannot double send
+    app.dependency_overrides.clear()
+
+
+def test_double_approval_sends_once():
+    user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
+    brand_id = str(uuid4())
+    account_uuid = str(uuid4())
+    review_id = str(uuid4())
+
+    stores = {
+        "company_profiles": [{"id": brand_id, "user_id": user.id}],
+        "linkedin_accounts": [
+            {
+                "id": account_uuid,
+                "user_id": user.id,
+                "status": "connected",
+                "unipile_account_id": "unipile_acc_valid",
+            }
+        ],
+        "linkedin_review_queue": [
+            {
+                "id": review_id,
+                "user_id": user.id,
+                "company_profile_id": brand_id,
+                "linkedin_account_id": account_uuid,
+                "target_post_id": "target_p_1",
+                "generated_text": "Original AI draft comment",
+                "status": "pending_review",
+            }
+        ],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+
+    mock_gateway = AsyncMock()
+    mock_gateway.comment_on_post.return_value = {"id": "cmt_ext_123"}
+
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        # 1. First approval
+        first_resp = client.post(
+            f"/api/v1/autopilot/review/{review_id}/approve",
+            json={"comment_text": "Approved comment"},
+        )
+        assert first_resp.status_code == 200
+
+        # 2. Second approval must fail closed with 409
         second_resp = client.post(
             f"/api/v1/autopilot/review/{review_id}/approve",
-            json={"comment_text": "Another try"},
+            json={"comment_text": "Approved comment again"},
         )
-        assert second_resp.status_code == 409  # Conflict! Not in pending_review
-        assert mock_gateway.comment_on_post.call_count == 1  # Still only 1 call!
+        assert second_resp.status_code == 409
+        # Crucial: Unipile dispatch happened exactly once
+        assert mock_gateway.comment_on_post.call_count == 1
+
+    app.dependency_overrides.clear()
+
+
+def test_comment_approval_timeout_marks_needs_review_no_retry():
+    user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
+    brand_id = str(uuid4())
+    account_uuid = str(uuid4())
+    review_id = str(uuid4())
+
+    stores = {
+        "company_profiles": [{"id": brand_id, "user_id": user.id}],
+        "linkedin_accounts": [
+            {
+                "id": account_uuid,
+                "user_id": user.id,
+                "status": "connected",
+                "unipile_account_id": "unipile_acc_valid",
+            }
+        ],
+        "linkedin_review_queue": [
+            {
+                "id": review_id,
+                "user_id": user.id,
+                "company_profile_id": brand_id,
+                "linkedin_account_id": account_uuid,
+                "target_post_id": "target_p_1",
+                "generated_text": "Original AI draft comment",
+                "status": "pending_review",
+            }
+        ],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+
+    mock_gateway = AsyncMock()
+    mock_gateway.comment_on_post.side_effect = httpx.TimeoutException("Read timeout from Unipile")
+
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        resp = client.post(
+            f"/api/v1/autopilot/review/{review_id}/approve",
+            json={},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert data["status"] == "needs_review"
+        assert "Timeout" in data["error"]
+
+        # Exactly 1 call was attempted (never auto-retried)
+        assert mock_gateway.comment_on_post.call_count == 1
+
+        # Both review queue and engagement log transitioned to needs_review
+        assert stores["linkedin_review_queue"][0]["status"] == "needs_review"
+        assert stores["linkedin_engagement_log"][0]["status"] == "needs_review"
+
+    app.dependency_overrides.clear()
+
+
+def test_comment_approval_successful_send_str_and_dict():
+    user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
+    brand_id = str(uuid4())
+    account_uuid = str(uuid4())
+
+    # Case A: String return from gateway (standard UnipileGateway behavior)
+    review_id_a = str(uuid4())
+    stores = {
+        "company_profiles": [{"id": brand_id, "user_id": user.id}],
+        "linkedin_accounts": [
+            {
+                "id": account_uuid,
+                "user_id": user.id,
+                "status": "connected",
+                "unipile_account_id": "unipile_acc_valid",
+            }
+        ],
+        "linkedin_review_queue": [
+            {
+                "id": review_id_a,
+                "user_id": user.id,
+                "company_profile_id": brand_id,
+                "linkedin_account_id": account_uuid,
+                "target_post_id": "target_p_a",
+                "generated_text": "Draft A",
+                "status": "pending_review",
+            }
+        ],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.comment_on_post.return_value = "cmt_ext_str_789"
+
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        resp_a = client.post(f"/api/v1/autopilot/review/{review_id_a}/approve", json={})
+        assert resp_a.status_code == 200
+        assert resp_a.json()["status"] == "published"
+        assert resp_a.json()["provider_result_id"] == "cmt_ext_str_789"
+        assert stores["linkedin_review_queue"][0]["status"] == "published"
+        assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+
+    # Case B: Dict return from gateway
+    review_id_b = str(uuid4())
+    stores["linkedin_review_queue"].append(
+        {
+            "id": review_id_b,
+            "user_id": user.id,
+            "company_profile_id": brand_id,
+            "linkedin_account_id": account_uuid,
+            "target_post_id": "target_p_b",
+            "generated_text": "Draft B",
+            "status": "pending_review",
+        }
+    )
+    mock_gateway.comment_on_post.return_value = {"comment_id": "cmt_ext_dict_456"}
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        resp_b = client.post(f"/api/v1/autopilot/review/{review_id_b}/approve", json={})
+        assert resp_b.status_code == 200
+        assert resp_b.json()["status"] == "published"
+        assert resp_b.json()["provider_result_id"] == "cmt_ext_dict_456"
+
+    app.dependency_overrides.clear()
+
+
+def test_comment_approval_definitive_rejection_marks_failed():
+    user = AuthenticatedUser(id=str(uuid4()), roles=["user"], permissions=[])
+    brand_id = str(uuid4())
+    account_uuid = str(uuid4())
+    review_id = str(uuid4())
+
+    stores = {
+        "company_profiles": [{"id": brand_id, "user_id": user.id}],
+        "linkedin_accounts": [
+            {
+                "id": account_uuid,
+                "user_id": user.id,
+                "status": "connected",
+                "unipile_account_id": "unipile_acc_valid",
+            }
+        ],
+        "linkedin_review_queue": [
+            {
+                "id": review_id,
+                "user_id": user.id,
+                "company_profile_id": brand_id,
+                "linkedin_account_id": account_uuid,
+                "target_post_id": "target_p_1",
+                "generated_text": "Original AI draft comment",
+                "status": "pending_review",
+            }
+        ],
+        "linkedin_engagement_log": [],
+        "linkedin_engaged_posts": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+
+    mock_gateway = AsyncMock()
+    req = httpx.Request("POST", "https://api.unipile.com/api/v1/posts/p1/comments")
+    resp = httpx.Response(status_code=403, request=req, text="Forbidden action")
+    mock_gateway.comment_on_post.side_effect = httpx.HTTPStatusError(
+        "Forbidden", request=req, response=resp
+    )
+
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+    with (
+        patch("src.api.v1.autopilot.get_supabase_client", return_value=mock_client),
+        patch("src.repositories.base.get_supabase_client", return_value=mock_client),
+        patch("src.api.v1.autopilot.get_unipile_gateway", return_value=mock_gateway),
+        TestClient(app) as client,
+    ):
+        res = client.post(f"/api/v1/autopilot/review/{review_id}/approve", json={})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is False
+        assert data["status"] == "failed"
+
+        assert stores["linkedin_review_queue"][0]["status"] == "failed"
+        assert stores["linkedin_engagement_log"][0]["status"] == "failed"
 
     app.dependency_overrides.clear()
 
@@ -630,7 +954,55 @@ def test_crash_safe_comment_approval_flow():
 
 
 @pytest.mark.asyncio
+async def test_auto_connection_empty_or_none_note_does_not_crash():
+    """Proves empty or None connection note does not crash with AttributeError and dispatches safely."""
+    user_id = str(uuid4())
+    brand_id = str(uuid4())
+    account_id = str(uuid4())
+
+    stores: dict[str, list[dict[str, Any]]] = {
+        "linkedin_engagement_log": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
+    mock_gateway.send_connection_request.return_value = {"id": "inv_none_note_123"}
+
+    # Executor with empty connection_note_template
+    executor = EngagementSessionExecutor(
+        brand_id=brand_id,
+        user_id=user_id,
+        linkedin_account_id=account_id,
+        unipile_account_id="unipile_acc",
+        connection_note_template="",
+        client=mock_client,
+        gateway=mock_gateway,
+        rate_limiter=MagicMock(delay_between_actions=AsyncMock(return_value=0.0)),
+    )
+
+    from src.modules.linkedin.models import ResolvedTarget
+
+    target_prof = ResolvedTarget(
+        account_id=account_id,
+        persona_label="Engineers",
+        profile_id="prof_none_note",
+    )
+
+    # Dispatches with note=None without any crash
+    res = await executor._execute_connection(target_prof, current_count=0, max_count=10)
+    assert res is True
+    mock_gateway.send_connection_request.assert_awaited_once_with(
+        "unipile_acc", "prof_none_note", None
+    )
+    assert len(stores["linkedin_engagement_log"]) == 1
+    assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+    assert stores["linkedin_engagement_log"][0]["provider_result_id"] == "inv_none_note_123"
+
+
+@pytest.mark.asyncio
 async def test_auto_connection_skips_already_connected_or_pending():
+    """Proves connected or pending profiles are skipped before dispatch."""
     user_id = str(uuid4())
     brand_id = str(uuid4())
     account_id = str(uuid4())
@@ -660,17 +1032,19 @@ async def test_auto_connection_skips_already_connected_or_pending():
         profile_id="prof_already_connected",
     )
 
-    # 1. Gateway reports already CONNECTED
+    # 1. Gateway reports already CONNECTED -> skipped, zero calls, zero claims
     mock_gateway.check_relation.return_value = {"status": "CONNECTED"}
     res1 = await executor._execute_connection(target_prof, current_count=0, max_count=10)
     assert res1 is False
     assert mock_gateway.send_connection_request.call_count == 0
+    assert len(stores["linkedin_engagement_log"]) == 0
 
-    # 2. Gateway reports PENDING invite
+    # 2. Gateway reports PENDING invite -> skipped, zero calls, zero claims
     mock_gateway.check_relation.return_value = {"status": "PENDING"}
     res2 = await executor._execute_connection(target_prof, current_count=0, max_count=10)
     assert res2 is False
     assert mock_gateway.send_connection_request.call_count == 0
+    assert len(stores["linkedin_engagement_log"]) == 0
 
     # 3. Not connected -> dispatches invite once
     mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
@@ -679,6 +1053,289 @@ async def test_auto_connection_skips_already_connected_or_pending():
     assert res3 is True
     assert mock_gateway.send_connection_request.call_count == 1
     assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_auto_connection_timeout_marks_needs_review_no_retry():
+    """Proves timeout or ambiguous outcome marks claim needs_review and blocks retry."""
+    user_id = str(uuid4())
+    brand_id = str(uuid4())
+    account_id = str(uuid4())
+
+    stores: dict[str, list[dict[str, Any]]] = {
+        "linkedin_engagement_log": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
+    mock_gateway.send_connection_request.side_effect = httpx.TimeoutException(
+        "Read timeout on invite dispatch"
+    )
+
+    executor = EngagementSessionExecutor(
+        brand_id=brand_id,
+        user_id=user_id,
+        linkedin_account_id=account_id,
+        unipile_account_id="unipile_acc",
+        client=mock_client,
+        gateway=mock_gateway,
+        rate_limiter=MagicMock(delay_between_actions=AsyncMock(return_value=0.0)),
+    )
+
+    from src.modules.linkedin.models import ResolvedTarget
+
+    target_prof = ResolvedTarget(
+        account_id=account_id,
+        persona_label="SaaS",
+        profile_id="prof_timeout_target",
+    )
+
+    res = await executor._execute_connection(target_prof, current_count=0, max_count=10)
+    assert res is False
+    assert mock_gateway.send_connection_request.call_count == 1
+
+    # Claim must be in needs_review, preserving timeout error
+    assert len(stores["linkedin_engagement_log"]) == 1
+    log_row = stores["linkedin_engagement_log"][0]
+    assert log_row["status"] == "needs_review"
+    assert "Timeout" in log_row["error_message"]
+
+    # Second attempt must be rejected by dedupe and NEVER auto-retried
+    mock_gateway.send_connection_request.reset_mock()
+    res_retry = await executor._execute_connection(target_prof, current_count=0, max_count=10)
+    assert res_retry is False
+    mock_gateway.send_connection_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_connection_double_run_never_sends_twice():
+    """Proves duplicate execution for the same target profile is permanently deduplicated."""
+    user_id = str(uuid4())
+    brand_id = str(uuid4())
+    account_id = str(uuid4())
+
+    stores: dict[str, list[dict[str, Any]]] = {
+        "linkedin_engagement_log": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
+    mock_gateway.send_connection_request.return_value = "invite_sent_999"
+
+    executor = EngagementSessionExecutor(
+        brand_id=brand_id,
+        user_id=user_id,
+        linkedin_account_id=account_id,
+        unipile_account_id="unipile_acc",
+        client=mock_client,
+        gateway=mock_gateway,
+        rate_limiter=MagicMock(delay_between_actions=AsyncMock(return_value=0.0)),
+    )
+
+    from src.modules.linkedin.models import ResolvedTarget
+
+    target = ResolvedTarget(
+        account_id=account_id,
+        persona_label="Founders",
+        profile_id="prof_once_only",
+    )
+
+    # First run succeeds
+    first_ok = await executor._execute_connection(target, current_count=0, max_count=10)
+    assert first_ok is True
+    assert mock_gateway.send_connection_request.call_count == 1
+    assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+
+    # Second run immediately skips due to existing log
+    second_ok = await executor._execute_connection(target, current_count=1, max_count=10)
+    assert second_ok is False
+    assert mock_gateway.send_connection_request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_auto_connection_successful_invite_marks_succeeded():
+    """Proves successful invite dispatch records status succeeded and provider_result_id."""
+    user_id = str(uuid4())
+    brand_id = str(uuid4())
+    account_id = str(uuid4())
+
+    stores: dict[str, list[dict[str, Any]]] = {
+        "linkedin_engagement_log": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
+    mock_gateway.send_connection_request.return_value = {"id": "unipile_inv_777"}
+
+    executor = EngagementSessionExecutor(
+        brand_id=brand_id,
+        user_id=user_id,
+        linkedin_account_id=account_id,
+        unipile_account_id="unipile_acc",
+        client=mock_client,
+        gateway=mock_gateway,
+        rate_limiter=MagicMock(delay_between_actions=AsyncMock(return_value=0.0)),
+    )
+
+    from src.modules.linkedin.models import ResolvedTarget
+
+    target = ResolvedTarget(
+        account_id=account_id,
+        persona_label="Founders",
+        profile_id="prof_success_1",
+    )
+
+    ok = await executor._execute_connection(target, current_count=0, max_count=10)
+    assert ok is True
+    assert len(stores["linkedin_engagement_log"]) == 1
+    assert stores["linkedin_engagement_log"][0]["status"] == "succeeded"
+    assert stores["linkedin_engagement_log"][0]["provider_result_id"] == "unipile_inv_777"
+
+
+@pytest.mark.asyncio
+async def test_auto_connection_4xx_rejection_marks_failed():
+    """Proves definitive 4xx HTTP client rejection marks claim failed."""
+    user_id = str(uuid4())
+    brand_id = str(uuid4())
+    account_id = str(uuid4())
+
+    stores: dict[str, list[dict[str, Any]]] = {
+        "linkedin_engagement_log": [],
+        "linkedin_daily_actions": [],
+    }
+    mock_client = MockSupabaseClient(stores)
+    mock_gateway = AsyncMock()
+    mock_gateway.check_relation.return_value = {"status": "NOT_CONNECTED"}
+
+    req = httpx.Request("POST", "https://api.unipile.com/api/v1/users/invite")
+    resp = httpx.Response(
+        status_code=400,
+        request=req,
+        text='{"error": "CANNOT_INVITE", "message": "Cannot invite this user"}',
+    )
+    mock_gateway.send_connection_request.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=req, response=resp
+    )
+
+    executor = EngagementSessionExecutor(
+        brand_id=brand_id,
+        user_id=user_id,
+        linkedin_account_id=account_id,
+        unipile_account_id="unipile_acc",
+        client=mock_client,
+        gateway=mock_gateway,
+        rate_limiter=MagicMock(delay_between_actions=AsyncMock(return_value=0.0)),
+    )
+
+    from src.modules.linkedin.models import ResolvedTarget
+
+    target = ResolvedTarget(
+        account_id=account_id,
+        persona_label="Founders",
+        profile_id="prof_400_fail",
+    )
+
+    ok = await executor._execute_connection(target, current_count=0, max_count=10)
+    assert ok is False
+    assert len(stores["linkedin_engagement_log"]) == 1
+    assert stores["linkedin_engagement_log"][0]["status"] == "failed"
+    assert "HTTP 400" in stores["linkedin_engagement_log"][0]["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_unipile_gateway_send_connection_request_note_handling():
+    """Directly verifies UnipileGateway.send_connection_request payload and error handling."""
+    from src.gateways.unipile_gateway import UnipileGateway
+
+    gateway = UnipileGateway(dsn="https://api.unipile.com", token="dummy_token")
+
+    # Case 1: message is None -> no message key in payload
+    with patch("httpx.AsyncClient.post") as mock_post:
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {"id": "inv_none"}
+        mock_post.return_value = resp
+
+        res = await gateway.send_connection_request("acc_1", "prof_1", message=None)
+        assert res == "inv_none"
+        sent_payload = mock_post.call_args[1]["json"]
+        assert "message" not in sent_payload
+        assert sent_payload["account_id"] == "acc_1"
+        assert sent_payload["provider_id"] == "prof_1"
+
+    # Case 2: message provided -> included in payload
+    with patch("httpx.AsyncClient.post") as mock_post:
+        resp = MagicMock(status_code=201)
+        resp.json.return_value = {"invite_id": "inv_custom"}
+        mock_post.return_value = resp
+
+        res = await gateway.send_connection_request("acc_1", "prof_1", message="Hi there!")
+        assert res == "inv_custom"
+        sent_payload = mock_post.call_args[1]["json"]
+        assert sent_payload["message"] == "Hi there!"
+
+    # Case 3: timeout is re-raised
+    with (
+        patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("Timeout")),
+        pytest.raises(httpx.TimeoutException),
+    ):
+        await gateway.send_connection_request("acc_1", "prof_1", message=None)
+
+
+@pytest.mark.asyncio
+async def test_unipile_gateway_check_relation_verified_routes():
+    """Directly verifies UnipileGateway.check_relation returns CONNECTED, PENDING, or NOT_CONNECTED."""
+    from src.gateways.unipile_gateway import UnipileGateway
+
+    gateway = UnipileGateway(dsn="https://api.unipile.com", token="dummy_token")
+
+    # 1. Profile returns FIRST_DEGREE
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_get.return_value = MagicMock(
+            status_code=200, json=lambda: {"network_distance": "FIRST_DEGREE"}
+        )
+        res = await gateway.check_relation("acc_1", "target_connected")
+        assert res["status"] == "CONNECTED"
+
+    # 2. Profile returns is_relationship=True
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"is_relationship": True})
+        res = await gateway.check_relation("acc_1", "target_rel")
+        assert res["status"] == "CONNECTED"
+
+    # 3. Target profile found in sent invitations list
+    def mock_get_router(url, *args, **kwargs):
+        if "invite/sent" in url:
+            return MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "object": "InvitationList",
+                    "items": [{"id": "inv_99", "invited_user_id": "target_pending"}],
+                },
+            )
+        return MagicMock(
+            status_code=200,
+            json=lambda: {"network_distance": "SECOND_DEGREE", "is_relationship": False},
+        )
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get_router):
+        res = await gateway.check_relation("acc_1", "target_pending")
+        assert res["status"] == "PENDING"
+
+    # 4. Neither connected nor pending
+    def mock_get_neither(url, *args, **kwargs):
+        if "invite/sent" in url:
+            return MagicMock(status_code=200, json=lambda: {"items": []})
+        return MagicMock(
+            status_code=200,
+            json=lambda: {"network_distance": "THIRD_DEGREE", "is_relationship": False},
+        )
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get_neither):
+        res = await gateway.check_relation("acc_1", "target_other")
+        assert res["status"] == "NOT_CONNECTED"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

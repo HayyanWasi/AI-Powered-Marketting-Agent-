@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from src.utils.sanitizer import sanitize_error_message
+
 from ..constants import ExecutionStatus, SpanType
 from ..interfaces.operations import PlatformOperationsService as PlatformOperationsServiceABC
 from ..models.execution_history import ExecutionHistoryRecord
@@ -85,6 +87,7 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
         self._active_traces: dict[UUID, ExecutionTrace] = {}
         self._trace_start_times: dict[UUID, datetime] = {}
         self._workflow_spans: dict[UUID, tuple[ExitStack, Any]] = {}
+        self._trace_user_ids: dict[UUID, str | UUID | None] = {}
 
     async def initialize(self) -> None:
         """Start background flush tasks for all telemetry buffers."""
@@ -121,12 +124,15 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
         workflow_type: str,
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        user_id: str | UUID | None = None,
     ) -> UUID:
         """Record the start of a workflow execution.
 
         Creates LangSmith trace, opens OTel span, emits JSON log,
         and records pending execution history entry.
         """
+        resolved_user_id = user_id or (metadata.get("user_id") if metadata else None)
+
         try:
             trace = await self.langsmith.create_execution_trace(
                 workflow_id=workflow_id,
@@ -141,8 +147,10 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
                 metadata=metadata,
             )
 
+        trace.user_id = resolved_user_id
         self._active_traces[trace.id] = trace
         self._trace_start_times[trace.id] = datetime.now(UTC)
+        self._trace_user_ids[trace.id] = resolved_user_id
 
         try:
             stack = ExitStack()
@@ -169,20 +177,31 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
         duration_ms: int,
         error: str | None = None,
         metadata: dict[str, Any] | None = None,
+        user_id: str | UUID | None = None,
     ) -> None:
         """Record workflow completion with guardrails, metrics, and history."""
         trace = self._active_traces.pop(trace_id, None)
         start_time = self._trace_start_times.pop(trace_id, None)
         span_entry = self._workflow_spans.pop(trace_id, None)
+        stored_user_id = self._trace_user_ids.pop(trace_id, None)
         if not trace:
             return
+
+        sanitized_error = sanitize_error_message(error)
+        resolved_user_id = (
+            user_id
+            or getattr(trace, "user_id", None)
+            or stored_user_id
+            or (metadata.get("user_id") if metadata else None)
+            or (trace.metadata.get("user_id") if trace and trace.metadata else None)
+        )
 
         if span_entry is not None:
             stack, span = span_entry
             try:
                 self.otel.set_workflow_status(span, status)
-                if error:
-                    self.otel.record_error(span, error)
+                if sanitized_error:
+                    self.otel.record_error(span, sanitized_error)
             except Exception as e:
                 logger.warning("OTel workflow span update failed for %s: %s", workflow_id, e)
             finally:
@@ -192,17 +211,17 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
             await self.langsmith.finalize_trace(
                 trace=trace,
                 status=status,
-                error=error,
+                error=sanitized_error,
             )
         except Exception as e:
             logger.warning("LangSmith trace finalization failed for %s: %s", workflow_id, e)
 
         # Emit JSON log
-        if error:
+        if sanitized_error:
             self.json_logger.workflow_fail(
                 workflow_id=workflow_id,
                 duration_ms=duration_ms,
-                error=error,
+                error=sanitized_error,
                 trace_id=str(trace_id),
                 metadata=metadata,
             )
@@ -248,6 +267,7 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
         # Persist execution history
         end_time = datetime.now(UTC)
         history_record = ExecutionHistoryRecord(
+            user_id=resolved_user_id,
             workflow_id=workflow_id,
             workflow_type=trace.workflow_type,
             status=ExecutionStatus(status),
@@ -445,6 +465,7 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
 
     async def get_execution_history(
         self,
+        user_id: str | UUID | None = None,
         workflow_id: str | None = None,
         status: str | None = None,
         time_range_start: datetime | None = None,
@@ -455,6 +476,7 @@ class PlatformOperationsService(PlatformOperationsServiceABC):
     ) -> list[dict[str, Any]]:
         """Query execution history with filters and pagination."""
         return await self._history_repo.query(
+            user_id=user_id,
             workflow_id=workflow_id,
             status=status,
             time_range_start=time_range_start,

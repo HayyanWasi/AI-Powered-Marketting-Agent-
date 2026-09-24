@@ -68,7 +68,7 @@ class MockUnipileGateway(UnipileGateway):
         return True
 
     async def send_connection_request(
-        self, account_id: str, linkedin_id: str, message: str
+        self, account_id: str, linkedin_id: str, message: str | None = None
     ) -> str | None:
         invite_id = f"mock_invite_{uuid4().hex[:8]}"
         logger.info(
@@ -159,6 +159,6 @@ class MockUnipileGateway(UnipileGateway):
             for i in range(limit)
         ]
 
-    async def check_relation(self, account_id: str, linkedin_id: str) -> bool:
+    async def check_relation(self, account_id: str, linkedin_id: str) -> dict[str, str]:
         logger.info("[MOCK] check_relation(%s, %s)", account_id, linkedin_id)
-        return True
+        return {"status": "NOT_CONNECTED"}

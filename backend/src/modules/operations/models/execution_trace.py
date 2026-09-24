@@ -69,12 +69,13 @@ class ExecutionTrace:
     metadata: dict[str, Any] | None = None
     _root_run: Any = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    user_id: UUID | str | None = None
 
     def add_span(self, span: TraceSpan) -> None:
         self.spans.append(span)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "id": str(self.id),
             "workflow_id": self.workflow_id,
             "workflow_type": self.workflow_type,
@@ -90,3 +91,6 @@ class ExecutionTrace:
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
         }
+        if self.user_id:
+            d["user_id"] = str(self.user_id)
+        return d

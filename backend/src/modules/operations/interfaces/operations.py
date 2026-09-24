@@ -21,6 +21,7 @@ class PlatformOperationsService(ABC):
         workflow_type: str,
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        user_id: str | UUID | None = None,
     ) -> UUID:
         """Record the start of a workflow execution.
 
@@ -50,6 +51,7 @@ class PlatformOperationsService(ABC):
         duration_ms: int,
         error: str | None = None,
         metadata: dict[str, Any] | None = None,
+        user_id: str | UUID | None = None,
     ) -> None:
         """Record the completion of a workflow execution.
 
@@ -151,6 +153,7 @@ class PlatformOperationsService(ABC):
     @abstractmethod
     async def get_execution_history(
         self,
+        user_id: str | UUID | None = None,
         workflow_id: str | None = None,
         status: str | None = None,
         time_range_start: datetime | None = None,

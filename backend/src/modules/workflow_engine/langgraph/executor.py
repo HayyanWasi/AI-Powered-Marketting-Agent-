@@ -25,6 +25,7 @@ class LangGraphExecutor:
         graph_id: str,
         initial_state: dict,
         thread_id: str,
+        user_id: str | None = None,
     ) -> Any:
         app = self._compiled_apps.get(graph_id)
         if not app:
@@ -33,8 +34,21 @@ class LangGraphExecutor:
         config = {"configurable": {"thread_id": thread_id}}
         operations = get_operations_service()
 
+        target_user_id = (
+            user_id
+            or initial_state.get("user_id")
+            or initial_state.get("organization_id")
+            or initial_state.get("actor_id")
+        )
+
         trace_id = await operations.record_execution_start(
-            workflow_id=thread_id, workflow_type=graph_id, metadata={"initial_state": True}
+            workflow_id=thread_id,
+            workflow_type=graph_id,
+            metadata={
+                "initial_state": True,
+                "user_id": str(target_user_id) if target_user_id else None,
+            },
+            user_id=target_user_id,
         )
 
         start_time = time.perf_counter()
@@ -47,6 +61,7 @@ class LangGraphExecutor:
                 workflow_id=thread_id,
                 status=ExecutionStatus.COMPLETED.value,
                 duration_ms=duration_ms,
+                user_id=target_user_id,
             )
             return result
         except Exception as e:
@@ -57,6 +72,7 @@ class LangGraphExecutor:
                 status=ExecutionStatus.FAILED.value,
                 duration_ms=duration_ms,
                 error=str(e),
+                user_id=target_user_id,
             )
             logger.error("Execution failed for graph %s: %s", graph_id, e)
             raise
@@ -68,6 +84,7 @@ class LangGraphExecutor:
         graph_id: str,
         thread_id: str,
         resume_value: Any = None,
+        user_id: str | None = None,
     ) -> Any:
         app = self._compiled_apps.get(graph_id)
         if not app:
@@ -76,10 +93,22 @@ class LangGraphExecutor:
         config = {"configurable": {"thread_id": thread_id}}
         operations = get_operations_service()
 
+        target_user_id = user_id or (
+            resume_value.get("user_id")
+            or resume_value.get("organization_id")
+            or resume_value.get("actor_id")
+            if isinstance(resume_value, dict)
+            else None
+        )
+
         trace_id = await operations.record_execution_start(
             workflow_id=thread_id,
             workflow_type=graph_id,
-            metadata={"resume_value": str(resume_value)[:100]},
+            metadata={
+                "resume_value": str(resume_value)[:100],
+                "user_id": str(target_user_id) if target_user_id else None,
+            },
+            user_id=target_user_id,
         )
 
         start_time = time.perf_counter()
@@ -92,6 +121,7 @@ class LangGraphExecutor:
                 workflow_id=thread_id,
                 status=ExecutionStatus.COMPLETED.value,
                 duration_ms=duration_ms,
+                user_id=target_user_id,
             )
             return result
         except Exception as e:
@@ -102,6 +132,7 @@ class LangGraphExecutor:
                 status=ExecutionStatus.FAILED.value,
                 duration_ms=duration_ms,
                 error=str(e),
+                user_id=target_user_id,
             )
             logger.error("Resume failed for graph %s: %s", graph_id, e)
             raise
