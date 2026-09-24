@@ -14,7 +14,7 @@ export interface SignUpResult {
   message?: string;
 }
 
-export function sanitizeNext(param?: string | null, fallback = "/dashboard"): string {
+export function sanitizeNext(param?: string | null, fallback = "/campaigns"): string {
   if (!param) return fallback;
   try {
     const decoded = decodeURIComponent(param).trim();
@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         typeof window !== "undefined"
           ? window.location.origin
           : "http://localhost:3000";
-      const safeNext = sanitizeNext(next, "/dashboard");
+      const safeNext = sanitizeNext(next, "/campaigns");
       const redirectUrl = `${origin}/auth/reset-password?type=recovery&next=${encodeURIComponent(safeNext)}`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {

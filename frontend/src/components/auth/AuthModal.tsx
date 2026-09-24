@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { companyApi } from "@/lib/api";
 import { X, Lock, Mail, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 type AuthMode = "signin" | "signup" | "forgot";
@@ -17,12 +19,24 @@ export default function AuthModal() {
   } = useAuth();
 
   const [mode, setMode] = useState<AuthMode>("signin");
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<"google" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading && !oauthLoading) {
+        setIsAuthModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAuthModalOpen, loading, oauthLoading, setIsAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
 
@@ -68,6 +82,18 @@ export default function AuthModal() {
           }
         } else {
           setIsAuthModalOpen(false);
+          try {
+            const brands = await companyApi.list();
+            const hasCompletedBrand = Array.isArray(brands) && brands.some((b) => b.is_complete === true);
+            if (hasCompletedBrand) {
+              router.replace("/campaigns");
+            } else {
+              router.replace("/brandsetup");
+            }
+          } catch (e) {
+            console.error("Failed to check brand status after login:", e);
+            router.replace("/campaigns");
+          }
         }
       } else if (mode === "signup") {
         const { error: authErr, isExistingUser, message } = await signUp(email.trim(), password);
@@ -82,7 +108,7 @@ export default function AuthModal() {
         }
       } else if (mode === "forgot") {
         const currentPath =
-          typeof window !== "undefined" ? window.location.pathname : "/dashboard";
+          typeof window !== "undefined" ? window.location.pathname : "/campaigns";
         const { error: resetErr } = await resetPassword(email.trim(), currentPath);
         if (resetErr) {
           setError(resetErr.message || "Failed to send password reset email.");

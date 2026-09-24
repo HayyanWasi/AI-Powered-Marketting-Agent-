@@ -263,7 +263,7 @@ export function transformPlanToStrategyView(
   };
 }
 
-// ── Phase 4: Intent Detection — strict generation trigger ─────────────────────
+// ── Phase 4: Intent Detection: strict generation trigger ─────────────────────
 //
 // A turn that completes intake continues directly into generation. Once intake
 // was already complete, an explicit generation command is required for a retry.

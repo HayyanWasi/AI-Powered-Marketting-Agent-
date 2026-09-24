@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
 from src.gateways.unipile_gateway import UnipileGateway
+from src.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
@@ -80,19 +82,100 @@ class PublishPostRequest(BaseModel):
 @router.post("/publish")
 async def publish_post_now(
     req: PublishPostRequest,
-    _user: AuthenticatedUser = Depends(get_authenticated_user),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
 ) -> dict[str, Any]:
-    """Publish a text post immediately to LinkedIn via Unipile."""
-    from src.config.settings import settings
+    """Publish a text post immediately to LinkedIn via Unipile with tenant ownership validation."""
+    repo = BaseRepository("linkedin_accounts")
+    unipile_account_id: str | None = None
+
+    if req.account_id and req.account_id.strip():
+        account_identifier = req.account_id.strip()
+        account_row: dict[str, Any] | None = None
+
+        is_uuid = False
+        try:
+            UUID(account_identifier)
+            is_uuid = True
+        except (ValueError, TypeError):
+            is_uuid = False
+
+        if is_uuid:
+            try:
+                res = (
+                    repo.client.table("linkedin_accounts")
+                    .select("*")
+                    .eq("id", account_identifier)
+                    .limit(1)
+                    .execute()
+                )
+                if res.data:
+                    account_row = res.data[0]
+            except Exception as e:
+                logger.warning("Error querying linkedin_accounts by id: %s", e)
+
+        if not account_row:
+            try:
+                res = (
+                    repo.client.table("linkedin_accounts")
+                    .select("*")
+                    .eq("unipile_account_id", account_identifier)
+                    .limit(1)
+                    .execute()
+                )
+                if res.data:
+                    account_row = res.data[0]
+            except Exception as e:
+                logger.warning("Error querying linkedin_accounts by unipile_account_id: %s", e)
+
+        if not account_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"LinkedIn account {account_identifier} not found",
+            )
+
+        if str(account_row.get("user_id")) != str(user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="LinkedIn account does not belong to the authenticated user",
+            )
+
+        unipile_account_id = account_row.get("unipile_account_id")
+        if not unipile_account_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="LinkedIn account missing unipile_account_id",
+            )
+    else:
+        # Resolve existing connected LinkedIn account owned by authenticated user
+        try:
+            res = (
+                repo.client.table("linkedin_accounts")
+                .select("*")
+                .eq("user_id", str(user.id))
+                .eq("status", "connected")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+        except Exception as e:
+            logger.warning("Error querying owned connected linkedin_accounts: %s", e)
+            rows = []
+
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No connected LinkedIn account found for the authenticated user",
+            )
+        unipile_account_id = rows[0].get("unipile_account_id")
+        if not unipile_account_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Connected LinkedIn account is missing unipile_account_id",
+            )
 
     gateway = _configured_gateway()
-    account_id = req.account_id or settings.unipile_account_id
-    if not account_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No UNIPILE_ACCOUNT_ID configured in settings",
-        )
-    post_id = await gateway.create_post(account_id, req.text)
+    post_id = await gateway.create_post(unipile_account_id, req.text)
     if not post_id:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

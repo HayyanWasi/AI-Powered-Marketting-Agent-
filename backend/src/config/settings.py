@@ -1,9 +1,9 @@
 """Application configuration using Pydantic Settings."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Campaign Management API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    APP_ENV: str = "development"
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -30,6 +31,16 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("true", "1", "yes", "on", "debug", "dev")
         return bool(v)
+
+    @model_validator(mode="after")
+    def _validate_production_signing_secret(self) -> Self:
+        if str(self.APP_ENV).lower() == "production":
+            secret = self.LINKEDIN_HOSTED_AUTH_SIGNING_SECRET
+            if not secret or len(secret.strip()) < 32:
+                raise ValueError(
+                    "LINKEDIN_HOSTED_AUTH_SIGNING_SECRET must be configured with at least 32 characters in production."
+                )
+        return self
 
     log_level: str = "INFO"
 
@@ -156,6 +167,8 @@ class Settings(BaseSettings):
     app_public_base_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
     unipile_hosted_auth_expiry_minutes: int = 15
+    # Dedicated secret for signing and verifying Hosted Auth notify callback tokens.
+    LINKEDIN_HOSTED_AUTH_SIGNING_SECRET: str | None = None
     linkedin_auto_engagement_enabled: bool = True
     linkedin_daily_invite_limit: int = 25
     linkedin_daily_like_limit: int = 40
@@ -164,6 +177,12 @@ class Settings(BaseSettings):
     # A post stuck in 'publishing' longer than this is treated as a crashed
     # claim and parked in 'needs_review' (fail-closed; never auto-republished).
     linkedin_publish_stale_minutes: int = 15
+    # An engagement log stuck in 'claimed' longer than this is treated as a crashed
+    # claim and parked in 'needs_review' (fail-closed; never retried automatically).
+    linkedin_engagement_stale_minutes: int = 15
+    # Safety flag: controls whether automated background stale recovery is active.
+    # Defaults to False to prevent unexpected mutation of live rows until authorized.
+    linkedin_enable_stale_recovery: bool = False
 
     # Mock mode (safe development — no real LinkedIn API calls)
     use_mock_unipile: bool = False

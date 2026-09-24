@@ -40,8 +40,8 @@ export default function Footer() {
           <Link href="/" className="hover:text-white transition-colors">
             Platform
           </Link>
-          <Link href="/dashboard" className="hover:text-white transition-colors">
-            Dashboard
+          <Link href="/campaigns" className="hover:text-white transition-colors">
+            Campaigns
           </Link>
           <Link href="/brandsetup" className="hover:text-white transition-colors">
             Brandsetup

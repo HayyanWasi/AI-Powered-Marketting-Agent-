@@ -145,7 +145,7 @@ export default function SchedulePostModal({
         hour: "numeric",
         minute: "2-digit",
       })
-    : "—";
+    : "-";
 
   return (
     <div

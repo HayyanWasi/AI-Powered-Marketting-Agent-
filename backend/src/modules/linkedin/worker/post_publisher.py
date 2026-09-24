@@ -46,8 +46,10 @@ async def publish_due_posts() -> dict[str, int]:
     gateway = get_unipile_gateway()
 
     # Fail-closed recovery: park any claim that crashed mid-publish BEFORE we
-    # claim new work. This never calls Unipile and never resets to 'scheduled'.
-    recover_stale_publishing(posts_repo)
+    # claim new work. Gated behind settings.linkedin_enable_stale_recovery
+    # so live rows are not mutated until authorized.
+    if getattr(settings, "linkedin_enable_stale_recovery", False):
+        recover_stale_publishing(posts_repo)
 
     now_iso = datetime.now(UTC).isoformat()
 
@@ -160,67 +162,107 @@ def _claim_post(repo: BaseRepository, post_id: str) -> bool:
         return False
 
 
-def recover_stale_publishing(repo: BaseRepository | None = None) -> int:
+def recover_stale_publishing(
+    repo: BaseRepository | None = None,
+    force: bool = False,
+    post_id: str | None = None,
+) -> int:
     """Fail-closed recovery for claims stuck in 'publishing'.
 
     A post that stayed 'publishing' longer than
-    ``settings.linkedin_publish_stale_minutes`` almost certainly belongs to a
-    worker that crashed mid-publish. This Unipile deployment cannot reconcile
-    whether the remote post was actually created (no post-listing/search by
-    author, no idempotency key), so auto-retrying could duplicate the post.
+    ``settings.linkedin_publish_stale_minutes`` (or with missing timestamp)
+    almost certainly belongs to a worker that crashed mid-publish. This Unipile
+    deployment cannot reconcile whether the remote post was actually created
+    (no post-listing/search by author, no idempotency key), so auto-retrying
+    could duplicate the post.
 
     Therefore such rows are parked in ``needs_review`` for manual inspection.
     This function NEVER calls Unipile and NEVER transitions
-    ``publishing -> scheduled``. Fresh claims (under the threshold) and rows
-    without a ``publishing_started_at`` timestamp are left untouched.
+    ``publishing -> scheduled``. Fresh claims (under the threshold) are left untouched.
+
+    Safety:
+    - Background scheduler / publish_due_posts invocation is gated behind
+      ``settings.linkedin_enable_stale_recovery``.
+    - Recovery updates use Compare-and-Set (CAS): only update while status is
+      still 'publishing' and the row still satisfies the stale condition.
+    - If ``post_id`` is supplied, only that specific row is evaluated and recovered,
+      leaving all other live rows untouched.
 
     Returns the number of rows moved to ``needs_review``.
     """
     repo = repo or BaseRepository("linkedin_posts")
-    cutoff = (
-        datetime.now(UTC) - timedelta(minutes=settings.linkedin_publish_stale_minutes)
-    ).isoformat()
+    cutoff_dt = datetime.now(UTC) - timedelta(minutes=settings.linkedin_publish_stale_minutes)
 
     try:
-        res = (
+        cand_query = (
             repo.client.table("linkedin_posts")
             .select("id,publishing_started_at")
             .eq("status", PostStatus.PUBLISHING.value)
-            .lte("publishing_started_at", cutoff)
-            .execute()
         )
-        stale = res.data or []
+        if post_id is not None:
+            cand_query = cand_query.eq("id", str(post_id))
+
+        res = cand_query.limit(100).execute()
+        candidates = res.data or []
     except Exception as e:
-        logger.error("[POST PUBLISHER] Failed to query stale publishing posts: %s", e)
+        logger.error("[POST PUBLISHER] Failed to query publishing posts: %s", e)
         return 0
 
     recovered = 0
-    for row in stale:
-        post_id = row.get("id")
+    for row in candidates:
+        row_post_id = row.get("id")
+        started_at = row.get("publishing_started_at")
+
+        is_stale = False
+        if started_at is None:
+            # Case 1: publishing_started_at IS NULL
+            is_stale = True
+        else:
+            # Case 2: publishing_started_at <= cutoff
+            try:
+                if isinstance(started_at, str):
+                    s_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                elif isinstance(started_at, datetime):
+                    s_dt = started_at
+                else:
+                    s_dt = None
+                if s_dt and s_dt <= cutoff_dt:
+                    is_stale = True
+            except Exception:
+                is_stale = True
+
+        if not is_stale:
+            continue
+
         try:
-            # Guarded by status='publishing' so we never clobber a row that a
-            # worker just finished (published/failed) in parallel.
-            upd = (
+            # CAS update: only update while status is still 'publishing'
+            # and matching the inspected started_at state to prevent race conditions.
+            query = (
                 repo.client.table("linkedin_posts")
                 .update({"status": PostStatus.NEEDS_REVIEW.value})
-                .eq("id", post_id)
+                .eq("id", row_post_id)
                 .eq("status", PostStatus.PUBLISHING.value)
-                .execute()
             )
+            if started_at is None:
+                if hasattr(query, "is_"):
+                    query = query.is_("publishing_started_at", "null")
+            else:
+                query = query.eq("publishing_started_at", started_at)
+
+            upd = query.execute()
             if upd.data:
                 recovered += 1
                 logger.warning(
-                    "[POST PUBLISHER] Stale claim: post %s in 'publishing' since %s "
-                    "exceeded %d min -> needs_review (reason=remote_publish_state_unknown). "
+                    "[POST PUBLISHER] Stale claim: post %s in 'publishing' (started_at=%s) "
+                    "-> needs_review (reason=remote publish state unknown / stale publishing claim). "
                     "NOT auto-republished; manual review required.",
-                    post_id,
-                    row.get("publishing_started_at"),
-                    settings.linkedin_publish_stale_minutes,
+                    row_post_id,
+                    started_at,
                 )
         except Exception as e:
             logger.error(
                 "[POST PUBLISHER] Failed to park stale post %s in needs_review: %s",
-                post_id,
+                row_post_id,
                 e,
             )
 
@@ -233,7 +275,7 @@ def recover_stale_publishing(repo: BaseRepository | None = None) -> int:
 
 
 def _mark_published(repo: BaseRepository, post_id: str, unipile_post_id: str) -> None:
-    """Update linkedin_posts row to 'published'."""
+    """Update linkedin_posts row to 'published' with CAS guard."""
     try:
         repo.client.table("linkedin_posts").update(
             {
@@ -241,32 +283,36 @@ def _mark_published(repo: BaseRepository, post_id: str, unipile_post_id: str) ->
                 "unipile_post_id": unipile_post_id,
                 "published_at": datetime.now(UTC).isoformat(),
             }
-        ).eq("id", post_id).execute()
+        ).eq("id", post_id).eq("status", PostStatus.PUBLISHING.value).execute()
     except Exception as e:
         logger.error("[POST PUBLISHER] Failed to mark post %s as published: %s", post_id, e)
 
 
 def _mark_failed(repo: BaseRepository, post_id: str, reason: str) -> None:
-    """Update linkedin_posts row to 'failed'."""
+    """Update linkedin_posts row to 'failed' with CAS guard."""
     try:
         repo.client.table("linkedin_posts").update(
             {
                 "status": "failed",
                 "published_at": None,
             }
-        ).eq("id", post_id).execute()
+        ).eq(
+            "id", post_id
+        ).eq("status", PostStatus.PUBLISHING.value).execute()
     except Exception as e:
         logger.error("[POST PUBLISHER] Failed to mark post %s as failed: %s", post_id, e)
 
 
 def _mark_needs_review(repo: BaseRepository, post_id: str, reason: str = "") -> None:
-    """Update linkedin_posts row to 'needs_review'."""
+    """Update linkedin_posts row to 'needs_review' with CAS guard."""
     try:
         repo.client.table("linkedin_posts").update(
             {
                 "status": PostStatus.NEEDS_REVIEW.value,
             }
-        ).eq("id", post_id).execute()
+        ).eq(
+            "id", post_id
+        ).eq("status", PostStatus.PUBLISHING.value).execute()
     except Exception as e:
         logger.error("[POST PUBLISHER] Failed to mark post %s as needs_review: %s", post_id, e)
 
@@ -359,11 +405,23 @@ async def execute_post_publish(
                 }
             )
             .eq("id", post_id)
+            .eq("status", PostStatus.PUBLISHING.value)
             .execute()
         )
         post_row = res.data[0] if (res.data and len(res.data) > 0) else None
         if not post_row:
-            raise RuntimeError(f"Post {post_id} finalization update matched 0 rows")
+            # Late worker completion: row was already moved out of 'publishing' (e.g. to needs_review)
+            logger.warning(
+                "[POST PUBLISHER] Post %s was published remotely (%s), but DB row was no longer in 'publishing' (likely moved to needs_review by stale recovery). Preserving current state.",
+                post_id,
+                unipile_post_id,
+            )
+            return {
+                "status": PostStatus.NEEDS_REVIEW.value,
+                "success": False,
+                "unipile_post_id": unipile_post_id,
+                "error": "Late worker completion: post claim was already recovered into needs_review",
+            }
 
         logger.info(
             "[POST PUBLISHER] ✅ Post %s published to LinkedIn. Unipile ID: %s",
@@ -386,7 +444,7 @@ async def execute_post_publish(
         )
         # External success + local DB finalization failure:
         # Do NOT dispatch again.
-        # Best effort: set needs_review.
+        # Best effort: set needs_review (guarded by status='publishing').
         # If even that DB mutation fails: leave in 'publishing'.
         # Never return it to draft automatically.
         try:
@@ -395,7 +453,7 @@ async def execute_post_publish(
                     "status": PostStatus.NEEDS_REVIEW.value,
                     "unipile_post_id": unipile_post_id,
                 }
-            ).eq("id", post_id).execute()
+            ).eq("id", post_id).eq("status", PostStatus.PUBLISHING.value).execute()
         except Exception as fallback_err:
             logger.error(
                 "[POST PUBLISHER] Failed to park post %s in needs_review: %s. Leaving in publishing.",

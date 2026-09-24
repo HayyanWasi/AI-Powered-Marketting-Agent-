@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import ScrollObserver from "@/components/ScrollObserver";
 import { AuthProvider } from "@/context/AuthContext";
+import { BrandProvider } from "@/context/BrandContext";
 import AuthModal from "@/components/auth/AuthModal";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -39,9 +40,11 @@ export default function RootLayout({
         className="min-h-screen w-full m-0 p-0 bg-[#0e151c] text-[#f3f4f6] flex flex-col selection:bg-[#20b8e5]/30 selection:text-white"
       >
         <AuthProvider>
-          <ScrollObserver />
-          <AuthModal />
-          {children}
+          <BrandProvider>
+            <ScrollObserver />
+            <AuthModal />
+            {children}
+          </BrandProvider>
         </AuthProvider>
       </body>
     </html>

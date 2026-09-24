@@ -15,7 +15,7 @@ import {
 import Sidebar from "@/components/shell/Sidebar";
 import CampaignBrief from "@/components/campaign/CampaignBrief";
 import type { IntakeChecklistState, CampaignPlanDocument } from "@/lib/api";
-import { ChevronLeft, ArrowUp, Check, Sparkles, Loader2 } from "lucide-react";
+import { ChevronLeft, ArrowUp, ArrowRight, Check, Loader2 } from "lucide-react";
 
 type TabKey = "chat" | "content" | "calendar" | "strategy";
 
@@ -330,7 +330,7 @@ export default function CampaignWorkspacePage() {
                               onClick={handleGenerate}
                               className="shrink-0 inline-flex items-center gap-2 rounded-[9px] bg-[#137082] hover:bg-[#0f5b6a] text-white text-[13.5px] font-semibold px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#137082]/40"
                             >
-                              <Sparkles size={15} /> Generate campaign
+                              <ArrowRight size={15} /> Generate campaign
                             </button>
                           </div>
                         )}
@@ -399,7 +399,7 @@ export default function CampaignWorkspacePage() {
             )}
           </div>
 
-          {/* Right brief panel — only on the Chat tab */}
+          {/* Right brief panel: only on the Chat tab */}
           {tab === "chat" && (
             <CampaignBrief
               checklist={brief.checklist}

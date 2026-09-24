@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Megaphone, Loader2, AlertCircle, Calendar, ArrowRight, RefreshCw } from "lucide-react";
 import Sidebar from "@/components/shell/Sidebar";
 import { useAuth } from "@/context/AuthContext";
-import { campaignApi, companyApi, Campaign, CompanyProfile } from "@/lib/api";
-import { getActiveBrandId, setActiveBrandId } from "@/lib/activeBrand";
+import { useBrand } from "@/context/BrandContext";
+import { campaignApi, Campaign } from "@/lib/api";
 
 function formatDate(isoString?: string): string {
-  if (!isoString) return "—";
+  if (!isoString) return "-";
   try {
     const d = new Date(isoString);
     return d.toLocaleDateString("en-US", {
@@ -45,62 +45,58 @@ function StatusBadge({ state }: { state?: string }) {
 
 export default function CampaignsPage() {
   const { user, isLoading: authLoading, setIsAuthModalOpen } = useAuth();
+  const { activeBrand, activeBrandId, isLoading: brandsLoading } = useBrand();
   const router = useRouter();
 
-  const [activeBrand, setActiveBrand] = useState<CompanyProfile | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshIndex, setRefreshIndex] = useState(0);
 
-  const loadBrandAndCampaigns = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      // 1. Resolve owned brands
-      const brands = await companyApi.list();
-      let activeId = getActiveBrandId(user.id);
-
-      if ((!activeId || !brands.some((b) => b.id === activeId)) && brands.length > 0) {
-        activeId = brands[0].id;
-        setActiveBrandId(user.id, activeId);
+    async function load() {
+      if (authLoading || brandsLoading) return;
+      if (!user) {
+        setLoading(false);
+        return;
       }
 
-      if (!activeId) {
-        setActiveBrand(null);
+      if (!activeBrandId) {
         setCampaigns([]);
         setLoading(false);
         return;
       }
 
-      const brand = brands.find((b) => b.id === activeId) ?? null;
-      setActiveBrand(brand);
+      setLoading(true);
+      setError(null);
 
-      // 2. Load campaigns strictly for activeBrandId (No N+1 queries)
-      const res = await campaignApi.list({
-        company_profile_id: activeId,
-        page_size: 50,
-      });
+      try {
+        const res = await campaignApi.list({
+          company_profile_id: activeBrandId,
+          page_size: 50,
+        });
+        if (cancelled) return;
 
-      setCampaigns(res.campaigns || []);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to load campaigns";
-      setError(msg);
-    } finally {
-      setLoading(false);
+        setCampaigns(res.campaigns || []);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : "Failed to load campaigns";
+          setError(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
-  }, [user]);
 
-  useEffect(() => {
-    if (!authLoading) {
-      void loadBrandAndCampaigns();
-    }
-  }, [authLoading, loadBrandAndCampaigns]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, brandsLoading, user, activeBrandId, refreshIndex]);
 
   return (
     <div className="flex h-screen bg-[#F8FBFC] text-[#18222D] overflow-hidden font-sans">
@@ -124,7 +120,7 @@ export default function CampaignsPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => void loadBrandAndCampaigns()}
+              onClick={() => setRefreshIndex((i) => i + 1)}
               aria-label="Refresh campaigns"
               className="p-2 text-[#52606B] hover:text-[#18222D] hover:bg-[#F8FBFC] rounded-[8px] border border-[#DCE6EC] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#187CA4]/30"
             >
@@ -165,7 +161,7 @@ export default function CampaignsPage() {
                 <p className="text-[13px] text-[#721C24]/80 mt-1">{error}</p>
                 <button
                   type="button"
-                  onClick={() => void loadBrandAndCampaigns()}
+                  onClick={() => setRefreshIndex((i) => i + 1)}
                   className="mt-3 text-[13px] font-semibold underline text-[#187CA4] hover:text-[#136384]"
                 >
                   Retry
@@ -183,7 +179,7 @@ export default function CampaignsPage() {
                 Set up a brand first to manage and generate campaigns.
               </p>
               <Link
-                href="/?mode=new"
+                href="/brandsetup?mode=new"
                 className="mt-5 inline-flex items-center gap-2 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] text-white text-[13.5px] font-semibold px-4 py-2 transition-colors"
               >
                 Set up brand

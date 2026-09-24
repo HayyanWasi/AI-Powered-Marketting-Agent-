@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, ArrowUpRight } from "lucide-react";
+import { Bot, ArrowUpRight } from "lucide-react";
 import { ClimbingBoxLoader } from "react-spinners";
 import { ChatMessage } from "./types";
 import ThoughtContainer from "./ThoughtContainer";
@@ -19,13 +19,13 @@ export default function AssistantMessageBubble({
       <div className="max-w-3xl mx-auto px-4 flex items-start space-x-3.5">
         {/* Assistant Avatar */}
         <div className="w-7 h-7 rounded-lg bg-[#20B8E5]/10 border border-[#20B8E5]/20 text-[#20B8E5] flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Sparkles size={14} />
+          <Bot size={14} />
         </div>
 
         <div className="flex-1 min-w-0">
           {/* Header with Name and Timestamp */}
           <div className="flex items-center space-x-2 mb-1.5">
-            <span className="text-xs font-semibold text-[#F5F7FA]">Hipoclipse AI</span>
+            <span className="text-xs font-semibold text-[#F5F7FA]">Hipoclipse Agent</span>
             <span className="text-[11px] text-[#6B7785]">{message.timestamp}</span>
           </div>
 

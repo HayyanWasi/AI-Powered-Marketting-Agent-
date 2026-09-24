@@ -33,7 +33,25 @@ export default function CircuitBreakerCard() {
     }
   }, []);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      setLoading(true);
+      try {
+        const res = await circuitBreakerApi.getStatus();
+        if (!cancelled) setStatus(res);
+      } catch (e) {
+        console.warn("Could not load circuit breaker:", e);
+        if (!cancelled) setStatus({ state: "unknown", message: "Could not fetch status" });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleReset = async () => {
     setResetting(true);
@@ -142,7 +160,7 @@ export default function CircuitBreakerCard() {
                   ? "bg-rose-600 hover:bg-rose-500 text-white"
                   : "bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50"
                 }`}
-              title={!isOpen ? "Circuit breaker is already closed — no reset needed" : ""}
+              title={!isOpen ? "Circuit breaker is already closed: no reset needed" : ""}
             >
               {resetting ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
               {resetting ? "Resetting…" : isOpen ? "Reset Circuit Breaker" : "Automation Running Normally"}

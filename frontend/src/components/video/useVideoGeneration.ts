@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { VideoGenerationStatus, VideoArtifact, VideoVariation } from "./types";
-import { videoApi } from "@/lib/api";
+import { videoApi, ApiError } from "@/lib/api";
 
 interface GenerationOptions {
   forceError?: boolean;
@@ -14,6 +14,7 @@ export function useVideoGeneration(campaignId: string | null) {
   const [targetProgress, setTargetProgress] = useState(0);
   const [displayProgress, setDisplayProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState("");
   const [artifact, setArtifact] = useState<VideoArtifact | null>(null);
 
@@ -71,6 +72,7 @@ export function useVideoGeneration(campaignId: string | null) {
       abortControllerRef.current = false;
       setStatus("generating");
       setError(null);
+      setErrorStatus(null);
       setCurrentPrompt(prompt);
       setTargetProgress(15);
       setDisplayProgress(0);
@@ -188,13 +190,23 @@ export function useVideoGeneration(campaignId: string | null) {
       } catch (err: unknown) {
         if (progressInterval) clearInterval(progressInterval);
 
+        const isExpectedBusinessError =
+          err instanceof ApiError && (err.status === 409 || err.status === 422);
+
         const errorMsg =
           err instanceof Error
             ? err.message
             : "Video generation failed. Please verify the backend service status.";
-        console.error("[VideoGen Error]", err);
+
+        if (isExpectedBusinessError) {
+          console.warn(`[VideoGen Validation] ${err.status}: ${errorMsg}`);
+        } else {
+          console.error("[VideoGen Error]", err);
+        }
+
         setStatus("error");
         setError(errorMsg);
+        setErrorStatus(err instanceof ApiError ? err.status : null);
         setCurrentStage("Generation Failed");
         setArtifact((prev) =>
           prev
@@ -236,6 +248,7 @@ export function useVideoGeneration(campaignId: string | null) {
     setTargetProgress(0);
     setDisplayProgress(0);
     setError(null);
+    setErrorStatus(null);
     setArtifact(null);
   }, []);
 
@@ -248,6 +261,7 @@ export function useVideoGeneration(campaignId: string | null) {
     targetProgress,
     displayProgress: effectiveDisplayProgress,
     error,
+    errorStatus,
     artifact,
     startGeneration,
     selectVariation,

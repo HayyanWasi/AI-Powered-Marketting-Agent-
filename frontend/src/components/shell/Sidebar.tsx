@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { companyApi } from "@/lib/api";
-import { getActiveBrandId, setActiveBrandId } from "@/lib/activeBrand";
+import { useBrand } from "@/context/BrandContext";
 import {
   Building2,
   Megaphone,
@@ -42,19 +41,14 @@ interface NavItem {
 // rendered but disabled with a "Soon" marker, so the nav never links to a
 // page that does not exist yet (they get wired as each screen is built).
 const NAV: NavItem[] = [
-  { key: "home", label: "Brand Profile", icon: Building2, href: "/brandsetup" },
+  { key: "home", label: "Brand Profile", icon: Building2, href: "/brandsetup?mode=edit" },
   { key: "campaigns", label: "Campaigns", icon: Megaphone, href: "/campaigns" },
   { key: "content", label: "Content", icon: FileText },
   { key: "calendar", label: "Calendar", icon: Calendar, href: "/calendar" },
   { key: "video", label: "Video Studio", icon: Clapperboard, href: "/video-generation" },
   { key: "prospects", label: "Prospects", icon: Users, href: "/prospects" },
-  { key: "history", label: "History", icon: Clock },
+  { key: "history", label: "History", icon: Clock, href: "/history" },
 ];
-
-interface BrandItem {
-  id: string;
-  company_name: string;
-}
 
 interface Props {
   active: NavKey;
@@ -62,64 +56,23 @@ interface Props {
 
 export default function Sidebar({ active }: Props) {
   const { user } = useAuth();
+  const {
+    brands,
+    activeBrand,
+    activeBrandId,
+    setActiveBrandId,
+    isLoading: loadingBrands,
+  } = useBrand();
   const router = useRouter();
   const email = user?.email ?? "";
 
-  // Brand switcher — the active brand is a frontend selection (localStorage),
-  // the source of truth stays the backend's owned company profiles.
-  const [brands, setBrands] = useState<BrandItem[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [loadingBrands, setLoadingBrands] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!user) {
-        setBrands([]);
-        setActiveId(null);
-        setLoadingBrands(false);
-        return;
-      }
-      setLoadingBrands(true);
-      try {
-        const list = await companyApi.list();
-        if (cancelled) return;
-        const items: BrandItem[] = list.map((p) => ({ id: p.id, company_name: p.company_name }));
-        setBrands(items);
-        let current = getActiveBrandId(user.id);
-        if ((!current || !items.some((b) => b.id === current)) && items.length > 0) {
-          // No valid selection yet: default to the first owned brand so
-          // brand-scoped actions (campaign creation) have a profile to use.
-          current = items[0].id;
-          setActiveBrandId(user.id, current);
-        }
-        setActiveId(current);
-      } catch {
-        if (!cancelled) setBrands([]);
-      } finally {
-        if (!cancelled) setLoadingBrands(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  const activeBrand = brands.find((b) => b.id === activeId) ?? null;
 
   const switchTo = (id: string) => {
-    if (!user) return;
-    setActiveId(id);
+    setActiveBrandId(id);
     setOpen(false);
-    setActiveBrandId(user.id, id);
-    if (typeof window !== "undefined") {
-      if (window.location.pathname.startsWith("/campaigns/")) {
-        router.push("/campaigns");
-      } else {
-        window.location.reload();
-      }
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/campaigns/")) {
+      router.push("/campaigns");
     }
   };
 
@@ -184,7 +137,7 @@ export default function Sidebar({ active }: Props) {
               )}
               <div className="max-h-[240px] overflow-y-auto">
                 {brands.map((b) => {
-                  const isActive = b.id === activeId;
+                  const isActive = b.id === activeBrandId;
                   return (
                     <button
                       key={b.id}
@@ -229,7 +182,7 @@ export default function Sidebar({ active }: Props) {
                     role="menuitem"
                     onClick={() => {
                       setOpen(false);
-                      router.push("/brandsetup");
+                      router.push("/brandsetup?mode=edit");
                     }}
                     className="w-full flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] text-[#3f4b53] hover:bg-[#f4f6f7] transition-colors"
                   >

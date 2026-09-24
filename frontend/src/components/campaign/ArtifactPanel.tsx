@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   X,
   Layers,
-  Sparkles,
+  FileText,
   Target,
   Calendar,
   MapPin,
@@ -95,7 +95,7 @@ export default function ArtifactPanel({
             : "text-[#9AA6B2] hover:text-white hover:bg-white/[0.03] border border-transparent"
             }`}
         >
-          <Sparkles size={13} className={isGenerating && artifact.posts.length === 0 ? "animate-spin text-[#d75dff]" : ""} />
+          <FileText size={13} className={isGenerating && artifact.posts.length === 0 ? "animate-spin text-[#d75dff]" : ""} />
           <span>
             LinkedIn Posts {artifact.posts.length > 0 ? `(${artifact.posts.length})` : isGenerating ? "(Generating...)" : "(0)"}
           </span>
@@ -349,7 +349,7 @@ export default function ArtifactPanel({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[#F5F7FA] flex items-center space-x-1.5">
-                        <Sparkles size={13} className="text-[#00c2ee]" />
+                        <Target size={13} className="text-[#00c2ee]" />
                         <span>3 Core Messaging Pillars</span>
                       </span>
                       <span className="text-[11px] text-[#6B7785]">Angle Architecture</span>

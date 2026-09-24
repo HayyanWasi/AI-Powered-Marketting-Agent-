@@ -19,10 +19,13 @@ engagement workers.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import UUID
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from src.api.dependencies import AuthenticatedUser, get_authenticated_user
@@ -36,6 +39,7 @@ router = APIRouter(prefix="/linkedin/connections", tags=["LinkedIn Connections"]
 
 _TABLE = "linkedin_accounts"
 _SUCCESS_STATUSES = {"CREATION_SUCCESS", "RECONNECTED"}
+_HOSTED_AUTH_AUDIENCE = "linkedin-hosted-auth-notify"
 
 
 def _is_linkedin(account: dict[str, Any]) -> bool:
@@ -46,6 +50,127 @@ def _is_linkedin(account: dict[str, Any]) -> bool:
 
 def _public_url(base: str, path: str) -> str:
     return f"{base.rstrip('/')}{path}"
+
+
+def _get_signing_secret() -> str:
+    """Retrieve and validate the dedicated Hosted Auth signing secret.
+
+    Fails closed if the secret is unconfigured or shorter than 32 characters.
+    Never falls back to a hardcoded secret. Never logs the secret value.
+    """
+    secret = settings.LINKEDIN_HOSTED_AUTH_SIGNING_SECRET
+    if not secret or len(secret.strip()) < 32:
+        logger.error("Hosted Auth signing secret is not configured or shorter than 32 characters.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Hosted Auth signing secret is not configured or insufficient length",
+        )
+    return secret.strip()
+
+
+def _generate_notify_token(user_id: str, expiry_minutes: int) -> str:
+    """Generate a signed, expiring URL-safe JWT for Hosted Auth notify callback."""
+    secret = _get_signing_secret()
+    now = datetime.now(UTC)
+    exp = int((now + timedelta(minutes=expiry_minutes)).timestamp())
+    claims = {
+        "sub": str(user_id),
+        "aud": _HOSTED_AUTH_AUDIENCE,
+        "exp": exp,
+        "iat": int(now.timestamp()),
+        "jti": uuid.uuid4().hex,
+        "iss": "hipoclipse-backend",
+    }
+    return jwt.encode(
+        claims,
+        secret,
+        algorithm="HS256",
+    )
+
+
+def _verify_notify_token(token: str | None, expected_user_id: str | None) -> dict[str, Any]:
+    """Verify the cryptographically signed notify token.
+
+    Validates:
+    - Token presence (raises 400 if missing)
+    - Signature validity & non-expiry (raises 403 if invalid or expired)
+    - Audience exact match to "linkedin-hosted-auth-notify" (raises 403)
+    - Subject is a valid UUID (raises 403)
+    - Subject matches the user id carried through the callback (raises 403)
+    """
+    secret = _get_signing_secret()
+
+    if not token or not str(token).strip():
+        logger.warning("Unipile connect notify: missing verification token — rejected")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing notify verification token",
+        )
+
+    try:
+        payload = jwt.decode(
+            token.strip(),
+            secret,
+            algorithms=["HS256"],
+            audience=_HOSTED_AUTH_AUDIENCE,
+        )
+    except jwt.ExpiredSignatureError as e:
+        logger.warning("Unipile connect notify: token expired — rejected")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Notify verification token has expired",
+        ) from e
+    except jwt.InvalidAudienceError as e:
+        logger.warning("Unipile connect notify: invalid token audience — rejected")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid notify verification token audience",
+        ) from e
+    except jwt.PyJWTError as e:
+        logger.warning("Unipile connect notify: invalid token signature/claims — rejected")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid notify verification token",
+        ) from e
+
+    token_sub = str(payload.get("sub") or "").strip()
+    try:
+        UUID(token_sub)
+    except ValueError as e:
+        logger.warning("Unipile connect notify: token subject is not a valid UUID — rejected")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid notify verification token subject",
+        ) from e
+
+    if not expected_user_id or token_sub != expected_user_id.strip():
+        logger.warning(
+            "Unipile connect notify: token subject does not match payload name — rejected"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token subject does not match callback user identity",
+        )
+
+    return payload
+
+
+def _append_token_to_url(url: str, token: str) -> str:
+    """Safely append or update ?token=<token> in a URL, preserving other params."""
+    parsed = urlparse(url)
+    query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query_params["token"] = token
+    new_query = urlencode(query_params)
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment,
+        )
+    )
 
 
 @router.post("/link")
@@ -68,6 +193,15 @@ async def create_connection_link(
         datetime.now(UTC) + timedelta(minutes=settings.unipile_hosted_auth_expiry_minutes)
     ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
+    token = _generate_notify_token(
+        user_id=str(user.id),
+        expiry_minutes=settings.unipile_hosted_auth_expiry_minutes,
+    )
+    raw_notify_url = _public_url(
+        settings.app_public_base_url, "/api/v1/linkedin/connections/notify"
+    )
+    notify_url = _append_token_to_url(raw_notify_url, token)
+
     hosted_url = await gateway.create_hosted_auth_link(
         name=str(user.id),
         providers=["LINKEDIN"],
@@ -75,7 +209,7 @@ async def create_connection_link(
             settings.frontend_base_url, "/prospects?linkedin=connected"
         ),
         failure_redirect_url=_public_url(settings.frontend_base_url, "/prospects?linkedin=failed"),
-        notify_url=_public_url(settings.app_public_base_url, "/api/v1/linkedin/connections/notify"),
+        notify_url=notify_url,
         expires_on=expires_on,
     )
 
@@ -93,10 +227,12 @@ async def unipile_connect_notify(request: Request) -> dict[str, str]:
     """Receive the Unipile Hosted Auth result and persist a verified mapping.
 
     Unipile (not the browser) calls this endpoint, echoing back the ``name`` we
-    set (the internal user id). We independently verify the account really
-    exists and is a LinkedIn account before persisting. Always returns 200 so
-    Unipile does not retry-storm; the body reports the outcome.
+    set (the internal user id) and presenting the signed token in query params.
+    We verify the token signature, audience, expiry, and user binding before
+    processing.
     """
+    token = request.query_params.get("token")
+
     try:
         payload = await request.json()
     except Exception:
@@ -106,19 +242,15 @@ async def unipile_connect_notify(request: Request) -> dict[str, str]:
     account_id = str(payload.get("account_id") or "").strip()
     name = str(payload.get("name") or "").strip()  # our internal user id
 
+    # Verify cryptographic token and user binding before ANY account processing
+    _verify_notify_token(token, name)
+
     if status_val not in _SUCCESS_STATUSES:
         logger.info("Unipile connect notify: non-success status '%s' — ignored", status_val)
         return {"status": "ignored"}
     if not account_id or not name:
         logger.warning("Unipile connect notify: missing account_id/name — ignored")
         return {"status": "ignored"}
-
-    # ``name`` must be one of our user ids. Never trust an arbitrary value.
-    try:
-        UUID(name)
-    except ValueError:
-        logger.warning("Unipile connect notify: 'name' is not a valid user id — rejected")
-        return {"status": "rejected"}
 
     # Verify the account really exists on the provider side.
     gateway = get_unipile_gateway()

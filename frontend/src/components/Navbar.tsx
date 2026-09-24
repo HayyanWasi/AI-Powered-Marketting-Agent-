@@ -39,14 +39,14 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Desktop Nav Links: Dashboard, brandsetup, new campaign, video generation, history */}
+        {/* Desktop Nav Links: Campaigns, brandsetup, new campaign, video generation, history */}
         <div className="hidden lg:flex items-center space-x-6 xl:space-x-8">
 
           <Link
-            href="/dashboard"
+            href="/campaigns"
             className="text-[15px] text-[#faf8f4] hover:text-white font-medium transition-colors"
           >
-            Dashboard
+            Campaigns
           </Link>
 
           <Link
@@ -144,11 +144,11 @@ export default function Navbar() {
           <div className="flex flex-col space-y-3">
 
             <Link
-              href="/dashboard"
+              href="/campaigns"
               onClick={() => setMobileMenuOpen(false)}
               className="px-3 py-2 text-base text-white/90 hover:text-white hover:bg-white/5 rounded-lg font-medium"
             >
-              Dashboard
+              Campaigns
             </Link>
 
             <Link

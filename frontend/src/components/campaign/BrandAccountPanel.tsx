@@ -10,7 +10,7 @@ interface Props {
   onBrandUpdated: (brand: CompanyProfile) => void;
 }
 
-/** Safe, honest label for an account — no fabricated profile name/avatar. */
+/** Safe, honest label for an account: no fabricated profile name/avatar. */
 function accountLabel(a: LinkedInConnectedAccount): string {
   const tail = a.unipile_account_id.slice(-6);
   return `${a.provider || "LinkedIn"} account ·••${tail}`;

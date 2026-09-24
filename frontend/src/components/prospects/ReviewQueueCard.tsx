@@ -187,7 +187,7 @@ export default function ReviewQueueCard() {
                   </div>
                   {/* Target post snippet */}
                   <p className="text-[10px] text-zinc-500 mb-1.5 italic">
-                    On: "{c.target_post_snippet?.slice(0, 80) || "LinkedIn post"}…"
+                    On: &quot;{c.target_post_snippet?.slice(0, 80) || "LinkedIn post"}&quot;
                   </p>
                   {/* Generated comment */}
                   <p className="text-xs text-zinc-300 leading-relaxed">
@@ -209,7 +209,7 @@ export default function ReviewQueueCard() {
                   )}
                 </div>
 
-                {/* Actions — only for pending */}
+                {/* Actions: only for pending */}
                 {c.status === "pending_review" && (
                   <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                     <button

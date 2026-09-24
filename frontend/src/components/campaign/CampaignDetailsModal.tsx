@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Copy,
   Check,
-  Sparkles,
   FileText,
   Clock,
   CheckCircle2,
@@ -164,7 +163,7 @@ export default function CampaignDetailsModal({
     }
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-        <Sparkles size={12} className="mr-1.5" />
+        <Clock size={12} className="mr-1.5" />
         {state || "Draft"}
       </span>
     );
@@ -436,7 +435,7 @@ export default function CampaignDetailsModal({
                         href={`/new-campaign?campaign=${campaign.id}`}
                         className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-lg shadow-blue-900/30"
                       >
-                        <Sparkles size={14} />
+                        <FileText size={14} />
                         <span>Generate Campaign Content</span>
                       </Link>
                     </div>

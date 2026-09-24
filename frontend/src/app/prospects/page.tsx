@@ -338,7 +338,7 @@ export default function ProspectsPage() {
       <Sidebar active="prospects" />
 
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Prospects Header — 2 Rows */}
+        {/* Prospects Header: 2 Rows */}
         <header className="shrink-0 border-b border-[#e6e9ec] bg-white">
           {/* ROW 1: Active Brand & LinkedIn Connection Status */}
           <div className="h-14 flex items-center justify-between px-4 sm:px-6 border-b border-[#f1f3f5]">
@@ -961,7 +961,7 @@ export default function ProspectsPage() {
                                 ) : act.target_profile_id ? (
                                   <span>Profile: {act.target_profile_id.slice(0, 14)}…</span>
                                 ) : (
-                                  "—"
+                                  "-"
                                 )}
                               </td>
                               <td className="py-3 px-4">

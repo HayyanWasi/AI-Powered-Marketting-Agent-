@@ -57,10 +57,11 @@ class TestJwtAuthenticationValidation:
             assert "admin" in user.roles
 
     async def test_invalid_x_user_id_uuid_raises_400(self) -> None:
-        with pytest.raises(HTTPException) as exc:
-            await get_authenticated_user(x_user_id="not-a-valid-uuid")
-        assert exc.value.status_code == 400
-        assert "Invalid X-User-Id header format" in exc.value.detail
+        with patch("src.config.settings.settings.REQUIRE_AUTH", False):
+            with pytest.raises(HTTPException) as exc:
+                await get_authenticated_user(x_user_id="not-a-valid-uuid")
+            assert exc.value.status_code == 400
+            assert "Invalid X-User-Id header format" in exc.value.detail
 
 
 class TestIdorPreventionCampaigns:

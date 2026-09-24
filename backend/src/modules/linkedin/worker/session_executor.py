@@ -607,8 +607,14 @@ class SessionExecutor:
         status: EngagementLogStatus,
         provider_result_id: str | None = None,
         error_message: str | None = None,
-    ) -> None:
-        """Update claim result in engagement log."""
+    ) -> bool:
+        """Update claim result in engagement log using CAS guard (status='claimed').
+
+        A late worker completion must not overwrite a claim that stale recovery
+        has already moved to 'needs_review'.
+
+        Returns True if row was updated, False if CAS condition failed.
+        """
         try:
             client = self.client or get_supabase_client()
             update_data: dict[str, str] = {
@@ -619,9 +625,24 @@ class SessionExecutor:
                 update_data["provider_result_id"] = provider_result_id
             if error_message:
                 update_data["error_message"] = sanitize_error_message(error_message) or ""
-            client.table("linkedin_engagement_log").update(update_data).eq("id", claim_id).execute()
+
+            res = (
+                client.table("linkedin_engagement_log")
+                .update(update_data)
+                .eq("id", claim_id)
+                .eq("status", EngagementLogStatus.CLAIMED.value)
+                .execute()
+            )
+            if not (res.data and len(res.data) > 0):
+                logger.warning(
+                    "[ENGAGEMENT EXECUTOR] Claim %s was not in 'claimed' status (likely moved to needs_review by stale recovery). Late completion rejected.",
+                    claim_id,
+                )
+                return False
+            return True
         except Exception as e:
             logger.error("Failed to update engagement log %s: %s", claim_id, e)
+            return False
 
     @staticmethod
     def _is_uuid(val: str) -> bool:

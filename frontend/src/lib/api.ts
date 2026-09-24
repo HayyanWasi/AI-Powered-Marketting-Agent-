@@ -125,6 +125,8 @@ export interface CompanyProfile {
   brand_tone?: string;
   reference_image_urls: string[];
   default_linkedin_account_id?: string | null;
+  is_complete?: boolean;
+  image_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -312,7 +314,7 @@ export const campaignApi = {
   /** GET /api/campaigns/{id} */
   get: (id: string) => get<Campaign>(`/campaigns/${id}`),
 
-  /** PUT /api/campaigns/{id} — requires If-Match header with current version number */
+  /** PUT /api/campaigns/{id}: requires If-Match header with current version number */
   update: (id: string, version: number, data: Partial<Campaign>) =>
     put<Campaign>(`/campaigns/${id}`, data, { 'If-Match': String(version) }),
 
@@ -519,6 +521,8 @@ export interface CampaignPlanDocument {
   language?: string;
   status?: string;
   approved?: boolean;
+  is_stale?: boolean;
+  staleness_reason?: string;
   title?: string;
   executive_summary?: string;
   core_strategy?: {
@@ -589,6 +593,7 @@ export interface DraftPlanRequest {
   platforms?: string[];
   guests?: string[];
   language?: string;
+  research_tier?: string;
 }
 
 export const planApi = {
@@ -887,7 +892,7 @@ export const intakeApi = {
   resetSession: (campaignId: string) =>
     del<{ status: string; message: string }>(`/campaigns/intake/${campaignId}`),
 
-  /** POST /api/campaigns/intake/migrate — re-key checklist from session UUID to real campaign ID */
+  /** POST /api/campaigns/intake/migrate: re-key checklist from session UUID to real campaign ID */
   migrateSession: (sessionId: string, campaignId: string) =>
     post<{ status: string; session_id: string; campaign_id: string; event_name?: string; guest_name?: string }>(
       '/campaigns/intake/migrate',
@@ -947,6 +952,47 @@ export interface EngagementActivityEvent {
   error_message?: string | null;
   created_at: string;
   completed_at?: string | null;
+}
+
+export interface UnifiedActivityTargetContext {
+  target_id?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  hook_preview?: string | null;
+  media_url?: string | null;
+}
+
+export interface UnifiedActivityEvent {
+  id: string;
+  source_type: 'publishing' | 'engagement';
+  action_type: 'post' | 'like' | 'comment' | 'connection_request';
+  status: string;
+  timestamp: string;
+  company_profile_id?: string | null;
+  linkedin_account_id?: string | null;
+  target_context: UnifiedActivityTargetContext;
+  message?: string | null;
+  error_message?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UnifiedActivityResponse {
+  events: UnifiedActivityEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface UnifiedActivityParams {
+  company_profile_id?: string;
+  source_type?: 'all' | 'publishing' | 'engagement';
+  action_type?: 'all' | 'post' | 'like' | 'comment' | 'connection_request';
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export const autopilotApi = {
@@ -1039,6 +1085,21 @@ export const autopilotApi = {
       overdue_count: number;
       overdue_posts: Array<{ id: string; scheduled_at: string }>;
     }>('/autopilot/publisher-status'),
+
+  /** GET /api/v1/autopilot/activity/unified */
+  getUnifiedActivity: (params: UnifiedActivityParams = {}) => {
+    const q = new URLSearchParams();
+    if (params.company_profile_id) q.set('company_profile_id', params.company_profile_id);
+    if (params.source_type && params.source_type !== 'all') q.set('source_type', params.source_type);
+    if (params.action_type && params.action_type !== 'all') q.set('action_type', params.action_type);
+    if (params.status && params.status !== 'all') q.set('status', params.status);
+    if (params.start_date) q.set('start_date', params.start_date);
+    if (params.end_date) q.set('end_date', params.end_date);
+    if (params.limit !== undefined) q.set('limit', String(params.limit));
+    if (params.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return get<UnifiedActivityResponse>(`/autopilot/activity/unified${qs ? `?${qs}` : ''}`);
+  },
 };
 
 // ─── Personas API ─────────────────────────────────────────────────────────

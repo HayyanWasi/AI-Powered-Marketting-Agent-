@@ -54,7 +54,7 @@ export default function LinkedInConnections() {
   );
 
   // On return from Hosted Auth, the ?linkedin=connected redirect param is NOT
-  // proof of a connection — it only means the browser was sent back. The
+  // proof of a connection: it only means the browser was sent back. The
   // account is "connected" only if the backend persisted a verified account
   // (via Unipile's notify callback). So we always confirm against the API and
   // derive the banner from that result, never from the URL alone.

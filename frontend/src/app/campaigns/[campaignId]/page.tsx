@@ -74,7 +74,7 @@ export default function ExistingCampaignPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
 
-  // Mode: "existing" — Guaranteed read-only hydration on mount
+  // Mode: "existing": Guaranteed read-only hydration on mount
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -101,6 +101,65 @@ export default function ExistingCampaignPage() {
   const [tab, setTab] = useState<TabKey>("chat");
   const [isSending, setIsSending] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // Strategy regeneration state
+  const [isRegeneratingStrategy, setIsRegeneratingStrategy] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [regenerateSuccess, setRegenerateSuccess] = useState<string | null>(null);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+
+  // Sync tab with ?tab= URL parameter
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requestedTab = new URLSearchParams(window.location.search).get("tab") as TabKey | null;
+    if (requestedTab && ["chat", "content", "calendar", "strategy"].includes(requestedTab)) {
+      const timer = setTimeout(() => {
+        setTab(requestedTab);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleTabChange = (newTab: TabKey) => {
+    setTab(newTab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", newTab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
+
+  const handleConfirmRegenerate = async () => {
+    if (!campaignId || isRegeneratingStrategy) return;
+    setIsRegeneratingStrategy(true);
+    setRegenerateError(null);
+    setRegenerateSuccess(null);
+
+    try {
+      // 1. Call draft endpoint with current campaign & brand
+      await planApi.draft(campaignId, {
+        language: plan?.language || "en",
+        research_tier: "Quick",
+      });
+
+      // 2. Authoritative refetch from server GET/fetch path
+      const freshPlan = await planApi.get(campaignId);
+
+      // 3. Update UI state from refetched plan
+      setPlan(freshPlan);
+      setShowRegenerateConfirm(false);
+      setRegenerateSuccess("Strategy updated successfully.");
+      setTimeout(() => setRegenerateSuccess(null), 6000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to regenerate strategy";
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("Strategy regeneration failed:", msg);
+      }
+      setRegenerateError(msg);
+    } finally {
+      setIsRegeneratingStrategy(false);
+    }
+  };
 
   // Content editor state
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -311,7 +370,7 @@ export default function ExistingCampaignPage() {
     setIsSavingPost(true);
     setSavePostError(null);
     try {
-      // Send ONLY hook, body, and cta_text — no schedule, no account, no media
+      // Send ONLY hook, body, and cta_text: no schedule, no account, no media
       const updatedPost = await linkedinApi.patchPost(campaignId, postId, {
         hook: fields.hook,
         body: fields.body,
@@ -556,7 +615,7 @@ export default function ExistingCampaignPage() {
                     key={t.key}
                     role="tab"
                     aria-selected={tab === t.key}
-                    onClick={() => setTab(t.key)}
+                    onClick={() => handleTabChange(t.key)}
                     className={`relative py-3 text-[13.5px] font-medium transition-colors focus-visible:outline-none ${
                       tab === t.key ? "text-[#187CA4]" : "text-[#52606B] hover:text-[#18222D]"
                     }`}
@@ -636,7 +695,7 @@ export default function ExistingCampaignPage() {
                                 </p>
                                 <button
                                   type="button"
-                                  onClick={() => setTab("content")}
+                                  onClick={() => handleTabChange("content")}
                                   className="text-[12.5px] font-semibold text-[#187CA4] hover:underline shrink-0"
                                 >
                                   View Content →
@@ -969,7 +1028,7 @@ export default function ExistingCampaignPage() {
                                             hour: "numeric",
                                             minute: "2-digit",
                                           })
-                                        : "—"}
+                                        : "-"}
                                       {p.timezone
                                         ? ` · ${p.timezone.replace(/_/g, " ")}`
                                         : ""}
@@ -1064,6 +1123,65 @@ export default function ExistingCampaignPage() {
                     <div className="max-w-2xl mx-auto space-y-6">
                       {plan ? (
                         <>
+                          {/* Stale Strategy Alert Banner */}
+                          {plan.is_stale && (
+                            <div className="rounded-[12px] border border-[#f5c6cb] bg-[#fff5f5] p-5 shadow-sm">
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 text-[#c0392b] text-[13.5px] font-semibold">
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span>Campaign Strategy Outdated</span>
+                                  </div>
+                                  <p className="text-[13px] text-[#721c24] leading-relaxed">
+                                    {plan.staleness_reason ||
+                                      "Brand or campaign details changed after this strategy was drafted."}
+                                    {" "}Regenerate to update positioning, guardrails, and unlock Video Studio.
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRegenerateError(null);
+                                    setShowRegenerateConfirm(true);
+                                  }}
+                                  disabled={isRegeneratingStrategy}
+                                  className="shrink-0 inline-flex items-center gap-1.5 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] disabled:bg-[#a0c5d6] disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2 transition-colors cursor-pointer shadow-sm"
+                                >
+                                  {isRegeneratingStrategy ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <span>Regenerating…</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="w-4 h-4" />
+                                      <span>Regenerate Strategy</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              {regenerateError && !showRegenerateConfirm && (
+                                <div className="mt-3 flex items-center justify-between gap-2 rounded px-3 py-2 border border-[#f5c6cb] bg-white/80 text-[12.5px] text-[#c0392b]">
+                                  <span>{regenerateError}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowRegenerateConfirm(true)}
+                                    className="font-semibold underline hover:no-underline shrink-0 cursor-pointer"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {regenerateSuccess && (
+                            <div className="rounded-[12px] border border-[#C3FAC7] bg-[#EBFBEE] p-4 flex items-center gap-2 text-[13px] text-[#2B8A3E] font-medium shadow-sm">
+                              <Check className="w-4 h-4 shrink-0" />
+                              <span>{regenerateSuccess}</span>
+                            </div>
+                          )}
+
                           {/* 1. Title & Executive Summary */}
                           <div className="rounded-[12px] border border-[#DCE6EC] bg-white p-6 shadow-sm space-y-4">
                             <div>
@@ -1392,7 +1510,7 @@ export default function ExistingCampaignPage() {
                 )}
               </div>
 
-              {/* Right brief sidebar — only on the Chat tab */}
+              {/* Right brief sidebar: only on the Chat tab */}
               {tab === "chat" && (
                 <CampaignBrief
                   checklist={checklist}
@@ -1479,6 +1597,83 @@ export default function ExistingCampaignPage() {
                   <>
                     <Send className="w-3.5 h-3.5" />
                     <span>Confirm &amp; Publish</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRegenerateConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-[#DCE6EC] space-y-4">
+            <div className="space-y-1.5">
+              <h3 className="text-base font-semibold text-[#18222D]">Regenerate campaign strategy?</h3>
+              <p className="text-[13px] text-[#52606B] leading-relaxed">
+                Current campaign and brand details will be used to generate an updated strategy.
+              </p>
+            </div>
+
+            <ul className="rounded-lg bg-[#F8FBFC] border border-[#DCE6EC] p-3.5 text-[12.5px] text-[#52606B] space-y-2">
+              <li className="flex items-start gap-2">
+                <span className="text-[#187CA4] font-bold">•</span>
+                <span>Current campaign and brand details will be used</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-[#187CA4] font-bold">•</span>
+                <span>A new strategy version will be created</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-[#187CA4] font-bold">•</span>
+                <span>Existing draft posts will not be rewritten</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-[#187CA4] font-bold">•</span>
+                <span>Scheduled posts will not be rescheduled</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-[#187CA4] font-bold">•</span>
+                <span>Published posts will not be changed</span>
+              </li>
+            </ul>
+
+            {regenerateError && (
+              <div className="rounded-lg bg-[#FDF2F2] border border-[#F5C2C7] p-3 text-[12.5px] text-[#D9381E] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{regenerateError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isRegeneratingStrategy) {
+                    setShowRegenerateConfirm(false);
+                    setRegenerateError(null);
+                  }
+                }}
+                disabled={isRegeneratingStrategy}
+                className="px-3.5 py-1.5 rounded-[8px] text-[13px] font-medium text-[#52606B] hover:text-[#18222D] hover:bg-[#F8FBFC] border border-[#DCE6EC] transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRegenerate}
+                disabled={isRegeneratingStrategy}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] text-[13px] font-medium text-white bg-[#187CA4] hover:bg-[#136384] transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {isRegeneratingStrategy ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Regenerating…</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Regenerate Strategy</span>
                   </>
                 )}
               </button>

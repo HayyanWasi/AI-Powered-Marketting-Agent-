@@ -4,13 +4,13 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { useBrand } from "@/context/BrandContext";
 import { companyApi, CompanyProfile } from "@/lib/api";
-import { getActiveBrandId, setActiveBrandId } from "@/lib/activeBrand";
-import { ArrowRight, ArrowLeft, Check, Loader2, X, Plus, Lock } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Loader2, X, Plus, Lock, AlertCircle } from "lucide-react";
 
 const TOTAL = 3;
 
-// Backend limits — mirrored from CompanyProfileCreate / CompanyProfileUpdate
+// Backend limits: mirrored from CompanyProfileCreate / CompanyProfileUpdate
 // (backend/src/models/company.py) so invalid data is stopped before submission.
 const MAX_NAME = 255; // company_name max_length
 const MAX_VOICE = 1000; // brand_tone max_length
@@ -42,10 +42,20 @@ function parseGuidelines(p: CompanyProfile) {
 }
 
 function BrandSetup() {
-  const { user, isLoading, setIsAuthModalOpen } = useAuth();
+  const { user, isLoading: authLoading, setIsAuthModalOpen } = useAuth();
+  const {
+    brands,
+    activeBrandId,
+    isLoading: brandsLoading,
+    error: brandContextError,
+    refreshBrands,
+    setActiveBrandId: setActiveBrandIdContext,
+  } = useBrand();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const forceNew = searchParams.get("mode") === "new";
+  const modeParam = searchParams.get("mode");
+  const forceNew = modeParam === "new";
+  const isExplicitEdit = modeParam === "edit";
 
   const [loading, setLoading] = useState(true); // fetching the active brand
   const [companyId, setCompanyId] = useState<string | null>(null); // set = edit mode
@@ -57,6 +67,7 @@ function BrandSetup() {
   // derive create-vs-update from it (that would mislabel a create as "updated").
   const [savedAsEdit, setSavedAsEdit] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
 
   // Fields
@@ -83,15 +94,20 @@ function BrandSetup() {
     setStep(1);
   }, []);
 
-  // Load the active brand (edit) or start empty (create). Never flash an empty
-  // form before existing values arrive: `loading` gates the whole screen.
+  // Load the active brand (edit) or start empty (create/onboarding).
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (isLoading) return;
+      if (authLoading || brandsLoading) return;
       setError("");
+      setLoadError(brandContextError);
+      if (brandContextError) {
+        setCompanyId(null);
+        setLoading(false);
+        return;
+      }
       if (!user) {
-        // Not signed in yet — offer an empty create form; auth is enforced on submit.
+        // Not signed in yet: offer an empty create form; auth is enforced on submit.
         resetFields();
         setCompanyId(null);
         setLoading(false);
@@ -99,31 +115,64 @@ function BrandSetup() {
       }
       setLoading(true);
       try {
-        const active = getActiveBrandId(user.id);
-        const list = await companyApi.list();
-        if (cancelled) return;
-        const canEdit = !forceNew && active && list.some((p) => p.id === active);
-        if (canEdit) {
-          const profile = await companyApi.get(active as string);
-          if (cancelled) return;
-          const f = parseGuidelines(profile);
-          setCompanyName(f.companyName);
-          setTargetAudience(f.targetAudience);
-          setCoreMission(f.coreMission);
-          setTrackRecord(f.trackRecord);
-          setBrandVoice(f.brandVoice);
-          setGuardrails(f.guardrails);
-          setGuardrailDraft("");
-          setInvalid({});
-          setStep(1);
-          setCompanyId(profile.id);
-        } else {
+        const hasCompletedBrand = Array.isArray(brands) && brands.some((p) => p.is_complete === true);
+
+        // Mode A: Normal /brandsetup (no explicit mode query parameter)
+        // If user already has a completed brand, this was an onboarding entry:
+        // redirect directly to /campaigns so they aren't repeatedly forced through setup.
+        if (!forceNew && !isExplicitEdit) {
+          if (hasCompletedBrand) {
+            router.replace("/campaigns");
+            return;
+          }
+          // Brand not complete yet -> show first-time onboarding
           resetFields();
           setCompanyId(null);
+          setLoading(false);
+          return;
+        }
+
+        // Mode B: /brandsetup?mode=edit
+        // Explicitly edit the active brand profile; do not redirect.
+        if (isExplicitEdit) {
+          let targetId = activeBrandId && brands.some((p) => p.id === activeBrandId) ? activeBrandId : null;
+          if (!targetId && brands.length > 0) {
+            targetId = brands[0].id;
+            setActiveBrandIdContext(targetId);
+          }
+          if (targetId) {
+            const profile = brands.find((p) => p.id === targetId) ?? (await companyApi.get(targetId));
+            if (cancelled) return;
+            const f = parseGuidelines(profile);
+            setCompanyName(f.companyName);
+            setTargetAudience(f.targetAudience);
+            setCoreMission(f.coreMission);
+            setTrackRecord(f.trackRecord);
+            setBrandVoice(f.brandVoice);
+            setGuardrails(f.guardrails);
+            setGuardrailDraft("");
+            setInvalid({});
+            setStep(1);
+            setCompanyId(profile.id);
+          } else {
+            resetFields();
+            setCompanyId(null);
+          }
+          setLoading(false);
+          return;
+        }
+
+        // Mode C: /brandsetup?mode=new
+        // Explicit clean new brand creation flow; do not preload existing brand.
+        if (forceNew) {
+          resetFields();
+          setCompanyId(null);
+          setLoading(false);
+          return;
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Could not load your brand. Please retry.");
+          setLoadError(e instanceof Error ? e.message : "Could not load your brand profile. Please retry.");
           setCompanyId(null);
         }
       } finally {
@@ -134,7 +183,19 @@ function BrandSetup() {
     return () => {
       cancelled = true;
     };
-  }, [user, isLoading, forceNew, resetFields]);
+  }, [
+    user,
+    authLoading,
+    brands,
+    activeBrandId,
+    brandsLoading,
+    brandContextError,
+    forceNew,
+    isExplicitEdit,
+    resetFields,
+    router,
+    setActiveBrandIdContext,
+  ]);
 
   const flag = (field: string, bad: boolean) =>
     setInvalid((prev) => ({ ...prev, [field]: bad }));
@@ -228,7 +289,7 @@ function BrandSetup() {
       }
       if (!saved?.id) throw new Error("The server did not confirm a saved brand.");
       setCompanyId(saved.id);
-      setActiveBrandId(user.id, saved.id);
+      await refreshBrands(saved.id);
       setDone(true);
     } catch (e) {
       // Keep the entered values; surface the backend's message when it is useful.
@@ -257,7 +318,7 @@ function BrandSetup() {
           <img src="/logo.png" alt="Hipoclipse" className="w-7 h-7 rounded-md object-contain" />
           <span>Hipoclipse</span>
         </Link>
-        {!done && !loading && (
+        {!done && !loading && !authLoading && !brandsLoading && (
           <span className="text-[12.5px] text-[#8a949c]">
             {isEdit ? "Editing brand" : "New brand"} · Step {step} of {TOTAL}
           </span>
@@ -268,13 +329,13 @@ function BrandSetup() {
       <div className="h-1 bg-[#e6e9ec] shrink-0">
         <div
           className="h-full bg-[#1174b8] rounded-r-full transition-[width] duration-500 ease-out"
-          style={{ width: `${loading ? 8 : progress}%` }}
+          style={{ width: `${loading || authLoading || brandsLoading ? 8 : progress}%` }}
         />
       </div>
 
       <main className="flex-1 flex items-start sm:items-center justify-center px-4 py-10">
         <div className="w-full max-w-xl">
-          {loading || isLoading ? (
+          {loading || authLoading || brandsLoading ? (
             <div className="flex flex-col items-center justify-center py-24 text-[#8a949c]">
               <Loader2 size={26} className="animate-spin text-[#1174b8]" />
               <p className="text-[13.5px] mt-3">Loading your brand…</p>
@@ -305,6 +366,34 @@ function BrandSetup() {
                 </button>
               </div>
             </div>
+          ) : loadError ? (
+            <div className="rounded-[16px] border border-[#e6e9ec] bg-white p-8 sm:p-10 text-center shadow-sm">
+              <div className="w-13 h-13 rounded-full bg-[#fdeeed] text-[#b3392b] grid place-items-center mx-auto mb-4">
+                <AlertCircle size={24} />
+              </div>
+              <h2 className="text-[20px] font-semibold text-[#1f2a30]">Unable to load brand</h2>
+              <p className="text-[13.5px] text-[#7a848c] mt-2 mb-6 max-w-sm mx-auto">
+                {loadError}
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void refreshBrands().catch(() => {});
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-[9px] bg-[#1174b8] hover:bg-[#0e5f99] text-white text-[14px] font-semibold px-6 py-2.5 transition-colors cursor-pointer"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/campaigns")}
+                  className="w-full sm:w-auto rounded-[9px] border border-[#dfe4e7] bg-white text-[#5a6771] hover:text-[#1f2a30] hover:bg-[#f4f6f7] text-[14px] font-medium px-5 py-2.5 transition-colors cursor-pointer"
+                >
+                  Go to campaigns
+                </button>
+              </div>
+            </div>
           ) : done ? (
             <div className="text-center py-10">
               <div className="w-14 h-14 rounded-full bg-[#e7f4ec] border border-[#c7e6d3] grid place-items-center text-[#1f8a5b] mx-auto mb-5">
@@ -327,10 +416,10 @@ function BrandSetup() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => router.push("/dashboard")}
+                  onClick={() => router.push("/campaigns")}
                   className="rounded-[9px] border border-[#dfe4e7] bg-white text-[#5a6771] hover:text-[#1f2a30] hover:bg-[#f4f6f7] text-[14px] font-medium px-5 py-2.5 transition-colors"
                 >
-                  Go to dashboard
+                  Go to campaigns
                 </button>
               </div>
             </div>
@@ -348,14 +437,14 @@ function BrandSetup() {
                 <StepHead
                   eyebrow="What we do"
                   title="What we do & proven track record"
-                  sub="Your core mission and real milestones. The AI uses these to back up claims."
+                  sub="Your core mission and real milestones used to ground campaign copy in facts."
                 />
               )}
               {step === 3 && (
                 <StepHead
                   eyebrow="Voice"
                   title="Brand tone & voice signature"
-                  sub="Natural language communication style instructions enforced during agent interactions."
+                  sub="Tone of voice and style guidelines applied across your campaign posts."
                 />
               )}
 
@@ -468,10 +557,10 @@ function BrandSetup() {
                       </p>
                     </div>
 
-                    {/* Negative guardrails — optional; produces string[] */}
+                    {/* Negative guardrails: optional, produces string[] */}
                     <div>
                       <label className="block text-[13px] font-semibold text-[#1f2a30] mb-1.5">
-                        What should the AI never say or do?
+                        What should the brand voice avoid?
                       </label>
                       <div className="flex gap-2">
                         <input

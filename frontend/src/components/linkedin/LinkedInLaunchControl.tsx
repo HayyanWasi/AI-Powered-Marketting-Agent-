@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle, Loader2, Rocket, Plug } from "lucide-react";
 import {
@@ -21,7 +21,7 @@ interface Props {
  *
  * Shows the signed-in user's verified, connected LinkedIn accounts, requires the
  * user to pick one (auto-selected when only one exists), and calls the real
- * launch endpoint — never a fake success. Arbitrary account ids cannot be
+ * launch endpoint, never a fake success. Arbitrary account ids cannot be
  * entered; only accounts the backend has verified for this user are selectable.
  * The launch endpoint independently re-verifies ownership and connection, so an
  * invalid choice is rejected server-side.
@@ -34,32 +34,41 @@ export default function LinkedInLaunchControl({ campaignId, postCount }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
 
-  const loadAccounts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = (await linkedinApi.listConnections()) ?? [];
-      const connected = rows.filter((a) => a.status === "connected");
-      setAccounts(connected);
-      // Preselect when exactly one connected account exists.
-      setSelected((prev) => {
-        if (prev && connected.some((a) => a.unipile_account_id === prev)) return prev;
-        return connected.length === 1 ? connected[0].unipile_account_id : "";
-      });
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Could not load your LinkedIn connections."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    let cancelled = false;
+    async function loadAccounts() {
+      setLoading(true);
+      setError(null);
+      try {
+        const rows = (await linkedinApi.listConnections()) ?? [];
+        if (cancelled) return;
+        const connected = rows.filter((a) => a.status === "connected");
+        setAccounts(connected);
+        // Preselect when exactly one connected account exists.
+        setSelected((prev) => {
+          if (prev && connected.some((a) => a.unipile_account_id === prev)) return prev;
+          return connected.length === 1 ? connected[0].unipile_account_id : "";
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof ApiError
+              ? err.message
+              : "Could not load your LinkedIn connections."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
     void loadAccounts();
-  }, [loadAccounts]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLaunch = async () => {
     if (!campaignId || !selected) return;
@@ -89,8 +98,8 @@ export default function LinkedInLaunchControl({ campaignId, postCount }: Props) 
       <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-xs text-emerald-300">
         <CheckCircle2 size={16} className="shrink-0" />
         <span>
-          Campaign launched. Scheduled posts are bound to your LinkedIn account —
-          track live progress in the{" "}
+          Campaign launched. Scheduled posts are bound to your LinkedIn account.
+          Track live progress in the{" "}
           <Link href="/prospects" className="underline hover:text-emerald-200">
             Autopilot Control Room
           </Link>

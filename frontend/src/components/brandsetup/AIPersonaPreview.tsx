@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { BrandProfileData, AIPersonaGuess } from "./types";
 import {
-  Sparkles,
   Bot,
   ShieldCheck,
   CheckCircle2,
@@ -65,7 +64,7 @@ export default function AIPersonaPreview({
             <div className="relative w-16 h-16 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full border-2 border-[#d75dff]/20 animate-ping" />
               <div className="w-12 h-12 rounded-full border-2 border-t-[#00c2ee] border-r-[#d75dff] border-b-[#edae3e] border-l-transparent animate-spin" />
-              <Sparkles size={20} className="text-white" />
+              <Bot size={20} className="text-[#00c2ee]" />
             </div>
             <div>
               <h4 className="text-sm font-bold text-white">Analyzing Company Story...</h4>

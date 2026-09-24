@@ -5,7 +5,6 @@ import {
   Calendar,
   Film,
   FileText,
-  Sparkles,
   BrainCircuit,
   Zap,
   Clock,
@@ -99,13 +98,13 @@ export default function PublishingScheduleCard({
               Publishing Schedule & Upcoming Queue
             </h2>
             <p className="text-xs text-zinc-400 mt-1">
-              Autonomous dispatch engine with dynamic AI timing optimization.
+              Scheduled dispatch engine with target timezone optimization.
             </p>
           </div>
 
           <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium">
-            <Sparkles size={13} />
-            <span>AI Timing Sync</span>
+            <Clock size={13} />
+            <span>Schedule Timing Sync</span>
           </div>
         </div>
 

@@ -170,7 +170,6 @@ async def test_normal_scheduled_publish_still_works(monkeypatch):
     monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
     post = _row("scheduled")
     store = [post]
-    gw = _SpyGateway()
 
     class _OkGateway:
         def __init__(self):
@@ -190,3 +189,83 @@ async def test_normal_scheduled_publish_still_works(monkeypatch):
     assert ok.calls == ["acct-1"]
     assert post["status"] == "published"
     assert post["publishing_started_at"] is not None  # claim stamped it
+
+
+def test_scoped_recovery_recovers_only_requested_stale_post(monkeypatch):
+    # 1. post_id scope recovers only requested stale post.
+    # 2. another stale publishing row remains untouched.
+    monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
+    stale1 = _row("publishing", started_min_ago=30)
+    stale2 = _row("publishing", started_min_ago=45)
+    store = [stale1, stale2]
+    repo = _FakeRepo("linkedin_posts", store)
+
+    recovered = post_publisher.recover_stale_publishing(repo, post_id=stale1["id"])
+    assert recovered == 1
+    assert stale1["status"] == "needs_review"
+    assert stale2["status"] == "publishing"
+
+
+def test_scoped_recovery_non_stale_requested_post_untouched(monkeypatch):
+    # 3. non-stale requested post remains untouched.
+    monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
+    fresh = _row("publishing", started_min_ago=5)
+    store = [fresh]
+    repo = _FakeRepo("linkedin_posts", store)
+
+    recovered = post_publisher.recover_stale_publishing(repo, post_id=fresh["id"])
+    assert recovered == 0
+    assert fresh["status"] == "publishing"
+
+
+def test_scoped_recovery_nonexistent_post_returns_zero(monkeypatch):
+    # 4. nonexistent post returns/reports zero recovered.
+    monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
+    stale = _row("publishing", started_min_ago=30)
+    store = [stale]
+    repo = _FakeRepo("linkedin_posts", store)
+
+    recovered = post_publisher.recover_stale_publishing(repo, post_id="non-existent-uuid")
+    assert recovered == 0
+    assert stale["status"] == "publishing"
+
+
+def test_scoped_recovery_none_preserves_global_behavior(monkeypatch):
+    # 5. post_id=None preserves existing global behavior.
+    monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
+    stale1 = _row("publishing", started_min_ago=30)
+    stale2 = _row("publishing", started_min_ago=45)
+    fresh = _row("publishing", started_min_ago=2)
+    store = [stale1, stale2, fresh]
+    repo = _FakeRepo("linkedin_posts", store)
+
+    recovered = post_publisher.recover_stale_publishing(repo, post_id=None)
+    assert recovered == 2
+    assert stale1["status"] == "needs_review"
+    assert stale2["status"] == "needs_review"
+    assert fresh["status"] == "publishing"
+
+
+@pytest.mark.asyncio
+async def test_late_worker_finalization_cannot_overwrite_needs_review(monkeypatch):
+    # 6. late worker finalization still cannot overwrite needs_review.
+    monkeypatch.setattr(post_publisher.settings, "linkedin_publish_stale_minutes", 15)
+    post = _row("needs_review", started_min_ago=60)
+    store = [post]
+    repo = _FakeRepo("linkedin_posts", store)
+
+    class _SpyOkGateway:
+        async def create_post(self, account_id, content, media_url=None):
+            return "urn:li:activity:late-worker-res"
+
+    gw = _SpyOkGateway()
+    res = await post_publisher.execute_post_publish(
+        repo=repo,
+        gateway=gw,
+        post_id=post["id"],
+        account_id="acct-1",
+        full_content="content",
+    )
+    assert res["status"] == "needs_review"
+    assert res["success"] is False
+    assert post["status"] == "needs_review"

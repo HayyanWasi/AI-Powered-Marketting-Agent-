@@ -10,7 +10,7 @@ function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawNext = searchParams.get("next");
-  const safeNext = sanitizeNext(rawNext, "/dashboard");
+  const safeNext = sanitizeNext(rawNext, "/campaigns");
 
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");

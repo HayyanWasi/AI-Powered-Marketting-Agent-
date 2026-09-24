@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { sanitizeNext } from "@/context/AuthContext";
+import { companyApi } from "@/lib/api";
 import { Loader2, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function AuthCallbackPage() {
@@ -31,9 +32,9 @@ export default function AuthCallbackPage() {
       }
     }
 
-    const safeNext = sanitizeNext(nextParam, "/dashboard");
+    const safeNext = sanitizeNext(nextParam, "/campaigns");
 
-    function executeRedirect(isRecovery: boolean) {
+    async function executeRedirect(isRecovery: boolean) {
       if (hasRedirected) return;
       hasRedirected = true;
 
@@ -48,9 +49,22 @@ export default function AuthCallbackPage() {
           sessionStorage.removeItem("recovery_in_progress");
         }
         setStatus("success");
-        setTimeout(() => {
-          router.push(safeNext);
-        }, 1000);
+        try {
+          const brands = await companyApi.list();
+          const hasCompletedBrand = Array.isArray(brands) && brands.some((b) => b.is_complete === true);
+          let destination = hasCompletedBrand ? "/campaigns" : "/brandsetup";
+          if (nextParam && hasCompletedBrand) {
+            destination = sanitizeNext(nextParam, "/campaigns");
+          }
+          setTimeout(() => {
+            router.push(destination);
+          }, 800);
+        } catch (e) {
+          console.error("Failed to check brand status in callback:", e);
+          setTimeout(() => {
+            router.push(safeNext);
+          }, 800);
+        }
       }
     }
 
@@ -100,7 +114,7 @@ export default function AuthCallbackPage() {
           return () => clearTimeout(graceTimeout);
         }
 
-        // 4. Timeout fallback — only fall through if recovery is NOT detected
+        // 4. Timeout fallback: only fall through if recovery is NOT detected
         const timeout = setTimeout(() => {
           subscription.unsubscribe();
           if (isRecoveryFromUrl) {

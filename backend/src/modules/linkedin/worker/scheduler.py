@@ -240,6 +240,22 @@ def start_linkedin_scheduler() -> None:
             replace_existing=True,
         )
 
+        # Engagement Stale Recovery: prepared behind disabled flag (SAFETY OVERRIDE)
+        from src.config.settings import settings
+
+        if getattr(settings, "linkedin_enable_stale_recovery", False):
+            from src.modules.linkedin.worker.engagement_recovery import (
+                recover_stale_engagement_claims,
+            )
+
+            scheduler.add_job(
+                recover_stale_engagement_claims,
+                "interval",
+                minutes=5,
+                id="linkedin_engagement_stale_recovery",
+                replace_existing=True,
+            )
+
         scheduler.start()
 
         # On startup: check for due posts (UNTOUCHED)

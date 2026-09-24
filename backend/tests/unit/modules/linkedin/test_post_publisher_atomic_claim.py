@@ -12,6 +12,7 @@ A scheduled post must be claimable by exactly one worker/process. Covers:
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
@@ -143,6 +144,7 @@ async def test_claim_is_atomic_exactly_one_winner():
 @pytest.mark.asyncio
 async def test_already_publishing_post_is_skipped():
     post = _post(status="publishing")
+    post["publishing_started_at"] = datetime.now(UTC).isoformat()
     store = [post]
     gateway = _FakeGateway(post_id="urn:li:activity:2")
 

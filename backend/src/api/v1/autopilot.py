@@ -27,6 +27,7 @@ from src.modules.linkedin.worker.post_publisher import execute_post_publish
 from src.modules.linkedin.worker.scheduler import trigger_immediate_engagement_run
 from src.repositories.base import BaseRepository
 from src.services.campaign_service import CampaignService
+from src.utils.sanitizer import sanitize_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -1440,6 +1441,469 @@ async def get_engagement_activity(
             "company_profile_id": brand_id,
             "error": str(e),
         }
+
+
+def _canonical_publishing_timestamp(post: dict[str, Any]) -> str:
+    """Resolve canonical timestamp for a publishing post based on status."""
+    st = (post.get("status") or "").lower()
+    if st == "published" and post.get("published_at"):
+        return str(post["published_at"])
+    if st == "publishing":
+        return str(
+            post.get("publishing_started_at")
+            or post.get("created_at")
+            or datetime.now(UTC).isoformat()
+        )
+    if st == "scheduled" and post.get("scheduled_at"):
+        return str(post["scheduled_at"])
+    if st == "draft":
+        return str(post.get("created_at") or datetime.now(UTC).isoformat())
+    return str(
+        post.get("published_at")
+        or post.get("publishing_started_at")
+        or post.get("created_at")
+        or post.get("scheduled_at")
+        or datetime.now(UTC).isoformat()
+    )
+
+
+def _canonical_engagement_timestamp(log: dict[str, Any]) -> str:
+    """Resolve canonical timestamp for an engagement action log."""
+    return str(log.get("completed_at") or log.get("created_at") or datetime.now(UTC).isoformat())
+
+
+@router.get("/activity/unified")
+async def get_unified_activity(
+    company_profile_id: str | None = Query(default=None),
+    source_type: str = Query(default="all"),
+    action_type: str = Query(default="all"),
+    filter_status: str | None = Query(default=None, alias="status"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1000),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+) -> dict[str, Any]:
+    """Unified Activity API returning normalized, tenant-scoped publishing and engagement history.
+
+    Powers /history by consolidating:
+    1. Publishing events from linkedin_posts (scoped via campaigns.organization_id == user.id)
+    2. Engagement events from linkedin_engagement_log (scoped via user_id == user.id)
+
+    Guarantees:
+    - Zero unbounded table scans (exact counts + bounded fetch)
+    - Strict multi-tenant isolation
+    - Error message credential sanitization
+    - Sorted newest first with offset/limit pagination
+    """
+    # Unpack query defaults if invoked directly in unit tests without FastAPI DI
+    source_type = source_type.default if hasattr(source_type, "default") else (source_type or "all")
+    action_type = action_type.default if hasattr(action_type, "default") else (action_type or "all")
+    company_profile_id = (
+        company_profile_id.default if hasattr(company_profile_id, "default") else company_profile_id
+    )
+    filter_status = filter_status.default if hasattr(filter_status, "default") else filter_status
+    start_date = start_date.default if hasattr(start_date, "default") else start_date
+    end_date = end_date.default if hasattr(end_date, "default") else end_date
+    limit = limit.default if hasattr(limit, "default") else (limit or 50)
+    offset = offset.default if hasattr(offset, "default") else (offset or 0)
+
+    # 1. Parameter Validation
+    allowed_sources = {"all", "publishing", "engagement"}
+    if source_type not in allowed_sources:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid source_type '{source_type}'. Allowed: {', '.join(sorted(allowed_sources))}",
+        )
+
+    allowed_actions = {"all", "post", "like", "comment", "connection_request"}
+    if action_type not in allowed_actions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid action_type '{action_type}'. Allowed: {', '.join(sorted(allowed_actions))}",
+        )
+
+    user_id_str = str(user.id)
+    client = get_supabase_client()
+
+    # 2. Strict company profile ownership validation if specified
+    if company_profile_id:
+        await _resolve_user_brand(user_id_str, company_profile_id)
+
+    # 3. Determine sources to fetch
+    include_publishing = source_type in ("all", "publishing") and action_type in ("all", "post")
+    include_engagement = source_type in ("all", "engagement") and action_type in (
+        "all",
+        "like",
+        "comment",
+        "connection_request",
+    )
+
+    publishing_total = 0
+    raw_posts: list[dict[str, Any]] = []
+    camp_map: dict[str, dict[str, Any]] = {}
+
+    fetch_limit = offset + limit
+
+    # 4. Fetch Publishing Data (canonical-aligned status buckets)
+    if include_publishing:
+        camp_query = (
+            client.table("campaigns")
+            .select("id, name, company_profile_id")
+            .eq("organization_id", user_id_str)
+        )
+        if company_profile_id:
+            camp_query = camp_query.eq("company_profile_id", str(company_profile_id))
+
+        try:
+            camp_res = camp_query.execute()
+            campaigns = camp_res.data or []
+        except Exception as e:
+            logger.warning("[UNIFIED ACTIVITY] Failed to query user campaigns: %s", e)
+            campaigns = []
+
+        if campaigns:
+            camp_map = {str(c["id"]): c for c in campaigns}
+            owned_camp_ids = list(camp_map.keys())
+
+            try:
+                count_q = (
+                    client.table("linkedin_posts")
+                    .select("id", count="exact")
+                    .in_("campaign_id", owned_camp_ids)
+                )
+                if filter_status:
+                    count_q = count_q.eq("status", filter_status)
+                if start_date:
+                    count_q = count_q.gte("created_at", start_date)
+                if end_date:
+                    count_q = count_q.lte("created_at", end_date)
+                count_res = count_q.execute()
+                publishing_total = count_res.count or 0
+
+                raw_posts_dict: dict[str, dict[str, Any]] = {}
+
+                def _add_posts(posts: list[dict[str, Any]] | None) -> None:
+                    if posts:
+                        for p in posts:
+                            raw_posts_dict[str(p["id"])] = p
+
+                def _make_base_post_q():
+                    q = (
+                        client.table("linkedin_posts")
+                        .select("*")
+                        .in_("campaign_id", owned_camp_ids)
+                    )
+                    if start_date:
+                        q = q.gte("created_at", start_date)
+                    if end_date:
+                        q = q.lte("created_at", end_date)
+                    return q
+
+                all_publishing_statuses = [
+                    "published",
+                    "publishing",
+                    "scheduled",
+                    "draft",
+                    "failed",
+                    "needs_review",
+                ]
+                statuses_to_fetch = [filter_status] if filter_status else all_publishing_statuses
+
+                for st in statuses_to_fetch:
+                    if st == "published":
+                        res1 = (
+                            _make_base_post_q()
+                            .eq("status", "published")
+                            .not_.is_("published_at", "null")
+                            .order("published_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res1.data)
+                        res2 = (
+                            _make_base_post_q()
+                            .eq("status", "published")
+                            .is_("published_at", "null")
+                            .order("created_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res2.data)
+                    elif st == "publishing":
+                        res1 = (
+                            _make_base_post_q()
+                            .eq("status", "publishing")
+                            .not_.is_("publishing_started_at", "null")
+                            .order("publishing_started_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res1.data)
+                        res2 = (
+                            _make_base_post_q()
+                            .eq("status", "publishing")
+                            .is_("publishing_started_at", "null")
+                            .order("created_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res2.data)
+                    elif st == "scheduled":
+                        res1 = (
+                            _make_base_post_q()
+                            .eq("status", "scheduled")
+                            .not_.is_("scheduled_at", "null")
+                            .order("scheduled_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res1.data)
+                        res2 = (
+                            _make_base_post_q()
+                            .eq("status", "scheduled")
+                            .is_("scheduled_at", "null")
+                            .order("created_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res2.data)
+                    elif st in ("draft", "failed", "needs_review"):
+                        res = (
+                            _make_base_post_q()
+                            .eq("status", st)
+                            .order("created_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res.data)
+                    else:
+                        res = (
+                            _make_base_post_q()
+                            .eq("status", st)
+                            .order("created_at", desc=True)
+                            .order("id", desc=True)
+                            .limit(fetch_limit)
+                            .execute()
+                        )
+                        _add_posts(res.data)
+
+                if not filter_status:
+                    res_other = (
+                        _make_base_post_q()
+                        .not_.in_("status", all_publishing_statuses)
+                        .order("created_at", desc=True)
+                        .order("id", desc=True)
+                        .limit(fetch_limit)
+                        .execute()
+                    )
+                    _add_posts(res_other.data)
+
+                raw_posts = list(raw_posts_dict.values())
+            except Exception as e:
+                logger.error("[UNIFIED ACTIVITY] Failed to query publishing posts: %s", e)
+                publishing_total = 0
+                raw_posts = []
+
+    # 5. Fetch Engagement Data (canonical-aligned status buckets)
+    engagement_total = 0
+    raw_logs: list[dict[str, Any]] = []
+
+    if include_engagement:
+        try:
+            eng_count_q = (
+                client.table("linkedin_engagement_log")
+                .select("id", count="exact")
+                .eq("user_id", user_id_str)
+            )
+            if company_profile_id:
+                eng_count_q = eng_count_q.eq("company_profile_id", str(company_profile_id))
+            if action_type != "all":
+                eng_count_q = eng_count_q.eq("action_type", action_type)
+            if filter_status:
+                eng_count_q = eng_count_q.eq("status", filter_status)
+            if start_date:
+                eng_count_q = eng_count_q.gte("created_at", start_date)
+            if end_date:
+                eng_count_q = eng_count_q.lte("created_at", end_date)
+            eng_count_res = eng_count_q.execute()
+            engagement_total = eng_count_res.count or 0
+
+            raw_logs_dict: dict[str, dict[str, Any]] = {}
+
+            def _add_logs(logs: list[dict[str, Any]] | None) -> None:
+                if logs:
+                    for log_item in logs:
+                        raw_logs_dict[str(log_item["id"])] = log_item
+
+            def _make_base_eng_q():
+                q = client.table("linkedin_engagement_log").select("*").eq("user_id", user_id_str)
+                if company_profile_id:
+                    q = q.eq("company_profile_id", str(company_profile_id))
+                if action_type != "all":
+                    q = q.eq("action_type", action_type)
+                if filter_status:
+                    q = q.eq("status", filter_status)
+                if start_date:
+                    q = q.gte("created_at", start_date)
+                if end_date:
+                    q = q.lte("created_at", end_date)
+                return q
+
+            # Bucket 1: completed_at not null -> completed_at DESC, id DESC
+            res_eng1 = (
+                _make_base_eng_q()
+                .not_.is_("completed_at", "null")
+                .order("completed_at", desc=True)
+                .order("id", desc=True)
+                .limit(fetch_limit)
+                .execute()
+            )
+            _add_logs(res_eng1.data)
+
+            # Bucket 2: completed_at is null -> created_at DESC, id DESC
+            res_eng2 = (
+                _make_base_eng_q()
+                .is_("completed_at", "null")
+                .order("created_at", desc=True)
+                .order("id", desc=True)
+                .limit(fetch_limit)
+                .execute()
+            )
+            _add_logs(res_eng2.data)
+
+            raw_logs = list(raw_logs_dict.values())
+        except Exception as e:
+            logger.error("[UNIFIED ACTIVITY] Failed to query engagement logs: %s", e)
+            engagement_total = 0
+            raw_logs = []
+
+    # 6. Normalize Events
+    normalized_events: list[dict[str, Any]] = []
+
+    for post in raw_posts:
+        camp_info = camp_map.get(str(post.get("campaign_id")), {})
+        ts = _canonical_publishing_timestamp(post)
+        err = (
+            sanitize_error_message(post.get("error_message")) if post.get("error_message") else None
+        )
+
+        normalized_events.append(
+            {
+                "id": str(post.get("id")),
+                "source_type": "publishing",
+                "action_type": "post",
+                "status": post.get("status"),
+                "timestamp": ts,
+                "company_profile_id": (
+                    str(camp_info.get("company_profile_id"))
+                    if camp_info.get("company_profile_id")
+                    else None
+                ),
+                "linkedin_account_id": (
+                    str(post.get("linkedin_account_id"))
+                    if post.get("linkedin_account_id")
+                    else None
+                ),
+                "target_context": {
+                    "target_id": post.get("unipile_post_id") or str(post.get("id")),
+                    "campaign_id": (
+                        str(post.get("campaign_id")) if post.get("campaign_id") else None
+                    ),
+                    "campaign_name": camp_info.get("name"),
+                    "hook_preview": (post.get("hook") or post.get("full_content") or "")[:80],
+                    "media_url": post.get("media_url"),
+                },
+                "message": post.get("hook") or post.get("full_content"),
+                "error_message": err,
+                "metadata": {
+                    "slot_id": post.get("slot_id"),
+                    "media_type": post.get("media_type"),
+                    "unipile_post_id": post.get("unipile_post_id"),
+                    "scheduled_at": post.get("scheduled_at"),
+                    "published_at": post.get("published_at"),
+                    "publishing_started_at": post.get("publishing_started_at"),
+                },
+            }
+        )
+
+    for log in raw_logs:
+        ts = _canonical_engagement_timestamp(log)
+        err = sanitize_error_message(log.get("error_message")) if log.get("error_message") else None
+
+        normalized_events.append(
+            {
+                "id": str(log.get("id")),
+                "source_type": "engagement",
+                "action_type": log.get("action_type"),
+                "status": log.get("status"),
+                "timestamp": ts,
+                "company_profile_id": (
+                    str(log.get("company_profile_id")) if log.get("company_profile_id") else None
+                ),
+                "linkedin_account_id": (
+                    str(log.get("linkedin_account_id")) if log.get("linkedin_account_id") else None
+                ),
+                "target_context": {
+                    "target_id": log.get("target_post_id") or log.get("target_profile_id"),
+                    "campaign_id": None,
+                    "campaign_name": None,
+                    "hook_preview": (
+                        log.get("comment_text")[:80] if log.get("comment_text") else None
+                    ),
+                    "media_url": None,
+                },
+                "message": log.get("comment_text"),
+                "error_message": err,
+                "metadata": {
+                    "target_post_id": log.get("target_post_id"),
+                    "target_profile_id": log.get("target_profile_id"),
+                    "review_queue_id": (
+                        str(log.get("review_queue_id")) if log.get("review_queue_id") else None
+                    ),
+                    "provider_result_id": log.get("provider_result_id"),
+                    "created_at": log.get("created_at"),
+                    "completed_at": log.get("completed_at"),
+                },
+            }
+        )
+
+    # 7. Sort newest first by deterministic composite key:
+    #    canonical timestamp DESC, source_type DESC, id DESC
+    def _parse_ts(ts_str: str) -> float:
+        try:
+            return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+
+    normalized_events.sort(
+        key=lambda ev: (
+            _parse_ts(ev["timestamp"]),
+            ev.get("source_type", ""),
+            str(ev.get("id", "")),
+        ),
+        reverse=True,
+    )
+
+    # 8. Paginate merged results
+    total = publishing_total + engagement_total
+    paginated_events = normalized_events[offset : offset + limit]
+    has_more = (offset + len(paginated_events)) < total
+
+    return {
+        "events": paginated_events,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": has_more,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

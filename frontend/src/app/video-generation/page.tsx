@@ -1,15 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import Sidebar from "@/components/shell/Sidebar";
+import { useAuth } from "@/context/AuthContext";
+import { useBrand } from "@/context/BrandContext";
 import { useVideoGeneration } from "@/components/video/useVideoGeneration";
 import { campaignApi, autopilotApi, Campaign } from "@/lib/api";
-import { Film, Loader2, Download, Share2, Sparkles, RotateCcw } from "lucide-react";
+import { Film, Loader2, Download, Share2, RotateCcw, ExternalLink } from "lucide-react";
 
 export default function VideoStudioPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const { activeBrandId, isLoading: brandsLoading } = useBrand();
+
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
+  const [campaignsError, setCampaignsError] = useState<string | null>(null);
+
   const [prompt, setPrompt] = useState("");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [uploadMsg, setUploadMsg] = useState("");
@@ -19,33 +27,80 @@ export default function VideoStudioPage() {
     currentStage,
     displayProgress,
     error,
+    errorStatus,
     artifact,
     startGeneration,
     retry,
   } = useVideoGeneration(campaignId);
 
+  const loadCampaigns = useCallback(async () => {
+    if (authLoading || brandsLoading) return;
+    if (!user) {
+      setCampaigns([]);
+      setCampaignId(null);
+      setCampaignsLoading(false);
+      setCampaignsError(null);
+      return;
+    }
+
+    setCampaignsLoading(true);
+    setCampaignsError(null);
+
+    try {
+      const result = await campaignApi.list({
+        page_size: 100,
+        company_profile_id: activeBrandId || undefined,
+      });
+
+      const loadedCampaigns = result.campaigns || [];
+      setCampaigns(loadedCampaigns);
+
+      setCampaignId((prevSelected) => {
+        if (prevSelected) {
+          const stillExists = loadedCampaigns.some((c) => c.id === prevSelected);
+          if (stillExists) return prevSelected;
+          return null;
+        }
+
+        const requested =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("campaign")
+            : null;
+        const matched = loadedCampaigns.find((c) => c.id === requested);
+        if (matched) return matched.id;
+        return loadedCampaigns.length > 0 ? loadedCampaigns[0].id : null;
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to load campaigns";
+      setCampaignsError(msg);
+      setCampaigns([]);
+    } finally {
+      setCampaignsLoading(false);
+    }
+  }, [authLoading, brandsLoading, user, activeBrandId]);
+
   useEffect(() => {
-    let active = true;
-    campaignApi
-      .list({ page_size: 100 })
-      .then((result) => {
-        if (!active) return;
-        setCampaigns(result.campaigns);
-        const requested = new URLSearchParams(window.location.search).get("campaign");
-        const selected =
-          result.campaigns.find((c) => c.id === requested) ||
-          (result.campaigns.length >= 1 ? result.campaigns[0] : undefined);
-        setCampaignId(selected?.id ?? null);
-      })
-      .catch(() => active && setCampaigns([]))
-      .finally(() => active && setCampaignsLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (!authLoading && !brandsLoading && user) {
+      const timer = setTimeout(() => {
+        void loadCampaigns();
+      }, 0);
+      return () => clearTimeout(timer);
+    } else if (!authLoading && !user) {
+      const timer = setTimeout(() => {
+        setCampaigns([]);
+        setCampaignId(null);
+        setCampaignsLoading(false);
+        setCampaignsError(null);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading, brandsLoading, user, loadCampaigns]);
 
   const isGenerating = status === "queued" || status === "generating";
   const isCompleted = status === "completed" && !!artifact?.videoUrl;
+  const isStaleStrategy =
+    errorStatus === 409 ||
+    (error ? error.toLowerCase().includes("campaign strategy is outdated") : false);
 
   const handleGenerate = () => {
     const p = prompt.trim();
@@ -99,22 +154,42 @@ export default function VideoStudioPage() {
           </div>
 
           {/* Campaign is required by the backend, so it is selectable here. */}
-          <label className="flex items-center gap-2 text-[12.5px] text-[#5a6771]">
-            <span className="hidden sm:inline">Campaign</span>
-            <select
-              value={campaignId ?? ""}
-              onChange={(e) => setCampaignId(e.target.value || null)}
-              disabled={campaignsLoading || isGenerating}
-              className="max-w-[220px] rounded-[8px] border border-[#dfe4e7] bg-white px-2.5 py-1.5 text-[13px] text-[#1f2a30] focus:outline-none focus:border-[#1174b8] focus:ring-2 focus:ring-[#1174b8]/15"
-            >
-              <option value="">{campaignsLoading ? "Loading…" : "Select campaign"}</option>
-              {campaigns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-[12.5px] text-[#5a6771]">
+              <span className="hidden sm:inline">Campaign</span>
+              <select
+                value={campaignId ?? ""}
+                onChange={(e) => setCampaignId(e.target.value || null)}
+                disabled={campaignsLoading || isGenerating || campaigns.length === 0}
+                className="max-w-[220px] rounded-[8px] border border-[#dfe4e7] bg-white px-2.5 py-1.5 text-[13px] text-[#1f2a30] focus:outline-none focus:border-[#1174b8] focus:ring-2 focus:ring-[#1174b8]/15 disabled:bg-[#f8f9fa] disabled:text-[#8a949c]"
+              >
+                {campaignsLoading ? (
+                  <option value="">Loading campaigns...</option>
+                ) : campaignsError ? (
+                  <option value="">Failed to load campaigns</option>
+                ) : campaigns.length === 0 ? (
+                  <option value="">No campaigns available for this brand</option>
+                ) : (
+                  <option value="">Select campaign</option>
+                )}
+                {campaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {campaignsError && (
+              <button
+                type="button"
+                onClick={() => void loadCampaigns()}
+                className="inline-flex items-center gap-1 rounded-[6px] border border-[#dce6ec] bg-[#f8fbfa] px-2 py-1 text-[12px] font-medium text-[#c0392b] hover:bg-[#fae5e3]"
+                title="Retry loading campaigns"
+              >
+                <RotateCcw size={12} /> Retry
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Body */}
@@ -137,11 +212,30 @@ export default function VideoStudioPage() {
                 className="w-full rounded-[10px] border border-[#dfe4e7] bg-[#fbfcfc] px-3.5 py-3 text-[13.5px] leading-relaxed text-[#26333b] placeholder-[#a6afb5] resize-y focus:outline-none focus:border-[#1174b8] focus:ring-2 focus:ring-[#1174b8]/15"
               />
 
-              {!campaignId && !campaignsLoading && (
+              {campaignsLoading ? (
+                <p className="text-[12.5px] text-[#8a949c] mt-2 flex items-center gap-1.5">
+                  <Loader2 size={13} className="animate-spin" /> Loading campaigns...
+                </p>
+              ) : campaignsError ? (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-[8px] border border-[#f5c6cb] bg-[#fdf7f7] px-3 py-2 text-[12.5px] text-[#c0392b]">
+                  <span>Failed to load campaigns</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadCampaigns()}
+                    className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#c0392b] underline hover:no-underline"
+                  >
+                    <RotateCcw size={12} /> Retry
+                  </button>
+                </div>
+              ) : campaigns.length === 0 ? (
+                <p className="text-[12.5px] text-[#8a949c] mt-2">
+                  No campaigns available for this brand
+                </p>
+              ) : !campaignId ? (
                 <p className="text-[12.5px] text-[#9a6212] mt-2">
                   Select a campaign above to generate a Reel.
                 </p>
-              )}
+              ) : null}
 
               <button
                 type="button"
@@ -155,7 +249,7 @@ export default function VideoStudioPage() {
                   </>
                 ) : (
                   <>
-                    <Sparkles size={16} /> Generate Reel
+                    <Film size={16} /> Generate Reel
                   </>
                 )}
               </button>
@@ -196,13 +290,22 @@ export default function VideoStudioPage() {
                           <p className="text-[13px] text-[#ff9a8f] leading-snug">
                             {error || "Generation failed."}
                           </p>
-                          <button
-                            type="button"
-                            onClick={retry}
-                            className="mt-4 inline-flex items-center gap-1.5 rounded-[8px] border border-white/20 text-white text-[12.5px] font-medium px-3 py-1.5 hover:bg-white/10"
-                          >
-                            <RotateCcw size={13} /> Retry
-                          </button>
+                          {isStaleStrategy && campaignId ? (
+                            <Link
+                              href={`/campaigns/${campaignId}?tab=strategy`}
+                              className="mt-4 inline-flex items-center gap-1.5 rounded-[8px] bg-[#1174b8] hover:bg-[#0e5f99] text-white text-[12.5px] font-medium px-3.5 py-2 transition-colors cursor-pointer"
+                            >
+                              <ExternalLink size={13} /> View & Update Campaign Strategy
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={retry}
+                              className="mt-4 inline-flex items-center gap-1.5 rounded-[8px] border border-white/20 text-white text-[12.5px] font-medium px-3 py-1.5 hover:bg-white/10"
+                            >
+                              <RotateCcw size={13} /> Retry
+                            </button>
+                          )}
                         </>
                       ) : (
                         <>

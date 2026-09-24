@@ -6,7 +6,7 @@ import {
   Home,
   Megaphone,
   Library,
-  Sparkles,
+  Sliders,
   Settings,
   MessageSquare,
   PanelLeftClose,
@@ -89,7 +89,7 @@ export default function CampaignSidebar({
             <span>Home</span>
           </Link>
           <Link
-            href="/dashboard"
+            href="/campaigns"
             className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[#9AA6B2] hover:text-[#F5F7FA] hover:bg-white/[0.04] transition-colors"
           >
             <Megaphone size={15} />
@@ -103,11 +103,11 @@ export default function CampaignSidebar({
             <span>Content Library</span>
           </Link>
           <Link
-            href="/brandsetup"
+            href="/brandsetup?mode=edit"
             className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[#9AA6B2] hover:text-[#F5F7FA] hover:bg-white/[0.04] transition-colors"
           >
-            <Sparkles size={15} />
-            <span>Brand Voice</span>
+            <Sliders size={15} />
+            <span>Brand Profile</span>
           </Link>
         </nav>
       </div>
