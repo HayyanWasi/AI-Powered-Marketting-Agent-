@@ -21,6 +21,7 @@ env/
 .agents/*.json
 .playwright-mcp/
 *.mp4
+!frontend/public/*.mp4
 
 # Node.js
 node_modules/
