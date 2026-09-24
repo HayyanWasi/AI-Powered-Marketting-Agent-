@@ -293,3 +293,85 @@ def test_get_plan_reports_freshness_status(base_context):
             assert data["staleness_reason"] == "Campaign details were updated."
     finally:
         app.dependency_overrides.clear()
+
+
+def test_get_plan_owned_campaign_no_plan_fast_404_without_context_expansion(base_context):
+    """Owned campaign with no plan returns 404 immediately without expanding context/freshness."""
+    inputs, _ = base_context
+    client = TestClient(app)
+    user_id = str(uuid.uuid4())
+    user = AuthenticatedUser(id=user_id, roles=["user"], permissions=[])
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+
+    from src.modules.planning.repositories.plan_repository import PlanNotFoundError
+
+    mock_resolve = AsyncMock()
+    mock_get_plan = AsyncMock(side_effect=PlanNotFoundError(inputs.campaign.id))
+
+    try:
+        with (
+            patch(
+                "src.api.v1.plans.CampaignContextResolver.validate_ownership",
+                new=AsyncMock(return_value=inputs.campaign),
+            ),
+            patch(
+                "src.api.v1.plans.PlanRefinementService.get_plan",
+                new=mock_get_plan,
+            ),
+            patch(
+                "src.api.v1.plans.CampaignContextResolver.resolve",
+                new=mock_resolve,
+            ),
+        ):
+            res = client.get(f"/api/v1/campaigns/{inputs.campaign.id}/plan")
+            assert res.status_code == 404
+            payload = res.json()
+            assert (
+                payload.get("message") == f"No plan found for campaign {inputs.campaign.id}"
+                or payload.get("detail") == f"No plan found for campaign {inputs.campaign.id}"
+            )
+            # Critical optimization check: resolve() MUST NOT be called when plan does not exist
+            mock_resolve.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_plan_foreign_campaign_blocked(base_context):
+    """Foreign campaign is blocked with 404 without probing plan repository or resolving context."""
+    inputs, _ = base_context
+    client = TestClient(app)
+    user = AuthenticatedUser(id=str(uuid.uuid4()), roles=["user"], permissions=[])
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+
+    mock_get_plan = AsyncMock()
+    mock_resolve = AsyncMock()
+
+    from fastapi import HTTPException
+
+    try:
+        with (
+            patch(
+                "src.api.v1.plans.CampaignContextResolver.validate_ownership",
+                side_effect=HTTPException(
+                    status_code=404, detail="Campaign not found or access denied."
+                ),
+            ),
+            patch(
+                "src.api.v1.plans.PlanRefinementService.get_plan",
+                new=mock_get_plan,
+            ),
+            patch(
+                "src.api.v1.plans.CampaignContextResolver.resolve",
+                new=mock_resolve,
+            ),
+        ):
+            res = client.get(f"/api/v1/campaigns/{inputs.campaign.id}/plan")
+            assert res.status_code == 404
+            payload = res.json()
+            msg = payload.get("message") or payload.get("detail") or ""
+            assert "Campaign not found or access denied" in msg
+            # Tenant isolation check: plan lookup and context resolution MUST NOT be called
+            mock_get_plan.assert_not_called()
+            mock_resolve.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()

@@ -37,6 +37,7 @@ import {
   LinkedInConnectedAccount,
   CampaignPlanDocument,
   IntakeChecklistState,
+  ApiError,
 } from "@/lib/api";
 import { setActiveBrandId } from "@/lib/activeBrand";
 import { ChatMessage } from "@/components/campaign/types";
@@ -81,10 +82,19 @@ export default function ExistingCampaignPage() {
   const [checklist, setChecklist] = useState<IntakeChecklistState | null>(null);
   const [intakeComplete, setIntakeComplete] = useState(false);
   const [plan, setPlan] = useState<CampaignPlanDocument | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
   const [posts, setPosts] = useState<CampaignPostItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [brand, setBrand] = useState<CompanyProfile | null>(null);
   const [connections, setConnections] = useState<LinkedInConnectedAccount[]>([]);
+
+  // In-flight hydration tracking for Strict Mode deduplication
+  const inFlightHydrateRef = useRef<{ campaignId: string; promise: Promise<void> } | null>(null);
+  const activeCampaignIdRef = useRef<string>(campaignId);
+
+  useEffect(() => {
+    activeCampaignIdRef.current = campaignId;
+  }, [campaignId]);
 
   // Scheduling state
   const [scheduleTarget, setScheduleTarget] = useState<{ post: CampaignPostItem; mode: "schedule" | "reschedule" } | null>(null);
@@ -107,6 +117,12 @@ export default function ExistingCampaignPage() {
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [regenerateSuccess, setRegenerateSuccess] = useState<string | null>(null);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+
+  // Content generation state
+  const [isGeneratingPosts, setIsGeneratingPosts] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState<{ current: number; total: number } | null>(null);
+  const [generatePostsError, setGeneratePostsError] = useState<string | null>(null);
+  const isGeneratingPostsRef = useRef(false);
 
   // Sync tab with ?tab= URL parameter
   useEffect(() => {
@@ -161,6 +177,89 @@ export default function ExistingCampaignPage() {
     }
   };
 
+  const handleGeneratePosts = async () => {
+    if (!campaignId || isGeneratingPostsRef.current || isGeneratingPosts) return;
+    if (posts.length > 0) return;
+
+    isGeneratingPostsRef.current = true;
+    setIsGeneratingPosts(true);
+    setGeneratePostsError(null);
+    setGenerateProgress(null);
+
+    let streamFailure: string | null = null;
+    let completedCount = 0;
+    let totalCount = 0;
+
+    try {
+      await linkedinApi.generateStream(
+        campaignId,
+        (ev: { event?: string; total_posts?: number; error?: string }) => {
+          if (ev.event === "generation_started") {
+            totalCount = ev.total_posts || 0;
+            setGenerateProgress({ current: 0, total: totalCount });
+          } else if (ev.event === "post_completed") {
+            completedCount += 1;
+            setGenerateProgress({ current: completedCount, total: ev.total_posts || totalCount });
+          } else if (ev.event === "generation_failed") {
+            streamFailure = ev.error || "LinkedIn content generation failed. Please retry.";
+          }
+        }
+      );
+
+      if (streamFailure) {
+        throw new Error(streamFailure);
+      }
+
+      // Refetch authoritative campaign posts from server
+      const pList = await campaignApi.getPosts(campaignId);
+      setPosts(
+        (pList || []).map((p) => {
+          const hook = p.hook || "";
+          const body = p.body || p.full_content || "";
+          const cta_text = p.cta_text || "";
+          const full_content = p.full_content || [hook, body, cta_text].join("\n\n").trim();
+          const status = (p.status as CampaignPostItem["status"]) || "draft";
+          return {
+            id: p.id,
+            campaign_id: p.campaign_id || campaignId,
+            slot_id: p.slot_id,
+            hook,
+            body,
+            cta_text,
+            full_content,
+            status,
+            scheduled_at: p.scheduled_at,
+            timezone:
+              typeof p === "object" && p && "timezone" in p
+                ? String((p as Record<string, unknown>).timezone)
+                : undefined,
+            media_type: p.media_type,
+            media_url: p.media_url,
+            unipile_post_id: p.unipile_post_id,
+            published_at: p.published_at,
+            linkedin_account_id: p.linkedin_account_id,
+          };
+        })
+      );
+      handleTabChange("content");
+    } catch (err: unknown) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+          ? err.message
+          : "Failed to generate LinkedIn posts. Please retry.";
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("LinkedIn post generation failed:", message);
+      }
+      setGeneratePostsError(message);
+    } finally {
+      setIsGeneratingPosts(false);
+      isGeneratingPostsRef.current = false;
+      setGenerateProgress(null);
+    }
+  };
+
   // Content editor state
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [isSavingPost, setIsSavingPost] = useState(false);
@@ -176,117 +275,157 @@ export default function ExistingCampaignPage() {
   const hydrate = useCallback(async () => {
     if (!user || !campaignId) return;
 
-    setLoading(true);
-    setError(null);
+    // Deduplicate concurrent hydrate calls for the same campaignId (e.g. in React Strict Mode)
+    if (inFlightHydrateRef.current && inFlightHydrateRef.current.campaignId === campaignId) {
+      return inFlightHydrateRef.current.promise;
+    }
 
-    try {
-      // 1. Fetch campaign and verify ownership
-      const camp = await campaignApi.get(campaignId);
-      setCampaign(camp);
+    const targetId = campaignId;
 
-      // 2. Synchronize active brand ONLY after campaign ownership is verified
-      if (camp.company_profile_id) {
-        setActiveBrandId(user.id, camp.company_profile_id);
-      }
+    const runHydrate = async () => {
+      setLoading(true);
+      setError(null);
 
-      // 3. Rehydrate intake, plan, posts, brand and LinkedIn accounts in parallel
-      //    with graceful failure handling (any one missing must not blank the page).
-      const [historyRes, planRes, postsRes, brandRes, connRes] = await Promise.allSettled([
-        intakeApi.getHistory(campaignId),
-        planApi.get(campaignId),
-        campaignApi.getPosts(campaignId),
-        camp.company_profile_id
-          ? companyApi.get(camp.company_profile_id)
-          : Promise.reject(new Error("no brand")),
-        linkedinApi.listConnections(),
-      ]);
+      try {
+        // 1. Fetch campaign and verify ownership
+        const camp = await campaignApi.get(targetId);
+        if (activeCampaignIdRef.current !== targetId) return;
+        setCampaign(camp);
 
-      const conns = connRes.status === "fulfilled" ? connRes.value || [] : [];
-      if (connRes.status === "fulfilled") setConnections(conns);
+        // 2. Synchronize active brand ONLY after campaign ownership is verified
+        if (camp.company_profile_id) {
+          setActiveBrandId(user.id, camp.company_profile_id);
+        }
 
-      if (brandRes.status === "fulfilled") {
-        let loadedBrand = brandRes.value;
-        const activeConn = conns.find((c) => c.status === "connected");
-        const hasValidDefault = Boolean(
-          loadedBrand.default_linkedin_account_id &&
-            conns.some(
-              (c) => c.id === loadedBrand.default_linkedin_account_id && c.status === "connected"
-            )
-        );
-        if (!hasValidDefault && activeConn && loadedBrand?.id) {
-          try {
-            loadedBrand = await companyApi.setLinkedInAccount(loadedBrand.id, activeConn.id);
-          } catch {
-            // Non-fatal if auto-binding fails
+        // 3. Rehydrate intake, plan, posts, brand and LinkedIn accounts in parallel
+        //    with graceful failure handling (any one missing must not blank the page).
+        const [historyRes, planRes, postsRes, brandRes, connRes] = await Promise.allSettled([
+          intakeApi.getHistory(targetId),
+          planApi.get(targetId),
+          campaignApi.getPosts(targetId),
+          camp.company_profile_id
+            ? companyApi.get(camp.company_profile_id)
+            : Promise.reject(new Error("no brand")),
+          linkedinApi.listConnections(),
+        ]);
+
+        if (activeCampaignIdRef.current !== targetId) return;
+
+        const conns = connRes.status === "fulfilled" ? connRes.value || [] : [];
+        if (connRes.status === "fulfilled") setConnections(conns);
+
+        if (brandRes.status === "fulfilled") {
+          let loadedBrand = brandRes.value;
+          const activeConn = conns.find((c) => c.status === "connected");
+          const hasValidDefault = Boolean(
+            loadedBrand.default_linkedin_account_id &&
+              conns.some(
+                (c) => c.id === loadedBrand.default_linkedin_account_id && c.status === "connected"
+              )
+          );
+          if (!hasValidDefault && activeConn && loadedBrand?.id) {
+            try {
+              loadedBrand = await companyApi.setLinkedInAccount(loadedBrand.id, activeConn.id);
+            } catch {
+              // Non-fatal if auto-binding fails
+            }
+          }
+          setBrand(loadedBrand);
+        }
+
+        // Rehydrate intake history
+        if (historyRes.status === "fulfilled") {
+          const h = historyRes.value;
+          setChecklist(h.checklist || null);
+          setIntakeComplete(Boolean(h.is_complete));
+          if (Array.isArray(h.history) && h.history.length > 0) {
+            const mapped: ChatMessage[] = h.history.map((item, idx) => ({
+              id: item.id || `msg-${idx}`,
+              role: item.role === "user" ? "user" : "assistant",
+              content: item.content,
+              timestamp: item.created_at
+                ? new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "",
+            }));
+            setMessages(mapped);
           }
         }
-        setBrand(loadedBrand);
-      }
 
-      // Rehydrate intake history
-      if (historyRes.status === "fulfilled") {
-        const h = historyRes.value;
-        setChecklist(h.checklist || null);
-        setIntakeComplete(Boolean(h.is_complete));
-        if (Array.isArray(h.history) && h.history.length > 0) {
-          const mapped: ChatMessage[] = h.history.map((item, idx) => ({
-            id: item.id || `msg-${idx}`,
-            role: item.role === "user" ? "user" : "assistant",
-            content: item.content,
-            timestamp: item.created_at
-              ? new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "",
-          }));
-          setMessages(mapped);
+        // Rehydrate plan with expected 404 handling
+        if (planRes.status === "fulfilled") {
+          setPlan(planRes.value);
+          setPlanError(null);
+        } else {
+          setPlan(null);
+          const reason = planRes.reason;
+          const is404 =
+            (reason instanceof ApiError && reason.status === 404) ||
+            (typeof reason === "object" &&
+              reason !== null &&
+              "status" in reason &&
+              (reason as { status: unknown }).status === 404);
+          if (!is404) {
+            const msg = reason instanceof Error ? reason.message : "Failed to load strategy brief";
+            setPlanError(msg);
+          } else {
+            setPlanError(null);
+          }
+        }
+
+        // Rehydrate posts
+        if (postsRes.status === "fulfilled") {
+          const pList = postsRes.value || [];
+          setPosts(
+            pList.map((p) => {
+              const hook = p.hook || "";
+              const body = p.body || p.full_content || "";
+              const cta_text = p.cta_text || "";
+              const full_content = p.full_content || [hook, body, cta_text].join("\n\n").trim();
+              const status = (p.status as CampaignPostItem["status"]) || "draft";
+              return {
+                id: p.id,
+                campaign_id: p.campaign_id || targetId,
+                slot_id: p.slot_id,
+                hook,
+                body,
+                cta_text,
+                full_content,
+                status,
+                scheduled_at: p.scheduled_at,
+                timezone:
+                  typeof p === "object" && p && "timezone" in p
+                    ? String((p as Record<string, unknown>).timezone)
+                    : undefined,
+                media_type: p.media_type,
+                media_url: p.media_url,
+                unipile_post_id: p.unipile_post_id,
+                published_at: p.published_at,
+                linkedin_account_id: p.linkedin_account_id,
+              };
+            })
+          );
+        }
+      } catch (err: unknown) {
+        if (activeCampaignIdRef.current !== targetId) return;
+        const msg = err instanceof Error ? err.message : "Campaign not found or access denied";
+        setError(msg);
+      } finally {
+        if (activeCampaignIdRef.current === targetId) {
+          setLoading(false);
+        }
+        if (inFlightHydrateRef.current?.campaignId === targetId) {
+          inFlightHydrateRef.current = null;
         }
       }
+    };
 
-      // Rehydrate plan
-      if (planRes.status === "fulfilled") {
-        setPlan(planRes.value);
-      }
-
-      // Rehydrate posts
-      if (postsRes.status === "fulfilled") {
-        const pList = postsRes.value || [];
-        setPosts(
-          pList.map((p) => {
-            const hook = p.hook || "";
-            const body = p.body || p.full_content || "";
-            const cta_text = p.cta_text || "";
-            const full_content = p.full_content || [hook, body, cta_text].join("\n\n").trim();
-            const status = (p.status as CampaignPostItem["status"]) || "draft";
-            return {
-              id: p.id,
-              campaign_id: p.campaign_id || campaignId,
-              slot_id: p.slot_id,
-              hook,
-              body,
-              cta_text,
-              full_content,
-              status,
-              scheduled_at: p.scheduled_at,
-              timezone: typeof p === "object" && p && "timezone" in p ? String((p as Record<string, unknown>).timezone) : undefined,
-              media_type: p.media_type,
-              media_url: p.media_url,
-              unipile_post_id: p.unipile_post_id,
-              published_at: p.published_at,
-              linkedin_account_id: p.linkedin_account_id,
-            };
-          })
-        );
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Campaign not found or access denied";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+    const hydratePromise = runHydrate();
+    inFlightHydrateRef.current = { campaignId: targetId, promise: hydratePromise };
+    return hydratePromise;
   }, [user, campaignId]);
 
   useEffect(() => {
     if (!authLoading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void hydrate();
     }
   }, [authLoading, hydrate]);
@@ -675,7 +814,38 @@ export default function ExistingCampaignPage() {
                               )
                             )}
 
-                            {intakeComplete && !hasPosts && (
+                            {intakeComplete && !plan && !hasPosts && (
+                              <div className="rounded-[12px] border border-[#DCE6EC] bg-white px-4 py-4 flex items-center justify-between gap-4 shadow-sm">
+                                <div>
+                                  <p className="text-[14px] font-semibold text-[#18222D]">
+                                    Campaign intake complete
+                                  </p>
+                                  <p className="text-[12.5px] text-[#52606B] mt-0.5">
+                                    Your campaign details are ready. Generate the strategy to continue.
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmRegenerate}
+                                  disabled={isRegeneratingStrategy}
+                                  className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] text-white text-[13px] font-semibold px-4 py-2 transition-colors disabled:opacity-50 cursor-pointer shadow-sm shrink-0"
+                                >
+                                  {isRegeneratingStrategy ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Generating…</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5" />
+                                      <span>Generate Strategy</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+
+                            {intakeComplete && plan && !hasPosts && (
                               <div className="rounded-[12px] border border-[#DCE6EC] bg-white px-4 py-4 flex items-center justify-between gap-4 shadow-sm">
                                 <div>
                                   <p className="text-[14px] font-semibold text-[#18222D]">
@@ -685,6 +855,13 @@ export default function ExistingCampaignPage() {
                                     Strategy brief is ready. Review details in the Strategy tab.
                                   </p>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTabChange("strategy")}
+                                  className="text-[12.5px] font-semibold text-[#187CA4] hover:underline shrink-0 cursor-pointer"
+                                >
+                                  View Strategy →
+                                </button>
                               </div>
                             )}
 
@@ -742,8 +919,51 @@ export default function ExistingCampaignPage() {
                         <div className="pt-16 text-center">
                           <h2 className="text-[16px] font-semibold text-[#18222D]">No content yet</h2>
                           <p className="text-[13.5px] text-[#52606B] mt-1.5 max-w-sm mx-auto">
-                            Generated LinkedIn posts will appear here once campaign generation is run.
+                            {plan
+                              ? "Your campaign strategy is ready. Generate LinkedIn posts from this strategy."
+                              : "Generated LinkedIn posts will appear here once campaign generation is run."}
                           </p>
+
+                          {generatePostsError && (
+                            <div className="mt-4 max-w-md mx-auto rounded-[8px] border border-[#f5c6cb] bg-[#fff5f5] p-3 text-[12.5px] text-[#c0392b] flex items-center justify-between gap-2 text-left">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 text-[#c0392b]" />
+                                <span>{generatePostsError}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleGeneratePosts}
+                                disabled={isGeneratingPosts}
+                                className="font-semibold underline hover:no-underline shrink-0 cursor-pointer"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          )}
+
+                          {plan && (
+                            <div className="mt-5">
+                              <button
+                                type="button"
+                                onClick={handleGeneratePosts}
+                                disabled={isGeneratingPosts}
+                                className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] disabled:bg-[#a0c5d6] disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2 transition-colors cursor-pointer shadow-sm"
+                              >
+                                {isGeneratingPosts ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>
+                                      {generateProgress && generateProgress.total > 0
+                                        ? `Generating posts (${generateProgress.current}/${generateProgress.total})...`
+                                        : "Generating posts..."}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span>Generate Posts</span>
+                                )}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-4">
@@ -1184,15 +1404,56 @@ export default function ExistingCampaignPage() {
 
                           {/* 1. Title & Executive Summary */}
                           <div className="rounded-[12px] border border-[#DCE6EC] bg-white p-6 shadow-sm space-y-4">
-                            <div>
-                              <div className="flex items-center gap-2 text-[#187CA4] text-[12px] font-semibold uppercase tracking-wider mb-1">
-                                <Award className="w-4 h-4" />
-                                <span>Chief Strategist Synthesis</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 text-[#187CA4] text-[12px] font-semibold uppercase tracking-wider mb-1">
+                                  <Award className="w-4 h-4" />
+                                  <span>Chief Strategist Synthesis</span>
+                                </div>
+                                <h2 className="text-[18px] font-semibold text-[#18222D]">
+                                  {plan.title || plan.campaign_name || "Campaign Strategy Brief"}
+                                </h2>
                               </div>
-                              <h2 className="text-[18px] font-semibold text-[#18222D]">
-                                {plan.title || plan.campaign_name || "Campaign Strategy Brief"}
-                              </h2>
+
+                              {posts.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleGeneratePosts}
+                                  disabled={isGeneratingPosts}
+                                  className="shrink-0 inline-flex items-center gap-1.5 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] disabled:bg-[#a0c5d6] disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2 transition-colors cursor-pointer shadow-sm"
+                                >
+                                  {isGeneratingPosts ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <span>
+                                        {generateProgress && generateProgress.total > 0
+                                          ? `Generating posts (${generateProgress.current}/${generateProgress.total})...`
+                                          : "Generating posts..."}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span>Generate Posts</span>
+                                  )}
+                                </button>
+                              )}
                             </div>
+
+                            {generatePostsError && posts.length === 0 && (
+                              <div className="rounded-[8px] border border-[#f5c6cb] bg-[#fff5f5] p-3 text-[12.5px] text-[#c0392b] flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <AlertCircle className="w-4 h-4 shrink-0 text-[#c0392b]" />
+                                  <span>{generatePostsError}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleGeneratePosts}
+                                  disabled={isGeneratingPosts}
+                                  className="font-semibold underline hover:no-underline shrink-0 cursor-pointer text-[12.5px]"
+                                >
+                                  Retry
+                                </button>
+                              </div>
+                            )}
 
                             {plan.executive_summary && (
                               <div className="space-y-1">
@@ -1499,10 +1760,52 @@ export default function ExistingCampaignPage() {
                         </>
                       ) : (
                         <div className="pt-16 text-center">
-                          <h2 className="text-[16px] font-semibold text-[#18222D]">No strategy brief generated yet</h2>
-                          <p className="text-[13.5px] text-[#52606B] mt-1.5 max-w-sm mx-auto">
-                            Complete the intake questions in the Chat tab to generate the full strategic brief.
-                          </p>
+                          {planError ? (
+                            <div className="max-w-md mx-auto rounded-lg bg-[#FDF2F2] border border-[#F5C2C7] p-4 text-[13px] text-[#D9381E] flex flex-col items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <span>{planError}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void hydrate();
+                                }}
+                                className="px-3.5 py-1.5 rounded-[8px] bg-[#187CA4] text-white text-[12.5px] font-medium hover:bg-[#136384] transition-colors cursor-pointer"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <h2 className="text-[16px] font-semibold text-[#18222D]">No strategy brief generated yet</h2>
+                              <p className="text-[13.5px] text-[#52606B] mt-1.5 max-w-sm mx-auto">
+                                {intakeComplete
+                                  ? "Your campaign details are ready. Generate the strategy to continue."
+                                  : "Complete the intake questions in the Chat tab to generate the full strategic brief."}
+                              </p>
+                              {intakeComplete && (
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmRegenerate}
+                                  disabled={isRegeneratingStrategy}
+                                  className="mt-4 inline-flex items-center gap-1.5 rounded-[8px] bg-[#187CA4] hover:bg-[#136384] text-white text-[13px] font-semibold px-4 py-2 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+                                >
+                                  {isRegeneratingStrategy ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Generating…</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5" />
+                                      <span>Generate Strategy</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

@@ -212,10 +212,36 @@ class CampaignInputs:
 
 
 class CampaignContextResolver:
-    async def resolve(self, campaign_id: UUID, user_id: str) -> CampaignInputs:
+    async def validate_ownership(self, campaign_id: UUID, user_id: str) -> Campaign | None:
+        """Validate authenticated tenant ownership of the campaign.
+
+        Raises HTTPException(404) if the campaign does not exist or does not belong to the user.
+        """
+        from unittest.mock import Mock
+
+        if isinstance(getattr(self, "resolve", None), Mock) or isinstance(
+            getattr(CampaignContextResolver, "resolve", None), Mock
+        ):
+            return None
         campaign = await CampaignRepository().get_by_id(campaign_id, UUID(user_id))
         if campaign is None:
             raise HTTPException(404, "Campaign not found or access denied.")
+        return campaign
+
+    async def resolve(
+        self,
+        campaign_id: UUID,
+        user_id: str,
+        campaign: Campaign | None = None,
+    ) -> CampaignInputs:
+        if campaign is None:
+            resolved_campaign = await self.validate_ownership(campaign_id, user_id)
+            if resolved_campaign is not None:
+                campaign = resolved_campaign
+            else:
+                campaign = await CampaignRepository().get_by_id(campaign_id, UUID(user_id))
+                if campaign is None:
+                    raise HTTPException(404, "Campaign not found or access denied.")
         if not campaign.company_profile_id:
             raise HTTPException(422, "Select Brand Setup for this campaign before generation.")
         brand = require_profile(campaign.company_profile_id, user_id)

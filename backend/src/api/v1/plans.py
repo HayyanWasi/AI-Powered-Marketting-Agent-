@@ -127,12 +127,18 @@ async def get_plan(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
     """Return the current plan document."""
-    try:
-        inputs = await CampaignContextResolver().resolve(campaign_id, user.id)
-        plan = await svc.get_plan(campaign_id)
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    resolver = CampaignContextResolver()
+    # A. Validate authenticated tenant ownership of campaign
+    campaign = await resolver.validate_ownership(campaign_id, user.id)
 
+    # B & C. Check whether plan exists; if not, return 404 immediately without context resolution
+    try:
+        plan = await svc.get_plan(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
+
+    # D. Only if plan exists: resolve current campaign/brand inputs and freshness
+    inputs = await resolver.resolve(campaign_id, user.id, campaign=campaign)
     doc = plan.to_document()
     is_stale, reason = check_plan_freshness(plan, inputs)
     doc["is_stale"] = is_stale
@@ -153,8 +159,8 @@ async def list_versions(
     try:
         await CampaignContextResolver().resolve(campaign_id, user.id)
         versions = await svc.list_versions(campaign_id)
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
     return success_response(
         data=[
             {
@@ -180,8 +186,8 @@ async def get_version(
     try:
         await CampaignContextResolver().resolve(campaign_id, user.id)
         plan_version = await svc.get_version(campaign_id, version)
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
     if plan_version is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -206,8 +212,8 @@ async def get_messages(
     try:
         await CampaignContextResolver().resolve(campaign_id, user.id)
         messages = await svc.get_messages(campaign_id)
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
     return success_response(
         data=[
             {
@@ -257,8 +263,8 @@ async def refine_plan(
             user_id=UUID(user.id),
             brief=brief,
         )
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
     except PlanDraftError as exc:
         raise HTTPException(502, "Plan refinement failed. Please retry.") from exc
 
@@ -278,15 +284,15 @@ async def approve_plan(
     svc: PlanRefinementService = Depends(_get_service),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
-    """Approve the plan. After this, content generation is unblocked."""
+    """Approve the plan. After this, content generation is unlocked."""
     try:
         await CampaignContextResolver().resolve(campaign_id, user.id)
         approved_plan = await svc.approve_plan(
             campaign_id=campaign_id,
             approved_by=UUID(user.id),
         )
-    except PlanNotFoundError:
-        raise _not_found(campaign_id)
+    except PlanNotFoundError as exc:
+        raise _not_found(campaign_id) from exc
 
     return success_response(
         data={
